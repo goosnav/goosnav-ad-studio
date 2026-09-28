@@ -1,0 +1,15 @@
+{
+  "fps": 24,
+  "duration": 90,
+  "frames": "{work}/frames/f_%05d.png",
+  "audio": "{work}/mix.wav",
+  "grain": 3,
+  "vignette": true,
+  "overlays": [
+    {"file": "{work}/ov/ov_lines.png", "in": 80.2, "fade_in": 0.6, "out": 85.3, "fade_out": 0.5},
+    {"file": "{work}/ov/ov_end.png", "in": 86.45, "fade_in": 0.35}
+  ],
+  "fade_out": [89.3, 0.7],
+  "crf": 16,
+  "web_crf": 22
+}

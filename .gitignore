@@ -1,0 +1,9 @@
+studio.local.json
+__pycache__/
+*.pyc
+/assets/
+/output/
+*.png
+*.mp4
+*.wav
+!tools/legacy/**
