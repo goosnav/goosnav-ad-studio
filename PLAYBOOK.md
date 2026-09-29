@@ -105,6 +105,14 @@ Facts that may be stated (check `https://www.goosnav.shop/products.json` before 
 - **Account usage limits kill sessions mid-task** (LIGHTS OUT died at frame 2059/2073). Resume with the same context: `cd <session_dir>; claude -p --resume <session_id> "<what happened + what to do>" --dangerously-skip-permissions`. The session id is in `session.log`, in the final `"type":"result"` line.
 - Tell sessions to write status as integer percentages, to work efficiently, and never to edit the core `studio/` or `blender/` code or other films. They propose core changes in their README instead.
 
+### Orchestrator review
+
+Sessions tend to rush into the final render. THE LONGEST TURN started after 34 minutes with 6 preview stills, and its frames were underexposed with a static opening.
+
+- Always review a session's first 200 or so final frames with a contact sheet (`studio.qa sheet` on `frames/` with `[::12]`).
+- Stop a weak render by PID (the blender process and its `studio render` parent).
+- Resume the session with specific notes. The brief now has a hard preview gate and a `PREVIEW_NOTES.md` requirement.
+
 ## 8. Mistakes log
 
 | Mistake | Fix |

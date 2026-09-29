@@ -86,6 +86,22 @@ UPDATED: <date -Is>
 NOTE: <one line>
 ```
 
+## Preview gate (hard rule)
+
+A previous session started its 3-hour final render after 6 preview stills. The orchestrator stopped it: the film was underexposed (the table read as black water) and the opening was a static hold. **Before the final render you must:**
+
+1. Render the whole film with `python3 -m studio preview <film> --format 4x5 --every 12`.
+2. Open every contact sheet with Read, and write down in `<session>/PREVIEW_NOTES.md` what you checked and what you fixed:
+   - exposure: the key subject reads and the darks are legible
+   - every shot moves
+   - the opening grabs within 3 s
+   - products are fully in frame and generic
+   - hero drawings are readable
+3. Repeat until nothing on the sheet embarrasses you.
+4. Only then set `PHASE: RENDERING`.
+
+The orchestrator reviews your first rendered frames and will stop a render that isn't at standard.
+
 ## Definition of done
 
 1. `SCRIPT.md` exists, is good, and the film follows it or improves on it.
