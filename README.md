@@ -80,8 +80,8 @@ Formats are `4x5` (1080×1350, the default), `16x9`, `1x1` and `9x16`.
 
 | Film | Status | Notes |
 |---|---|---|
-| `the_dilemma` | 16:9 delivered; 4:5 rendering | Paper desert, Book 2 monolith explodes, page tornado, card fortress, comics from the sky |
-| LIGHTS OUT | delivered by session B; 4:5 in progress | Unmanned 1970s factory; code in `films/lights_out/` once imported |
+| `the_dilemma` | 16:9 + 4:5 delivered | Paper desert, Book 2 monolith explodes, page tornado, card fortress, comics from the sky |
+| `lights_out` | 16:9 + 4:5 delivered | Unmanned 1970s factory, BBC narrator; imported session build (see IMPORTED.md) |
 | further lanes | `orchestration/lanes/` | THE TABLE, 3:14 A.M., THE PROBE |
 
 ## Related projects
