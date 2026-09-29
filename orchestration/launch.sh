@@ -15,6 +15,6 @@ cd "$SESS"
 setsid nohup claude -p "$(cat PROMPT.md)" --dangerously-skip-permissions --add-dir "$REPO" \
       --output-format stream-json --verbose > session.log 2> session.err < /dev/null &
 sleep 2
-PID=$(pgrep -n -f "claude -p Read $REPO/orchestration/COMMON_BRIEF.md" || true)
+PID=$(pgrep -n -f "^claude -p Read $REPO/orchestration/COMMON_BRIEF.md" || true)   # anchor: skip wrapper shells
 echo "$PID" > "$SESS/pid"
 echo "launched $LANE ($FILM) pid=$PID dir=$SESS"
