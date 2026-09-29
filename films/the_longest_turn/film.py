@@ -30,7 +30,7 @@ T_S2 = 6.8          # the fortresses go up (trench run)
 T_S3 = 15.0         # reinforcements (booster)
 T_TEAR = 17.35
 T_S4 = 20.2         # the dice come down
-T_IMP = [25.0, 26.35, 27.95]
+T_IMP = [25.0, 26.35, 27.95, 2.4]     # the fourth die opens the film
 T_S5 = 32.8         # the rulebook
 T_OPEN = 34.55
 T_S6 = 44.2         # the five
@@ -101,23 +101,23 @@ bg = wn.nodes.new('ShaderNodeBackground'); bg.inputs[1].default_value = 1.0
 wn.links.new(m2.outputs[2], bg.inputs[0])
 wn.links.new(bg.outputs[0], wo.inputs['Surface'])
 vs = wn.nodes.new('ShaderNodeVolumeScatter'); vs.inputs['Anisotropy'].default_value = 0.35
-vs.inputs['Color'].default_value = (0.7, 0.75, 0.85, 1)
+vs.inputs['Color'].default_value = (0.5, 0.62, 0.9, 1)
 wn.links.new(vs.outputs[0], wo.inputs['Volume'])
 FOG = vs.inputs['Density']
 
 # ---------------------------------------------------------------- lights
 fill_d = bpy.data.lights.new('fill', 'SUN'); fill_d.color = (0.55, 0.65, 0.9); fill_d.use_shadow = False
 fill = link(bpy.data.objects.new('fill', fill_d)); fill.rotation_euler = (math.radians(50), 0, math.radians(140))
-moon_d = bpy.data.lights.new('moon', 'SUN'); moon_d.color = (0.6, 0.7, 1.0); moon_d.angle = 0.02
+moon_d = bpy.data.lights.new('moon', 'SUN'); moon_d.color = (0.62, 0.74, 1.0); moon_d.angle = 0.02
 moon_d.shadow_cascade_max_distance = 220.0; moon_d.shadow_cascade_count = 4
-moon = link(bpy.data.objects.new('moon', moon_d)); moon.rotation_euler = (math.radians(62), 0, math.radians(-150))
+moon = link(bpy.data.objects.new('moon', moon_d)); moon.rotation_euler = (math.radians(68), 0, math.radians(-125))
 bolt_d = bpy.data.lights.new('strike', 'SUN'); bolt_d.angle = 0.03
 bolt_d.shadow_cascade_max_distance = 220.0; bolt_d.shadow_cascade_count = 4
 strike = link(bpy.data.objects.new('strike', bolt_d))
 flash_d = bpy.data.lights.new('impact', 'POINT'); flash_d.color = (1.0, 0.55, 0.2); flash_d.shadow_soft_size = 1.0
-flash = link(bpy.data.objects.new('impact', flash_d)); flash_d.volume_factor = 0.3
+flash = link(bpy.data.objects.new('impact', flash_d)); flash_d.volume_factor = 0.0
 fire_d = bpy.data.lights.new('fire', 'POINT'); fire_d.color = (1.0, 0.45, 0.12); fire_d.shadow_soft_size = 0.6
-fire = link(bpy.data.objects.new('fire', fire_d)); fire_d.volume_factor = 0.15
+fire = link(bpy.data.objects.new('fire', fire_d)); fire_d.volume_factor = 0.0
 gold_d = bpy.data.lights.new('gold', 'POINT'); gold_d.color = (1.0, 0.72, 0.35); gold_d.shadow_soft_size = 3.0
 gold = link(bpy.data.objects.new('gold', gold_d)); gold_d.volume_factor = 0.5
 tear_d = bpy.data.lights.new('tear', 'POINT'); tear_d.color = (1.0, 0.9, 0.75); tear_d.shadow_soft_size = 1.5
@@ -246,7 +246,7 @@ grain.inputs['Scale'].default_value = 0.11; grain.inputs['Distortion'].default_v
 grain.inputs['Detail'].default_value = 3.0; grain.inputs['Detail Scale'].default_value = 1.2
 L.new(gm.outputs[0], grain.inputs['Vector'])
 gr = nt.nodes.new('ShaderNodeValToRGB')
-gr.color_ramp.elements[0].color = (0.06, 0.028, 0.012, 1); gr.color_ramp.elements[1].color = (0.15, 0.072, 0.032, 1)
+gr.color_ramp.elements[0].color = (0.05, 0.022, 0.009, 1); gr.color_ramp.elements[1].color = (0.19, 0.095, 0.042, 1)
 L.new(grain.outputs['Fac'], gr.inputs[0])
 seamc = nt.nodes.new('ShaderNodeMix'); seamc.data_type = 'RGBA'
 L.new(seam.outputs[0], seamc.inputs['Factor']); L.new(gr.outputs[0], seamc.inputs[6]); seamc.inputs[7].default_value = (0.004, 0.002, 0.001, 1)
@@ -258,10 +258,10 @@ pudm = nt.nodes.new('ShaderNodeMapRange'); pudm.inputs['From Min'].default_value
 L.new(pud.outputs['Fac'], pudm.inputs['Value'])
 wetpud = nt.nodes.new('ShaderNodeMath'); wetpud.operation = 'MULTIPLY'; L.new(pudm.outputs[0], wetpud.inputs[0]); L.new(WET, wetpud.inputs[1])
 dark = nt.nodes.new('ShaderNodeMix'); dark.data_type = 'RGBA'; dark.blend_type = 'MULTIPLY'
-dmul = nt.nodes.new('ShaderNodeMath'); dmul.operation = 'MULTIPLY'; dmul.inputs[1].default_value = 0.45; L.new(WET, dmul.inputs[0])
+dmul = nt.nodes.new('ShaderNodeMath'); dmul.operation = 'MULTIPLY'; dmul.inputs[1].default_value = 0.2; L.new(WET, dmul.inputs[0])
 L.new(dmul.outputs[0], dark.inputs['Factor']); L.new(seamc.outputs[2], dark.inputs[6]); dark.inputs[7].default_value = (0.5, 0.5, 0.55, 1)
 rough = nt.nodes.new('ShaderNodeMapRange')   # WET 0 -> 0.42, 1 -> 0.14
-rough.inputs['To Min'].default_value = 0.42; rough.inputs['To Max'].default_value = 0.14
+rough.inputs['To Min'].default_value = 0.42; rough.inputs['To Max'].default_value = 0.22
 L.new(WET, rough.inputs['Value'])
 rp = nt.nodes.new('ShaderNodeMix'); rp.data_type = 'FLOAT'
 L.new(wetpud.outputs[0], rp.inputs['Factor']); L.new(rough.outputs[0], rp.inputs[2]); rp.inputs[3].default_value = 0.02
@@ -423,7 +423,7 @@ def set_cards(t):
 PW, PT, PH = 7.2, 0.9, 11.2
 pack_front = mat_image('pack_front', TEX + '/gen_pack.png', rough=0.25, spec=0.8, coat=0.5)
 pack_silver = mat_color('pack_silver', (0.78, 0.8, 0.84), rough=0.2, metal=1.0)
-pack = make_box('pack', (PW, PT, PH - 1.1), {(0, -1, 0): pack_front}, pack_silver, bevel=0.12)
+pack = make_box('pack', (PW, PT, PH - 1.1), {(0, -1, 0): pack_front, (0, 1, 0): pack_front}, pack_silver, bevel=0.12)
 crimp = make_box('crimp', (PW + 0.2, 0.35, 1.1), {}, pack_silver, bevel=0.05)
 mouth_mat = mat_emit('mouth', (1.0, 0.92, 0.8), 0.0)
 MOUTH = mouth_mat.node_tree.nodes['Emission'].inputs[1]
@@ -462,18 +462,18 @@ die_mats = {nm: {n: mat_image(f'die_{nm}_{p}', f'{TEX}/die_{nm}_{p}.png', rough=
 def new_die(name, col):
     fm = die_mats[col]
     return make_box(name, (DIE, DIE, DIE), fm, fm[(0, 0, 1)], bevel=0.18)
-meteors = [new_die('meteor_teal', 'teal'), new_die('meteor_orange', 'orange'), new_die('meteor_purple', 'purple')]
+meteors = [new_die('meteor_teal', 'teal'), new_die('meteor_orange', 'orange'), new_die('meteor_purple', 'purple'), new_die('meteor_purple2', 'purple')]
 hero_die = new_die('hero_die', 'orange')
 prop_dice = [new_die('prop_teal', 'teal'), new_die('prop_purple', 'purple')]
 UP_FACE = {1: np.eye(3), 6: Rx(math.pi), 2: Ry(-math.pi / 2), 5: Ry(math.pi / 2), 3: Rx(math.pi / 2), 4: Rx(-math.pi / 2)}
 
 # meteor dice
 CAM4 = v3(37.2, 0.0, 0.55)
-IMP = [v3(61.0, -5.0, 0), v3(72.0, 9.0, 0), v3(55.5, 12.5, 0)]
-MSTART = [v3(150, -60, 330), v3(175, 60, 360), v3(120, 110, 340)]
-T_APPEAR = [21.1, 21.7, 22.3]
-MREST = [Rz(0.4) @ UP_FACE[3], Rz(-0.7) @ UP_FACE[6], Rz(1.1) @ UP_FACE[2]]
-MSPIN = [norm(v3(1, 0.3, 0.2)), norm(v3(-0.2, 1, 0.4)), norm(v3(0.5, -0.4, 1))]
+IMP = [v3(61.0, -5.0, 0), v3(72.0, 9.0, 0), v3(55.5, 12.5, 0), v3(36.0, 46.0, 0)]
+MSTART = [v3(150, -60, 330), v3(175, 60, 360), v3(120, 110, 340), v3(170, 140, 300)]
+T_APPEAR = [21.1, 21.7, 22.3, 0.2]
+MREST = [Rz(0.4) @ UP_FACE[3], Rz(-0.7) @ UP_FACE[6], Rz(1.1) @ UP_FACE[2], Rz(0.2) @ UP_FACE[4]]
+MSPIN = [norm(v3(1, 0.3, 0.2)), norm(v3(-0.2, 1, 0.4)), norm(v3(0.5, -0.4, 1)), norm(v3(0.3, 1, -0.5))]
 def meteor_pos(i, t):
     D = T_IMP[i] - T_APPEAR[i]
     u = max(T_IMP[i] - t, 0.0) / D
@@ -484,7 +484,7 @@ trail_mats = [mat_emit('fire_core', (1.0, 0.85, 0.55), 60.0), mat_emit('fire_mid
               mat_emit('fire_tail', (0.6, 0.08, 0.02), 10.0)]
 NTR = 22
 TIERS = [range(0, 4), range(4, 12), range(12, NTR)]
-trails = [[Pool(f'trail{i}_{k}', len(TIERS[k]), ico_mesh(f'fireball{i}{k}', 1, trail_mats[k])) for k in range(3)] for i in range(3)]
+trails = [[Pool(f'trail{i}_{k}', len(TIERS[k]), ico_mesh(f'fireball{i}{k}', 1, trail_mats[k])) for k in range(3)] for i in range(4)]
 # craters: scorched disc with glowing rim
 cm_, nt, out = new_mat('crater')
 tco2 = nt.nodes.new('ShaderNodeTexCoord')
@@ -513,8 +513,8 @@ cm_.blend_method = 'CLIP'; cm_.shadow_method = 'NONE'
 disc = bpy.data.meshes.new('disc')
 bm = bmesh.new(); bmesh.ops.create_circle(bm, cap_ends=True, segments=48, radius=1.0); bm.to_mesh(disc); bm.free()
 disc.materials.append(cm_)
-craters = [mesh_obj(f'crater{i}', disc) for i in range(3)]
-CR_R = [4.2, 3.8, 3.5]
+craters = [mesh_obj(f'crater{i}', disc) for i in range(4)]
+CR_R = [4.2, 3.8, 3.5, 4.4]
 # shockwave rings
 ring_me = bpy.data.meshes.new('ring')
 bm = bmesh.new(); bmesh.ops.create_circle(bm, cap_ends=False, segments=72, radius=1.0)
@@ -524,15 +524,15 @@ for vv in [e for e in ret['geom'] if isinstance(e, bmesh.types.BMVert)]:
 bm.to_mesh(ring_me); bm.free()
 ring_mat, RING_STR, RING_MIX = transparent_mat('ring', (1.0, 0.7, 0.45), 8.0, 0.6)
 ring_me.materials.append(ring_mat)
-rings = [mesh_obj(f'ring{i}', ring_me) for i in range(3)]
+rings = [mesh_obj(f'ring{i}', ring_me) for i in range(4)]
 
 # ---------------------------------------------------------------- particles: splinters and water
 wood_mat = mat_color('splinter', (0.28, 0.14, 0.06), rough=0.6)
 NSPL = 26
-splinters = Pool('splinter', NSPL * 3, cube_mesh('splinter_m', wood_mat))
-SP_V = rng.normal(size=(NSPL * 3, 3)) * v3(9, 9, 0) ; SP_V[:, 2] = rng.uniform(10, 30, NSPL * 3)
-SP_S = np.stack([rng.uniform(0.08, 0.2, NSPL * 3), rng.uniform(0.08, 0.2, NSPL * 3), rng.uniform(0.3, 1.1, NSPL * 3)], -1)
-SP_AX = norm(rng.normal(size=(NSPL * 3, 3))); SP_W = rng.uniform(4, 14, NSPL * 3)
+splinters = Pool('splinter', NSPL * 4, cube_mesh('splinter_m', wood_mat))
+SP_V = rng.normal(size=(NSPL * 4, 3)) * v3(9, 9, 0) ; SP_V[:, 2] = rng.uniform(10, 30, NSPL * 4)
+SP_S = np.stack([rng.uniform(0.08, 0.2, NSPL * 4), rng.uniform(0.08, 0.2, NSPL * 4), rng.uniform(0.3, 1.1, NSPL * 4)], -1)
+SP_AX = norm(rng.normal(size=(NSPL * 4, 3))); SP_W = rng.uniform(4, 14, NSPL * 4)
 
 drop_mat, nt, out = new_mat('water')
 bw = nt.nodes.new('ShaderNodeBsdfPrincipled'); bw.inputs['Base Color'].default_value = (0.6, 0.7, 0.8, 1)
@@ -551,7 +551,7 @@ for c in CARDS:
         z0, zr = PACK_MOUTH[2], 0.03 + 0.004 * c['i']
         c['t_air'] = (c['vz'] + math.sqrt(c['vz'] ** 2 + 2 * G * (z0 - zr))) / G
         BURSTS.append((c['t0'] + c['t_air'], boost_pose(c, c['t0'] + c['t_air'])[0] * v3(1, 1, 0), 6, 7.0, 6.0, 0.10, 't'))
-for i in range(3):
+for i in range(4):
     BURSTS.append((T_IMP[i], IMP[i], 18, 14.0, 22.0, 0.16, 't'))
 T_LAND_TS = ts(T_LAND)
 BURSTS.append((T_LAND, v3(16.0, 20.0, 0.0), 40, 8.0, 12.0, 0.09, 'ts'))
@@ -579,8 +579,8 @@ def set_drops(t):
     drops.set(P, scale=S)
 
 def set_splinters(t):
-    P = np.repeat(FAR[None], NSPL * 3, 0); R = np.repeat(np.eye(3)[None], NSPL * 3, 0); S = np.full((NSPL * 3, 3), 0.001)
-    for i in range(3):
+    P = np.repeat(FAR[None], NSPL * 4, 0); R = np.repeat(np.eye(3)[None], NSPL * 4, 0); S = np.full((NSPL * 4, 3), 0.001)
+    for i in range(4):
         tau = t - T_IMP[i]
         if tau < 0 or t >= T_S5:
             continue
@@ -670,6 +670,20 @@ def rb_angle(t):
         return 0.0
     u = (t - T_OPEN) / 3.2
     return math.radians(118) * float(sm(0, 1, u)) + (math.radians(-3) * math.exp(-(t - T_OPEN - 3.2) * 3) * math.sin((t - T_OPEN - 3.2) * 9) if u > 1 else 0)
+mote_mat = mat_emit('mote', (1.0, 0.75, 0.4), 18.0)
+NMOTE = 70
+motes = Pool('mote', NMOTE, ico_mesh('mote_m', 1, mote_mat))
+MO_B = rng.uniform(0, 1, (NMOTE, 3)); MO_W = rng.uniform(0.3, 0.9, NMOTE); MO_S = rng.uniform(0.02, 0.06, NMOTE)
+def set_motes(t):
+    k = float(ss(T_OPEN + 0.8, T_OPEN + 2.5, t))
+    if not (T_OPEN < t < T_S6) or k <= 0:
+        motes.hide(); return
+    box = v3(16.0, 14.0, 20.0)
+    p = MO_B * box + v3(0.3, 0.2, 1.0)[None] * (MO_W * (t - T_OPEN))[:, None]
+    p = (p % box) - box / 2
+    p = RB + v3(-2.0, -8.0, 10.0) + p + 0.4 * np.stack([np.sin(t * MO_W * 2 + MO_B[:, 0] * 9), np.cos(t * MO_W * 1.7 + MO_B[:, 1] * 9), 0 * MO_W], -1)
+    motes.set(p, scale=MO_S * k)
+
 def set_rulebook(t):
     place(rb_backb, RB + v3(0, RBT / 2 - 0.09, RBH / 2))
     place(rb_block, RB + v3(0.1, 0, RBH / 2))
@@ -680,9 +694,9 @@ def set_rulebook(t):
     k = float(ss(T_OPEN + 0.2, T_OPEN + 2.8, t))
     flick = 1 + 0.06 * math.sin(t * 23) * math.sin(t * 7.1)
     on = k * flick * (1 - float(ss(T_S7, T_REVEAL, t)))
-    PAGE_EMIT.default_value = 0.3 * on + (0.6 if t >= T_REVEAL else 0)
+    PAGE_EMIT.default_value = 0.14 * on + (0.6 if t >= T_REVEAL else 0)
     gold.location = RB + v3(-2.0, -3.5, 11.0)
-    gold_d.energy = 7.0e3 * on
+    gold_d.energy = 3.5e3 * on
 
 # ---------------------------------------------------------------- the room (parked until the reveal)
 FLOOR_Z = -76.0
@@ -809,7 +823,7 @@ comic = Sheets('comic', 1, 28.0, 21.6, [comic_mat], [0], curl_ids=[1])
 def set_room(t):
     on = t >= T_REVEAL
     ROOM.location = (0, 0, 0) if on else tuple(FAR)
-    lamp_up = float(ss(T_REVEAL, T_REVEAL + 2.5, t))
+    lamp_up = float(ss(T_S7 + 0.3, T_REVEAL + 2.0, t))
     lamp_d.energy = 1.1e6 * lamp_up
     room_d.energy = 2.0e6 * lamp_up
     door_d.energy = 8.0e4 * lamp_up
@@ -879,9 +893,13 @@ def meteor_track(t):
 def camera_at(t):
     """eye, target, lens (16:9-authored), roll, focus distance (None = no depth of field)"""
     if t < T_S2:   # 1. the night plain
-        u = float(sm(0, T_S2, t))
-        eye = lerp(v3(-36.0, 11.0, 0.42), v3(-32.0, 16.0, 0.5), u) + shake(t, 0.02, 0.5)
-        return eye, v3(-21.0, 40.0, lerp(6.0, 5.2, u)), 34.0, 0.02 * math.sin(t * 0.4), None
+        u = float(sm(-0.6, T_S2 - 0.2, t))
+        P0, P1, P2 = v3(-96.0, -30.0, 30.0), v3(-72.0, 6.0, 7.0), v3(-35.0, 13.0, 0.45)
+        eye = (1 - u) ** 2 * P0 + 2 * u * (1 - u) * P1 + u * u * P2
+        tgt = lerp(v3(18.0, 30.0, 0.0), v3(-21.0, 40.0, 5.0), float(sm(1.5, T_S2 - 0.3, t)))
+        k = math.exp(-max(t - T_IMP[3], 0) * 3.0) if t >= T_IMP[3] else 0.0
+        eye = eye + shake(t, 0.03 + 0.5 * k * (0.3 + eye[2] / 40), 1.6)
+        return eye, tgt, lerp(20.0, 30.0, u), lerp(-0.08, 0.02, u) + 0.02 * math.sin(t * 0.4), None
     if t < T_S3:   # 2. the run down the trench
         x = cam_x_run(t)
         step = math.sin((t - T_S2) * 2 * math.pi * 1.9)
@@ -928,6 +946,9 @@ def camera_at(t):
         push = float(sm(T_OPEN + 1.0, T_S6, t))
         eye = lerp(v3(-51.0, 3.0, 0.9), v3(-52.0, 9.0, 1.6), u)
         eye = lerp(eye, v3(-52.8, 8.0, 2.0), push * 0.9) + shake(t, 0.02, 0.6)
+        orb = float(sm(T_OPEN + 2.0, T_S6, t))
+        a = lerp(0.0, 0.42, orb); rel = eye - RB
+        eye = RB + v3(rel[0] * math.cos(a) - rel[1] * math.sin(a), rel[0] * math.sin(a) + rel[1] * math.cos(a), rel[2] + 3.0 * orb)
         tgt = lerp(RB + v3(0, 0, 11.5), RB + v3(-1.5, 0, 10.0), push)
         return eye, tgt, lerp(24.0, 26.0, push), 0.0, None
     if t < T_S7:   # 6. the five
@@ -940,6 +961,9 @@ def camera_at(t):
         eye = lerp(eye, v3(13.2, 15.4, 4.2), land)
         tgt = lerp(tgt, DIE_REST + v3(0, 0, 0.3), land)
         lens = lerp(lens, 58.0, land)
+        if t > T_LAND + 1.2:
+            a = 0.28 * float(sm(T_LAND + 1.2, T_FALL, t)); rel = eye - DIE_REST
+            eye = DIE_REST + v3(rel[0] * math.cos(a) - rel[1] * math.sin(a), rel[0] * math.sin(a) + rel[1] * math.cos(a), rel[2] - 1.0 * a)
         wide = float(sm(T_FALL - 0.9, T_FALL + 0.4, t))
         eye = lerp(eye, v3(11.5, 10.2, 2.4), wide)
         tgt = lerp(tgt, F + v3(-1.0, -3.0, 3.2), wide)
@@ -968,7 +992,7 @@ def camera_at(t):
         tgt = v3(RX0 + 28.0, -60.0, FLOOR_Z)
         return eye, tgt, 26.0, 0.0, float(np.linalg.norm(tgt - eye))
     u = float(sm(T_S9, DUR, t))     # 9. the products
-    eye = lerp(v3(57.0, -82.0, 26.0), v3(58.0, -76.0, 23.0), u)
+    eye = lerp(v3(52.0, -83.0, 27.0), v3(60.0, -75.0, 22.0), u)
     tgt = H_C + v3(-0.5, -5.0, 1.0)
     return eye, tgt, 35.0, 0.0, float(np.linalg.norm(tgt - eye))
 
@@ -990,7 +1014,7 @@ def set_dice(t):
         place(hero_die, p, R)
 
 def set_trails(t):
-    for i in range(3):
+    for i in range(4):
         on = T_APPEAR[i] <= t < T_IMP[i]
         for k in range(3):
             pool = trails[i][k]
@@ -1005,14 +1029,14 @@ def set_trails(t):
             pool.set(P, scale=S * flick)
     # fire light at the leading meteor / embers after the impacts
     near = None
-    for i in range(3):
+    for i in range(4):
         if T_APPEAR[i] <= t < T_IMP[i]:
             near = i; break
     if near is not None:
         fire.location = meteor_pos(near, t); fire_d.energy = 6.0e4 * float(ss(T_APPEAR[near], T_IMP[near] - 1.5, t))
     elif T_IMP[0] <= t < T_S7:
         fire.location = IMP[0] + v3(-2.0, -2.0, 1.6)
-        fire_d.energy = 3.5e3 * (1 + 0.25 * math.sin(t * 17) * math.sin(t * 5.3))
+        fire_d.energy = 1.8e3 * (1 + 0.25 * math.sin(t * 17) * math.sin(t * 5.3))
     else:
         fire_d.energy = 0.0
     # impact flash, rings, craters
@@ -1035,7 +1059,7 @@ def set_trails(t):
     RING_STR.default_value = 8.0
     flash.location = fp + v3(0, 0, 3.0)
     flash_d.energy = 7.0e4 * fl
-    EMBER.default_value = 6.0 * (1 - float(ss(T_S7, T_REVEAL, t))) * (0.8 + 0.2 * math.sin(t * 9))
+    EMBER.default_value = 0.8 * (1 - float(ss(T_S7, T_REVEAL, t))) * (0.8 + 0.2 * math.sin(t * 9))
 
 def set_bolts(t, eye, fwd):
     amt, rgb, best = strike_env(t)
@@ -1056,24 +1080,25 @@ def set_bolts(t, eye, fwd):
 def set_storm(t, eye, tgt):
     storm = 1 - float(ss(T_S7 - 0.5, T_REVEAL, t))
     amt, rgb, best = set_bolts(t, eye, norm(tgt - eye))
-    base = float(ss(0.0, 3.0, t)) * 0.7 + 0.3
+    base = 1.0
     if best >= 0:
         t0, c, az, el, s = STRIKES[best]
         d = v3(math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el))
         strike.rotation_euler = Vector((-d).tolist()).to_track_quat('-Z', 'Y').to_euler()
     col = rgb / max(amt, 1e-6) if amt > 0 else v3(1, 1, 1)
     bolt_d.color = tuple(np.clip(0.35 + 0.65 * col, 0, 1))
-    bolt_d.energy = 4.0 * amt * storm
-    sky = (v3(1, 1, 1) * 1.1 * base + rgb * 2.6) * storm + v3(0.02, 0.018, 0.015) * (1 - storm)
+    bolt_d.energy = 2.6 * amt * storm
+    sky = (v3(0.62, 0.78, 1.15) * 1.05 * base + rgb * 1.7) * storm + v3(0.02, 0.018, 0.015) * (1 - storm)
     SKY_LIGHT.outputs[0].default_value = (*sky, 1)
-    fill_d.energy = 0.22 * base * storm
-    moon_d.energy = 0.55 * base * storm
+    fill_d.energy = 0.45 * base * storm
+    moon_d.energy = 1.6 * base * storm
+    scene.view_settings.exposure = 1.25 * (1 - float(ss(T_S7 - 0.3, T_REVEAL + 0.3, t)))
     FOG.default_value = 0.0018 * storm + 0.00025 * (1 - storm)
     RAIN_GLOW.default_value = (0.8 + 7.0 * amt) * storm
     DROP_GLOW.default_value = 0.3 + 3.0 * amt
     for m in bolt_mats:
         m.node_tree.nodes['Emission'].inputs[1].default_value = 30.0 * min(amt, 1.5)
-    WET.default_value = 1 - float(ss(T_REVEAL, T_REVEAL + 2.5, t))
+    WET.default_value = 1 - float(ss(T_S7, T_REVEAL + 0.6, t))
     TIME.default_value = ts(t) * 1.3
     set_rain(t, eye, storm * float(ss(0.0, 0.5, t)))
     return amt
@@ -1087,7 +1112,7 @@ def update(t):
         cam_d.dof.focus_distance = fd
         cam_d.dof.aperture_fstop = 2.2 if t < T_S9 else 3.2
     set_cards(t); set_pack(t); set_dice(t); set_trails(t); set_drops(t); set_splinters(t)
-    set_rulebook(t); set_room(t); set_storm(t, eye, tgt)
+    set_rulebook(t); set_motes(t); set_room(t); set_storm(t, eye, tgt)
     return t >= T_WHITE + 0.6
 
 def events():

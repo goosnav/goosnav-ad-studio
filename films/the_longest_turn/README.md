@@ -6,7 +6,7 @@ An 87-second film (4:5 portrait, 1080×1350, 24 fps) for **Goosklerf**, **Goosna
 One game of Goosklerf, filmed like the most important battle in human history. The film plays out at
 night in a thunderstorm on a wet walnut table the size of a continent, and an American war-and-sports
 broadcaster calls every roll. Card fortresses slam up hundreds of feet tall. A booster pack bursts
-like a dam. Three dice fall from the clouds like meteors and crater the wood. The rulebook opens like
+like a dam. A die falls from the clouds in the first three seconds; later three more come down together like meteors and crater the wood. The rulebook opens like
 a cathedral door. One orange die tumbles in slow motion and lands on a five ("Nobody alive had seen a
 five like it"), and a fortress falls. Then the storm passes, and the camera rises out of it into an
 ordinary dining room on a weeknight. Book 2 lies on the corner of the table, and a Patreon comic slides
@@ -66,6 +66,7 @@ Everything was checked against `https://www.goosnav.shop/products.json?limit=250
   Book 2 uses `gen_book_front/back/spine.png` on a `#0033A0` hardcover. Dice use the `die_*` textures.
   The rulebook is new and generic: a purple `#330072` cover with the crisp `GOOSKLERF.jpg` logo and
   Helvetica "Goosklerf Rulebook", plus an inner page in Helvetica. No photo textures are used.
+- **Exposure:** the storm is lit as a night film: `view_settings.exposure` +1.25 during the storm (falling to 0 at the reveal), a cool moon key with shadows, a fill, and lightning suns in the three Goosklerf colours.
 - **Built:** the table, room, storm sky, rain, lightning bolts, meteors, craters, splinters, spray and
   all the light. All sound is synthesised (`studio.audio` plus the voice chain); there is no library audio.
 

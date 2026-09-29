@@ -32,11 +32,12 @@ logo and Helvetica "Goosklerf Rulebook". The only Goosnav drawings are the real 
 ---
 
 ### 1. THE NIGHT BEFORE — 0:00–0:07
-Black. Distant thunder and rain. A teal lightning strobe reveals a wet wooden plain running to the
-horizon. Far away, card fortresses stand against the clouds. A second strobe, orange, lights the
-puddles. The camera drifts forward at ankle height, handheld. Title, small, in Helvetica:
-**THE LONGEST TURN**.
-> NARRATOR: It was a weeknight. Two players... one table.
+Open big. Rain, wind, thunder. The camera cranes down out of the storm over the whole battlefield:
+wet walnut to the horizon, card fortresses scattered across it, the rulebook standing far off. A teal
+strike lights everything. A die falls out of the clouds like a meteor, trailing fire, and craters the
+far side of the table (2.4 s). The shockwave shakes the camera as it swoops down to ankle height beside
+a fortress. A purple strike. Title, in Helvetica: **THE LONGEST TURN**.
+> NARRATOR (after the impact): It was a weeknight. Two players... one table.
 
 ### 2. THE FORTRESSES GO UP — 0:07–0:15.5
 The camera runs forward low across the wood. Cards lying flat on the table slam upright one after
@@ -129,3 +130,11 @@ Patreon — dispatches, monthly (8).
 Book Two hardcover $19.95. Goosklerf booster pack (12 cards) $13.95; kits $29.95 / $49.95 / $89.95.
 Patreon $3 a month. Goosklerf: dice-based combat, items, fortresses; win by capturing fortresses or
 eliminating enemies.
+
+## Revision (2026-09-28, orchestrator review)
+After a first render pass the orchestrator stopped the render for three reasons: the film was
+underexposed, the opening was static, and some shots held too long. Changes: a storm exposure of +1.25
+that falls away at the reveal, a stronger cool moon key, and brighter grain, so the wet wood reads
+between strikes. The opening is now a crane over the battlefield with a fourth meteor die. There is a
+slow orbit through the open rulebook, with gold motes in its light, and another around the landed five.
+The lamp comes up as the storm passes, so the film never cuts to black mid-way.

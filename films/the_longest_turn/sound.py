@@ -48,7 +48,7 @@ def broadcast(x):
     out[:len(wet)] += 0.12 * wet
     return out / np.max(np.abs(out)) * 0.9
 
-VO_AT = {'01': 1.4, '02': 7.2, '03': 15.4, '04': 22.6, '05': 33.2, '06': 44.6, '07': 51.2, '08': 58.6,
+VO_AT = {'01': 3.0, '02': 7.2, '03': 15.4, '04': 22.6, '05': 33.2, '06': 44.6, '07': 51.2, '08': 58.6,
          '09': 66.0, '10': 70.6, '11': 76.0, '12': 84.0}
 for k in VO_AT:
     sr, x = wavfile.read(str(VO / f'dry_{k}.wav'))
@@ -172,7 +172,7 @@ for i, (ta, ti) in enumerate(zip(ev['appear'], ev['impacts'])):
     f = 1800 * (320 / 1800) ** (t / t[-1])
     wh = np.sin(2 * np.pi * np.cumsum(f) / SR) * (t / t[-1]) ** 1.5
     fire = bp(noise(n / SR), 300, 2500) * (t / t[-1]) ** 2
-    pan = (-0.3, 0.5, -0.6)[i]
+    pan = (-0.3, 0.5, -0.6, 0.4)[i]
     add(wh * 0.04 + fire * 0.09, ta, 1.0, pan)
     add(boom(3.0, 110, 26, 0.8) * seg_env(int(3.0 * SR), 0.0, 1.2) * 0.85, ti, 1.0, pan * 0.5)
     crack = hp(noise(1.5), 2000) * (rg.random(int(1.5 * SR)) > 0.93) * np.exp(-tt(int(1.5 * SR)) * 2.5)
