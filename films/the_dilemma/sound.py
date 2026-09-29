@@ -141,13 +141,16 @@ n = int((T['T_SLAM'] - T['T_S7']) * SR); t = tt(n)
 rev = boom(3.0, 110, 26)[::-1][:n]
 rev = np.concatenate([np.zeros(n - len(rev)), rev]) if len(rev) < n else rev
 swell = hp(rng.standard_normal(n), 800) * (t / t[-1]) ** 3
+END = np.ones(n); END[-int(0.015 * SR):] = np.linspace(1, 0, int(0.015 * SR))   # no hard stop into the slam
+swell *= END
+rev = rev * END
 add(swell * 0.35, T['T_S7'], 1.0, -0.2)
-add(hp(rng.standard_normal(n), 800) * (t / t[-1]) ** 3 * 0.35, T['T_S7'], 1.0, 0.2)
+add(hp(rng.standard_normal(n), 800) * (t / t[-1]) ** 3 * END * 0.35, T['T_S7'], 1.0, 0.2)
 add(rev * 0.45, T['T_S7'])
-fl2 = flutter(n / SR, 1400)[::-1] * (t / t[-1]) ** 2
+fl2 = flutter(n / SR, 1400)[::-1] * (t / t[-1]) ** 2 * END
 add(fl2 * 0.4, T['T_S7'])
-add(boom(5.0, 120, 30), T['T_SLAM'], 0.9)
-add(slam(1.5) * 0.7, T['T_SLAM'])
+add(boom(5.0, 120, 30), T['T_SLAM'], 0.55)
+add(slam(1.5) * 0.45, T['T_SLAM'])
 
 print('resolve')
 ch5 = choir([D2 * 2, D2 * 3, D2 * 4, D2 * 5, D2 * 9 / 2], int(12 * SR))

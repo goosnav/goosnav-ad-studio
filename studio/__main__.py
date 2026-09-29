@@ -10,7 +10,7 @@
   type FILM --format 4x5              runs films/FILM/type.py (overlays)
   assemble FILM --format 4x5 --name NAME
   qa FILM --format 4x5 --name NAME    frame check + stills sheet + loudness of the master
-  deliver FILM --name NAME [--dest FOLDER]
+  deliver FILM --name NAME [--dest FOLDER] [GLOB ...]   (globs limit which files upload)
 
 A film lives in films/<film>/ with film.py (Blender scene exposing update(t)), sound.py, type.py,
 lines.txt, edit.json and SCRIPT.md. See films/the_dilemma for the reference implementation.
@@ -46,8 +46,8 @@ def main():
     ap.add_argument('--start', type=int); ap.add_argument('--end', type=int)
     ap.add_argument('--name'); ap.add_argument('--dest'); ap.add_argument('--voice', default=None)
     ap.add_argument('--no-lock', action='store_true')
-    ap.add_argument('rest', nargs=argparse.REMAINDER)
-    a = ap.parse_args()
+    a, rest = ap.parse_known_args()
+    a.rest = [x for x in rest if x != '--']
     work = config.path('work', a.film or '_', a.format)
     py = sys.executable
 
@@ -106,7 +106,7 @@ def main():
         return 0 if ok else 1
     if a.cmd == 'deliver':
         from studio.deliver import deliver
-        deliver(config.path('output', a.film), a.name, a.dest)
+        deliver(config.path('output', a.film), a.name, a.dest, include=a.rest or None)
         return 0
     ap.error('unknown command ' + a.cmd)
 

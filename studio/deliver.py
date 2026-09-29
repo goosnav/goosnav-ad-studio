@@ -10,16 +10,19 @@ import argparse, datetime, shutil, subprocess
 from pathlib import Path
 from studio import config
 
-def deliver(folder, name, dest=None, dry=False):
+def deliver(folder, name, dest=None, dry=False, include=None):
     folder = Path(folder)
     stamp = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
     dest = dest or f'{stamp}-claude-{name}'
     remote = f"{config.get('rclone_remote')}{config.get('rclone_subdir')}/{dest}"
-    files = [p for p in folder.iterdir() if p.is_file() and not p.name.startswith('.')]
+    import fnmatch
+    files = [p for p in folder.iterdir() if p.is_file() and not p.name.startswith('.')
+             and (not include or any(fnmatch.fnmatch(p.name, g) for g in include))]
     print('delivering', len(files), 'files ->', remote)
     if dry:
         return remote
-    subprocess.run(['rclone', 'copy', str(folder), remote, '--transfers', '3', '--exclude', '.*'], check=True)
+    flt = sum([['--include', g] for g in include], []) if include else ['--exclude', '.*']
+    subprocess.run(['rclone', 'copy', str(folder), remote, '--transfers', '3'] + flt, check=True)
     listing = subprocess.run(['rclone', 'lsl', remote], capture_output=True, text=True, check=True).stdout
     print(listing)
     missing = [p.name for p in files if p.name not in listing]
@@ -38,5 +41,6 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('folder'); ap.add_argument('--name', required=True)
     ap.add_argument('--dest', default=None); ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--include', nargs='*', default=None, help='only files matching these globs')
     a = ap.parse_args()
-    deliver(a.folder, a.name, a.dest, a.dry_run)
+    deliver(a.folder, a.name, a.dest, a.dry_run, a.include)

@@ -58,7 +58,8 @@ def assemble(spec_path, fmt, name, film=None):
     master = outdir / f'{name}_Goosnav_{fmt}.mp4'
     cmd += ['-filter_complex', ';'.join(chains), '-map', '[v]', '-map', f'{len(ovs) + 1}:a',
             '-c:v', 'libx264', '-preset', 'slow', '-crf', str(spec.get('crf', 16)), '-profile:v', 'high',
-            '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
+            '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-af', spec.get('audio_filter', 'lowpass=f=18000,aresample=192000,alimiter=limit=0.79:level=false:attack=0.5:release=60,aresample=48000'),
+            '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
             '-t', str(dur), str(master)]
     subprocess.run(cmd, check=True)
     web = outdir / f'{name}_Goosnav_{fmt}_web.mp4'

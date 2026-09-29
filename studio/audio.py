@@ -75,6 +75,12 @@ def bell(freq, dur=3.0):
     parts = [(1, 1.0, 1.2), (2.76, 0.5, 2.0), (5.4, 0.25, 3.2), (8.93, 0.12, 4.5)]
     return sum(g * np.sin(2 * np.pi * freq * p * t) * np.exp(-t * dcy) for p, g, dcy in parts) * (1 - np.exp(-t * 400))
 
+def _attack(x, ms=2.0):
+    """soften instantaneous onsets: AAC overshoots badly on infinite-slope transients"""
+    n = min(len(x), int(SR * ms / 1000))
+    x = x.copy(); x[:n] *= np.linspace(0, 1, n)
+    return x
+
 def boom(dur=4.0, f0=95, f1=28, noise=0.6):
     n = int(dur * SR); t = tt(n)
     f = f1 + (f0 - f1) * np.exp(-t * 3.0)
@@ -82,19 +88,19 @@ def boom(dur=4.0, f0=95, f1=28, noise=0.6):
     body = np.sin(ph) * np.exp(-t * 1.1)
     nz = lp(rng.standard_normal(n), 400) * np.exp(-t * 2.5) * noise
     crack = hp(rng.standard_normal(n), 1500) * np.exp(-t * 18) * 0.6
-    return np.tanh((body + nz + crack) * 1.6)
+    return _attack(np.tanh((body + nz + crack) * 1.6))
 
 def slam(weight=1.0):
     n = int(0.45 * SR); t = tt(n)
     thump = np.sin(2 * np.pi * (70 + 60 * np.exp(-t * 30)) * t) * np.exp(-t * 16) * weight
     slap = bp(rng.standard_normal(n), 900, 5200) * np.exp(-t * 45) * 0.8
-    return thump + slap
+    return _attack(thump + slap)
 
 def die_hit(big=1.0):
     n = int(0.6 * SR); t = tt(n)
     knock = sum(np.sin(2 * np.pi * f * t) * np.exp(-t * d) for f, d in ((180, 18), (410, 30), (960, 45)))
     thud = np.sin(2 * np.pi * (55 + 40 * np.exp(-t * 20)) * t) * np.exp(-t * 7)
-    return (0.5 * knock + thud * big) * 0.9
+    return _attack((0.5 * knock + thud * big) * 0.9)
 
 def whoosh(dur=1.2, f_lo=300, f_hi=3500):
     n = int(dur * SR); t = tt(n) / dur

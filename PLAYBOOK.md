@@ -78,6 +78,7 @@ Facts that may be stated (check `https://www.goosnav.shop/products.json` before 
 - Say URLs phonetically in `lines.txt` ("W W W dot goosnav dot shop").
 - **Everything else is synthesized** (`studio.audio`), which keeps it rights-clean: drone, wind, choir, bells, boom, slam, dice hits, paper flutter, whoosh, reverse swell. Hit points come from `events.json`, which the film writes with the exact times of every landing and slam.
 - **Mix:** duck under voice (`Mix.duck(0.68)`) and check `Mix.report_voice()`. Every line should sit at **≥ 8 dB** voice over effects. Master to about **−14 LUFS** (`studio.qa loudness`).
+- **True peak after AAC.** Sample-peak limiting isn't enough. `assemble` now limits at 4x oversampling after an 18 kHz lowpass (`alimiter` at 192 kHz), and `studio.audio` gives percussive hits a 2 ms attack. If `qa loudness` still shows Peak above −1 dBTP, find the moment (decode, upsample 4x, argmax) and lower that one sound. In THE DILEMMA it was a tanh-driven low boom whose squared-off top made the AAC decoder ring. Never let a loud sound end abruptly at full level either. One-pass `loudnorm` flattens the dynamics (LRA 7.9 to 4.9), so don't use it.
 - Nobody in an agent session can listen. Check a spectrogram (`studio.qa spectrum`) for broadband hiss walls; the first vortex mix was too noisy. Ask the owner for one listen before posting.
 
 ## 5. Type, assembly, QA
