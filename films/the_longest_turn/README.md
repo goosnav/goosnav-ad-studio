@@ -97,3 +97,10 @@ Everything was checked against `https://www.goosnav.shop/products.json?limit=250
    in PLAYBOOK §3, "Process hygiene".
 4. `studio preview` builds its contact sheet from every PNG in `preview/`, including stills from earlier
    runs. Clearing the folder first (or a `--clean` flag) avoids mixed sheets.
+5. **Cut frames render the previous shot.** In `bstudio.run()`, a frame listed in `--cuts` skips
+   `scene.frame_set(f)`. With `--mblur` the `frame_change_pre` handler is still registered, and the
+   render re-evaluates it at the stale `scene.frame_current` (the previous frame). So every cut frame
+   shows the last frame of the outgoing shot, and each cut lands one frame late. The next frame is
+   clean, because its 0.25 shutter doesn't reach back across the cut, so this is harmless here. Fix:
+   set `scene.frame_current = f` (or call `frame_set`) before rendering cut frames, with
+   `use_motion_blur = False`.

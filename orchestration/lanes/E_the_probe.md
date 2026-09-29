@@ -12,4 +12,4 @@ It ends with the probe receding into the dark and the canister arriving one more
 
 Palette: black space, hard white sunlight, gold foil, and the three Goosklerf colours on the planets. It must look nothing like the pastel desert, the sodium factory, the thunderstorm table or the night-blue bedroom of the other films.
 
-Format: 4:5 portrait (1080×1350). Compose every shot for portrait. Length: 60–90 s, your call. Title the deliverable with your final title.
+Format: 4:5 portrait (1080×1350). Compose every shot for portrait. Length: 45–60 s. Title the deliverable with your final title.

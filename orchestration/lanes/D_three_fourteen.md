@@ -8,4 +8,4 @@ The narrator is a calm female voice telling a bedtime story that is slightly wro
 
 Palette: deep night blue (Book Two blue #0033A0 as the dominant colour), warm amber lamp light, and paper white. It should feel nothing like the pastel desert, the industrial factory or the thunderstorm table of the other three films. Quiet, eerie, gorgeous. This is the one people rewatch.
 
-Format: 4:5 portrait (1080×1350). Compose every shot for portrait. Length: 60–90 s, your call. Title the deliverable with your final title.
+Format: 4:5 portrait (1080×1350). Compose every shot for portrait. Length: 45–60 s. Title the deliverable with your final title.

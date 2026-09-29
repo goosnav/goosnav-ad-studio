@@ -116,7 +116,7 @@ bolt_d.shadow_cascade_max_distance = 220.0; bolt_d.shadow_cascade_count = 4
 strike = link(bpy.data.objects.new('strike', bolt_d))
 flash_d = bpy.data.lights.new('impact', 'POINT'); flash_d.color = (1.0, 0.55, 0.2); flash_d.shadow_soft_size = 1.0
 flash = link(bpy.data.objects.new('impact', flash_d)); flash_d.volume_factor = 0.0
-fire_d = bpy.data.lights.new('fire', 'POINT'); fire_d.color = (1.0, 0.45, 0.12); fire_d.shadow_soft_size = 0.6
+fire_d = bpy.data.lights.new('fire', 'POINT'); fire_d.color = (1.0, 0.3, 0.05); fire_d.shadow_soft_size = 0.6
 fire = link(bpy.data.objects.new('fire', fire_d)); fire_d.volume_factor = 0.0
 gold_d = bpy.data.lights.new('gold', 'POINT'); gold_d.color = (1.0, 0.72, 0.35); gold_d.shadow_soft_size = 3.0
 gold = link(bpy.data.objects.new('gold', gold_d)); gold_d.volume_factor = 0.5
@@ -947,8 +947,8 @@ def camera_at(t):
         eye = lerp(v3(-51.0, 3.0, 0.9), v3(-52.0, 9.0, 1.6), u)
         eye = lerp(eye, v3(-52.8, 8.0, 2.0), push * 0.9) + shake(t, 0.02, 0.6)
         orb = float(sm(T_OPEN + 2.0, T_S6, t))
-        a = lerp(0.0, 0.42, orb); rel = eye - RB
-        eye = RB + v3(rel[0] * math.cos(a) - rel[1] * math.sin(a), rel[0] * math.sin(a) + rel[1] * math.cos(a), rel[2] + 3.0 * orb)
+        a = lerp(0.0, 0.85, orb); rel = eye - RB
+        eye = RB + v3(rel[0] * math.cos(a) - rel[1] * math.sin(a), rel[0] * math.sin(a) + rel[1] * math.cos(a), rel[2] + 7.0 * orb)
         tgt = lerp(RB + v3(0, 0, 11.5), RB + v3(-1.5, 0, 10.0), push)
         return eye, tgt, lerp(24.0, 26.0, push), 0.0, None
     if t < T_S7:   # 6. the five
@@ -962,7 +962,7 @@ def camera_at(t):
         tgt = lerp(tgt, DIE_REST + v3(0, 0, 0.3), land)
         lens = lerp(lens, 58.0, land)
         if t > T_LAND + 1.2:
-            a = 0.28 * float(sm(T_LAND + 1.2, T_FALL, t)); rel = eye - DIE_REST
+            a = 0.5 * float(sm(T_LAND + 1.2, T_FALL, t)); rel = eye - DIE_REST
             eye = DIE_REST + v3(rel[0] * math.cos(a) - rel[1] * math.sin(a), rel[0] * math.sin(a) + rel[1] * math.cos(a), rel[2] - 1.0 * a)
         wide = float(sm(T_FALL - 0.9, T_FALL + 0.4, t))
         eye = lerp(eye, v3(11.5, 10.2, 2.4), wide)
@@ -1036,14 +1036,14 @@ def set_trails(t):
         fire.location = meteor_pos(near, t); fire_d.energy = 6.0e4 * float(ss(T_APPEAR[near], T_IMP[near] - 1.5, t))
     elif T_IMP[0] <= t < T_S7:
         fire.location = IMP[0] + v3(-2.0, -2.0, 1.6)
-        fire_d.energy = 1.8e3 * (1 + 0.25 * math.sin(t * 17) * math.sin(t * 5.3))
+        fire_d.energy = 900.0 * (1 + 0.25 * math.sin(t * 17) * math.sin(t * 5.3))
     else:
         fire_d.energy = 0.0
     # impact flash, rings, craters
     fl, fp = 0.0, IMP[0]
     for i, ti in enumerate(T_IMP):
-        if t >= ti and math.exp(-(t - ti) * 5.0) > fl:
-            fl, fp = math.exp(-(t - ti) * 5.0), IMP[i]
+        if t >= ti and math.exp(-(t - ti) * 8.0) > fl:
+            fl, fp = math.exp(-(t - ti) * 8.0), IMP[i]
         if t >= ti and t < T_REVEAL:
             s = CR_R[i]
             place(craters[i], IMP[i] + v3(0, 0, 0.015 + 0.003 * i), np.diag([s, s, 1.0]))

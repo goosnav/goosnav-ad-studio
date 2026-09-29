@@ -2,6 +2,12 @@
 
 You are an independent Claude Code session running unattended. Nobody will answer questions, so make every decision yourself and write down why. The account has usage limits, so work efficiently. If you are cut off mid-task, the orchestrator will resume you with your context.
 
+## Scope (owner, 2026-09-29): "Let's not polish a cannonball. We just need some usable social media content."
+
+- Aim for **45–60 s**. Keep the idea strong and simple, with fewer set pieces done well.
+- Do one full-length preview pass (the gate below) and **fix only real problems**: unreadable exposure, products cut off or wrong, broken motion, clipping audio. Don't chase perfection.
+- Move quickly. Script, build, one preview pass, final render, assemble, QA, deliver.
+
 ## The job
 
 Make one world-class animated film, good enough for a portfolio, as a **Blender scene**: a real 3D world with camera, light and physical motion, not motion graphics. It advertises:
@@ -73,7 +79,7 @@ python3 -m studio deliver <film> --name <TITLE>
 - The GPU is weak and shared: Blender 4.0 Eevee on an Intel iGPU, about 4–6 s per 4:5 frame at 20 samples.
 - **One final render at a time.** `studio render` waits on the machine-wide lock automatically. Previews do not take the lock.
 - Launch the final render in the background with `setsid nohup python3 -m studio render <film> --format 4x5 > render.out 2>&1 &`. Keep working while it runs (sound, type, README), and poll with foreground `sleep` of at most 9 minutes. Don't end your session until the film is delivered and verified.
-- Budget: the final render should take at most about 3 hours. Length 60–90 s at 24 fps.
+- Budget: the final render should take at most about 2 hours. Length 45–60 s at 24 fps.
 
 ## Status file (required)
 
