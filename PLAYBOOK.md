@@ -99,7 +99,7 @@ Facts that may be stated (check `https://www.goosnav.shop/products.json` before 
 ## 7. Running unattended Claude sessions
 
 - `orchestration/launch.sh <lane> <film_id>` starts `claude -p` with the COMMON_BRIEF plus a lane prompt, in a session folder with `STATUS.md`. Sessions run with `--dangerously-skip-permissions`, because nobody is there to approve commands. The brief confines them to their film folder, the repo tools and the one Drive folder.
-- **Sequencing (owner rule):** start the next session only when the previous one is almost done. `orchestration/watch.sh <session_dir>` blocks until the final render reaches 60%, assembly after a render, delivered or failed, or the process dies.
+- **Sequencing (owner rule):** start the next session only when the previous one is almost done. `orchestration/watch.sh <session_dir>` (or `watch_frames.sh <frames_dir> <total>` when a session has ended its turn and left a render running) blocks until the final render reaches 60%, assembly after a render, delivered or failed, or the process dies.
   - Bug fixed on 2026-09-28: PROGRESS written as `72/2073` was read as 72%.
 - **Account usage limits kill sessions mid-task** (LIGHTS OUT died at frame 2059/2073). Resume with the same context: `cd <session_dir>; claude -p --resume <session_id> "<what happened + what to do>" --dangerously-skip-permissions`. The session id is in `session.log`, in the final `"type":"result"` line.
 - Tell sessions to write status as integer percentages, to work efficiently, and never to edit the core `studio/` or `blender/` code or other films. They propose core changes in their README instead.
@@ -120,3 +120,7 @@ Facts that may be stated (check `https://www.goosnav.shop/products.json` before 
 | Vortex soundbed was a hiss wall | Lowpass the flutter; lower gains; check the spectrogram |
 | Watcher misread "72/2073" as 72% | The parser computes the fraction |
 | `pkill -f` killed the calling shell | Kill by PID |
+
+## 9. Session behaviour seen so far
+
+- A `claude -p` session may end its turn with a render still running in the background ("I'll pick up when it finishes") despite the brief. Its STATUS.md then stops updating. Watch the frames folder with `watch_frames.sh`, and when the render ends, resume the session with `claude -p --resume <id> "render finished: assemble, QA, deliver"`.
