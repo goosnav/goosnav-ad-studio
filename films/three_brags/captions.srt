@@ -1,0 +1,11 @@
+1
+00:00:05,650 --> 00:00:08,100
+I have a Goosklerf training card deck.
+
+2
+00:00:10,100 --> 00:00:12,040
+Well, I have a Goosnav book.
+
+3
+00:00:15,150 --> 00:00:16,580
+Well, I have a bomb.

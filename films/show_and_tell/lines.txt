@@ -1,0 +1,3 @@
+01|P1|I have a Goosklerf trading card deck.
+02|P2|Well, I have a Goosnav book.
+03|P3|Well... I have a bomb.

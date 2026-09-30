@@ -1,0 +1,18 @@
+{
+  "fps": 24,
+  "duration": 26,
+  "frames": "{work}/frames/f_%05d.png",
+  "audio": "{work}/mix.wav",
+  "upscale": [1080, 1350, "neighbor"],
+  "grain": 2,
+  "vignette": false,
+  "overlays": [
+    {"file": "{work}/ov/ov_01.png", "in": 5.65, "fade_in": 0.08, "out": 8.10, "fade_out": 0.08},
+    {"file": "{work}/ov/ov_02.png", "in": 10.10, "fade_in": 0.08, "out": 12.04, "fade_out": 0.08},
+    {"file": "{work}/ov/ov_03.png", "in": 15.15, "fade_in": 0.08, "out": 16.58, "fade_out": 0.08},
+    {"file": "{work}/ov/ov_end.png", "in": 22.0, "fade_in": 0.01}
+  ],
+  "crf": 17,
+  "web_crf": 22,
+  "audio_filter": "volume=-1dB,lowpass=f=18000,aresample=192000,alimiter=limit=0.79:level=false:attack=0.5:release=60,aresample=48000"
+}

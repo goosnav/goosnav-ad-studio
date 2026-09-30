@@ -1,0 +1,3 @@
+01|CARD|I have a Goosklerf training card deck.
+02|BOOK|Well, I have a Goosnav book.
+03|BOMB|Well, I have a bomb.

@@ -2,6 +2,9 @@
 import sys; sys.path.insert(0, '/home/goosnav/Desktop/code/goosnav-ad-studio')
 from studio import vo, config
 casts = {
+ 'show_and_tell': {'P1': dict(voice='en_US-john-medium', reverb=0.15, room_seconds=1.5, room_decay=4.0),
+                   'P2': dict(voice='en_US-bryce-medium', reverb=0.15, room_seconds=1.5, room_decay=4.0),
+                   'P3': dict(voice='en_US-norman-medium', slow=0.97, reverb=0.15, room_seconds=1.5, room_decay=4.0, pause=0.7)},
  'the_archive': {'ARCHIVIST': dict(voice='en_US-norman-medium', slow=0.97, reverb=0.25, room_seconds=2.5, room_decay=2.2),
                  'ASSISTANT': dict(voice='en_GB-cori-medium', reverb=0.9, room_seconds=4.0, room_decay=1.2, warmth=0.0)},
  'continuation_department': {'CLERK': dict(voice='en_GB-jenny_dioco-medium', slow=0.98, reverb=0.1),
