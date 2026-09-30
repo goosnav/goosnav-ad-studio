@@ -116,6 +116,9 @@ FORMATS = {
     '4x5': (1080, 1350, 0.8),
     '1x1': (1080, 1080, 1.0),
     '9x16': (1080, 1920, 0.72),
+    # monumental low-poly vignettes (GLPV-001): render 540x960, upscale exactly 2x to 1080x1920.
+    # Lenses are authored directly for this frame (lens scale 1.0).
+    'lpv': (540, 960, 1.0),
 }
 
 def film_dirs(film, fmt):

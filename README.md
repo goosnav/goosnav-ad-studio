@@ -78,11 +78,23 @@ Formats are `4x5` (1080×1350, the default), `16x9`, `1x1` and `9x16`.
 
 ## Films
 
-| Film | Status | Notes |
+| Film | Formats | Notes |
 |---|---|---|
-| `the_dilemma` | 16:9 + 4:5 delivered | Paper desert, Book 2 monolith explodes, page tornado, card fortress, comics from the sky |
-| `lights_out` | 16:9 + 4:5 delivered | Unmanned 1970s factory, BBC narrator; imported session build (see IMPORTED.md) |
-| further lanes | `orchestration/lanes/` | THE TABLE, 3:14 A.M., THE PROBE |
+| `the_dilemma` | 4:5, 16:9 | Paper desert, Book 2 monolith explodes, page tornado, card fortress. Narrator `norman` (re-voiced 2026-09-29). |
+| `lights_out` | 4:5, 16:9 | Unmanned 1970s factory. Imported session build (`IMPORTED.md`); re-voiced. |
+| `the_longest_turn` | 4:5 | Goosklerf as a thunderstorm war epic on a continent-sized table. |
+| `under_the_door` | 4:5 | A bedroom floods with Patreon comics; Book 2 lighthouse. |
+| `the_archive` | 9:16 + 4:5 crop | **Low-poly vignette** GNV-LPV-B2-001 (Book 2). |
+| `continuation_department` | 9:16 + 4:5 crop | **Low-poly vignette** GNV-LPV-PAT-001 (Patreon). |
+| `delayed` | 9:16 + 4:5 crop | **Low-poly vignette** GNV-LPV-GK-001 (Goosklerf). |
+| `the_probe` | – | Session stopped at the script stage (2026-09-29); not produced. |
+
+## Two house styles
+
+1. **Cinematic Eevee films** (the first four): `bstudio` plus a film script. 60–90 s, narrated, 4:5.
+2. **Monumental Low-Poly Vignettes** (GLPV-001): `blender/lowpoly.py` builds primitive actors that walk, sit, reach, blink and jaw-flap to the dialogue, animated on 2s. It also holds the house materials, fog, and symbolic products (generic Book 2, Goosklerf box and cards, paper signs and forms). Vignettes run 12–25 s with 9:16 as the master. They render in the `lpv` format (540×960), are upscaled exactly 2× nearest-neighbour by `studio.assemble` (`"upscale"` in `edit.json`), and get a 4:5 centre crop (`"crops"`). Dialogue casts come from `films/cast_vo.py` (`studio.vo.build_cast`, with PA and radio processing). End cards come from `studio.typeset.vignette_card`, kept inside the 4:5 band.
+   - Style bible: `AD STUDIO/theory/Goosnav_Monumental_Low_Poly_Vignette_Advertising_Bible.txt`.
+   - Script bank: `AD STUDIO/campaigns/Goosnav_54_Video_Ad_Scripts.txt`. The three vignettes adapt ads 13, 33 and 39.
 
 ## Related projects
 

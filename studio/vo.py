@@ -20,6 +20,33 @@ from studio import config
 
 SR = 48000
 
+# Piper voice licences (dataset licence from each voice's MODEL_CARD, checked 2026-09-29).
+# Ads are commercial use: only SAFE voices may ship. build()/build_cast() refuse anything else
+# unless allow_unsafe=True (for private tests only).
+SAFE_VOICES = {
+    'en_US-joe-medium': 'CC0',
+    'en_US-norman-medium': 'public domain',
+    'en_US-john-medium': 'public domain (fine-tuned from kristin)',
+    'en_US-bryce-medium': 'public domain',
+    'en_US-kristin-medium': 'public domain (LibriVox)',
+    'en_US-ljspeech-high': 'public domain',
+    'en_GB-cori-medium': 'public domain',
+    'en_GB-jenny_dioco-medium': 'Jenny (Dioco) licence: commercial use permitted; attribution not required for distributed clips',
+}
+UNSAFE_VOICES = {
+    'en_US-ryan-high': 'CC BY-NC-SA 4.0 (non-commercial)',
+    'en_US-lessac-medium': 'Blizzard 2013 research licence (non-commercial)',
+    'en_US-amy-medium': 'Mycroft mimic3, fine-tuned from lessac (unclear / research)',
+    'en_GB-alan-medium': 'Mycroft mimic3: "All Rights Reserved"',
+    'en_US-hfc_male-medium': 'CC BY-NC-SA 4.0', 'en_US-hfc_female-medium': 'CC BY-NC-SA 4.0',
+}
+
+def check_voice(voice, allow_unsafe=False):
+    if voice in SAFE_VOICES or allow_unsafe:
+        return
+    why = UNSAFE_VOICES.get(voice, 'licence not vetted: check its MODEL_CARD and add it to SAFE_VOICES')
+    raise SystemExit(f'voice {voice} is not cleared for commercial ads: {why}')
+
 def synth(text, voice, length=1.1, sentence_silence=0.45):
     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
         out = f.name
@@ -72,8 +99,9 @@ def gaps(x, thresh=0.012, min_gap=0.22):
             start = None
     return out
 
-def build(lines, outdir, voice='en_US-ryan-high', slow=0.93, length=1.1, pause=0.55, reverb=0.32,
+def build(lines, outdir, voice='en_US-norman-medium', slow=0.93, length=1.1, pause=0.55, reverb=0.32,
           warmth=0.35, room_seconds=3.2, room_decay=2.3):
+    check_voice(voice)
     outdir = Path(outdir); outdir.mkdir(parents=True, exist_ok=True)
     ir = room_ir(room_seconds, room_decay)
     durs, gp = {}, {}
@@ -96,10 +124,47 @@ def build(lines, outdir, voice='en_US-ryan-high', slow=0.93, length=1.1, pause=0
     (outdir / 'gaps.json').write_text(json.dumps(gp, indent=1))
     return durs
 
+def radio(x, lo=300, hi=3400, hiss=0.004, seed=5):
+    """PA / radio voice: band-limited, a little saturation and hiss (bible §26)"""
+    y = sosfilt(butter(4, [lo, hi], 'band', fs=SR, output='sos'), x)
+    y = np.tanh(y * 2.2) / np.tanh(2.2)
+    return y + hiss * np.random.default_rng(seed).standard_normal(len(y))
+
+def build_cast(lines, outdir, cast):
+    """lines: `ID|SPEAKER|text`. cast: {SPEAKER: {voice, slow, length, reverb, room_seconds, room_decay,
+    warmth, radio}}. Plain, close voices by default (slow 1.0, small room): not announcer voices."""
+    outdir = Path(outdir); outdir.mkdir(parents=True, exist_ok=True)
+    durs, gp, who = {}, {}, {}
+    for line in Path(lines).read_text().splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        n, spk, text = line.split('|', 2)
+        c = dict(voice='en_US-joe-medium', slow=1.0, length=1.05, reverb=0.12, room_seconds=0.8, room_decay=6.0,
+                 warmth=0.1, radio=False, pause=0.45)
+        c.update(cast.get(spk, {}))
+        check_voice(c['voice'])
+        dry = process(text, c['voice'], c['slow'], c['length'], c['pause'], c['warmth'])
+        ir = room_ir(c['room_seconds'], c['room_decay'])
+        wet = fftconvolve(dry, ir)[: len(dry) + int(SR * c['room_seconds'])]
+        dry = np.pad(dry, (0, len(wet) - len(dry)))
+        y = 0.9 * dry + c['reverb'] * wet
+        if c['radio']:
+            y = radio(y)
+        y = y / np.max(np.abs(y)) * 0.89
+        wavfile.write(outdir / f'vo_{n}.wav', SR, (y * 32767).astype(np.int16))
+        durs[n] = round(np.where(np.abs(dry) > 0.01)[0][-1] / SR, 3)
+        gp[n] = gaps(dry / np.max(np.abs(dry)) * 0.9)
+        who[n] = spk
+        print(n, spk, durs[n], text)
+    (outdir / 'durations.json').write_text(json.dumps(durs, indent=1))
+    (outdir / 'gaps.json').write_text(json.dumps(gp, indent=1))
+    (outdir / 'speakers.json').write_text(json.dumps(who, indent=1))
+    return durs
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('lines'); ap.add_argument('outdir')
-    ap.add_argument('--voice', default='en_US-ryan-high')
+    ap.add_argument('--voice', default='en_US-norman-medium')
     ap.add_argument('--slow', type=float, default=0.93)
     ap.add_argument('--length', type=float, default=1.1)
     ap.add_argument('--pause', type=float, default=0.55)

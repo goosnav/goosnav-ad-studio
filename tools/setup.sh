@@ -19,6 +19,7 @@ python3 -c "import numpy, scipy, PIL" && echo "ok  numpy scipy pillow" || echo "
 if [ ! -x "$CACHE/venv/bin/piper" ]; then
   python3 -m venv "$CACHE/venv" && "$CACHE/venv/bin/pip" install -q piper-tts && echo "ok  piper venv"
 fi
-for v in en_US-ryan-high en_GB-alan-medium en_US-joe-medium en_GB-northern_english_male-medium; do fetch_voice $v; done
+# commercially safe voices only (see studio/vo.py SAFE_VOICES)
+for v in en_US-norman-medium en_US-joe-medium en_US-john-medium en_US-bryce-medium en_US-kristin-medium en_US-ljspeech-high en_GB-cori-medium en_GB-jenny_dioco-medium; do fetch_voice $v; done
 [ -f "$REPO/studio.local.json" ] || { cp "$REPO/studio.example.json" "$REPO/studio.local.json"; echo "created studio.local.json: edit the paths"; }
 python3 -m studio config

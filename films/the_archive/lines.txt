@@ -1,0 +1,5 @@
+01|ARCHIVIST|Floppy disk. Needs a drive.
+02|ARCHIVIST|Compact disc. Needs a drive.
+03|ARCHIVIST|Phone. Needs a charger.
+04|ASSISTANT|What does that one need?
+05|ARCHIVIST|Eyes.

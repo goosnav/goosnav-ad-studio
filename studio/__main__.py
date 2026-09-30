@@ -99,7 +99,8 @@ def main():
     if a.cmd == 'qa':
         from studio import qa
         ok = qa.check_frames(work / 'frames')
-        master = config.path('output', a.film) / f'{a.name}_Goosnav_{a.format}.mp4'
+        label = {'lpv': '9x16'}.get(a.format, a.format)
+        master = config.path('output', a.film) / f'{a.name}_Goosnav_{label}.mp4'
         qa.video_sheet(master, work / 'qa_sheet.jpg', cols=8 if a.format != '16x9' else 6, thumb_w=240)
         qa.loudness(master)
         print('look at:', work / 'qa_sheet.jpg')

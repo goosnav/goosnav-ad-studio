@@ -1,0 +1,5 @@
+01|CLERK|Name?
+02|VISITOR|Sam.
+03|CLERK|Purpose?
+04|VISITOR|I like Goosnav.
+05|CLERK|Very good.

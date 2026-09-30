@@ -39,6 +39,7 @@ Your lane (world, palette, narrator register, structure, set pieces) is in your 
   - Goosklerf uses `gen_card.png` (the flat logo file on a teal card; its corners are alpha, so use alpha clip) and `gen_pack.png`.
   - **Never** use `book_front/back/spine.png`, `card_back.png`, `card_face.png`, `pack_front.png`, or any product photo as a texture.
   - Anything else you can't render perfectly gets a plain generic version with Helvetica type.
+- **Voices must be commercially licensed.** Use only the voices in `studio/vo.py SAFE_VOICES`; `studio.vo` refuses the others. `en_US-ryan-high` is non-commercial and must never be used.
 - On screen the book is **"Goosnav Book 2"**. Prices are stated like measurements. There are no fake testimonials and no urgency.
 
 ## The studio: use it. It is the house pipeline

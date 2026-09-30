@@ -76,6 +76,25 @@ def title_card(W, H, text, out, color=WHITE, y_frac=0.45, size=64):
     im.save(out)
     return out
 
+def vignette_card(W, H, out, headline, line, url, bg=WHITE, fg=BLACK):
+    """GLPV-001 §40 end card: white, Helvetica, one product, one destination. Kept inside the central
+    4:5 band of a 9:16 frame so a 1080x1350 centre crop keeps everything."""
+    s, _ = metrics(W, H)
+    im = Image.new('RGBA', (W, H), bg + (255,))
+    d = ImageDraw.Draw(im)
+    fh = config.font('font_sans_bold', int(60 * s)); fl = config.font('font_sans', int(44 * s))
+    fu = config.font('font_serif', int(44 * s))
+    y = int(H * 0.40)
+    for text, f in ((headline, fh), (line, fl)):
+        if text:
+            d.text(((W - d.textlength(text, font=f)) / 2, y), text, font=f, fill=fg + (255,))
+            y += int(f.size * 1.5)
+    if url:
+        x = (W - d.textlength(url, font=fu)) / 2
+        underline_text(d, (x, int(H * 0.60)), url, fu, LINK_BLUE + (255,), max(2, int(3 * s)))
+    im.save(out)
+    return out
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--format', default='16x9')

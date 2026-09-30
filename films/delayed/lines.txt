@@ -1,0 +1,5 @@
+01|PA|Flight two seventy one is delayed. Another two hours.
+02|A|You brought it?
+03|B|Yeah.
+04|PA|Now boarding. Flight two seventy one.
+05|A|Finish the turn.

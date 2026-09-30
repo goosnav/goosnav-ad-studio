@@ -165,10 +165,10 @@ add(lp(fin, 500) * seg_env(len(fin), 0.8, 2.5) * 0.09, 86.9)
 
 
 # ------------------------------------------------------------------ narration
-VO_AT = {'01': 2.0, '02': 5.2, '03': 14.2, '04': 26.5, '05': 38.0, '06': 43.0, '07': 54.15, '08': 61.5,
+VO_AT = {'01': 2.0, '02': 5.2, '03': 14.2, '04': 26.5, '05': 38.0, '06': 43.6, '07': 54.15, '08': 61.8,
          '09': 77.5, '10': 81.6, '11': 87.5}
 for k, at in VO_AT.items():
-    M.add_voice(VO / f'vo_{k}.wav', at, gain=1.0, whisper=(k == '11'), key=k)
+    M.add_voice(VO / f'vo_{k}.wav', at, gain=1.5, whisper=(k == '11'), key=k)
 M.duck(0.68)
 print('voice/fx dB', M.report_voice())
 M.master(WORK / 'mix.wav')

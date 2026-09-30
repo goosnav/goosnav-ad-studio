@@ -1,0 +1,29 @@
+{
+  "fps": 24,
+  "duration": 22,
+  "frames": "{work}/frames/f_%05d.png",
+  "audio": "{work}/mix.wav",
+  "upscale": [
+    1080,
+    1920,
+    "neighbor"
+  ],
+  "grain": 0,
+  "vignette": false,
+  "overlays": [
+    {
+      "file": "{work}/ov/ov_end.png",
+      "in": 20.0,
+      "fade_in": 0.01
+    }
+  ],
+  "crf": 17,
+  "web_crf": 22,
+  "crops": [
+    {
+      "name": "4x5",
+      "crop": "1080:1350:0:285"
+    }
+  ],
+  "audio_filter": "lowpass=f=18000,aresample=192000,alimiter=limit=0.79:level=false:attack=0.5:release=60,aresample=48000"
+}

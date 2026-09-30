@@ -5,7 +5,7 @@ A 90 s, 24 fps film. A giant generic Book 2 stands like a monolith on a paper de
 Rebuild from scratch (about 3 h of render in 4:5 on the studio machine):
 
 ```
-python3 -m studio vo the_dilemma            # voice en_US-ryan-high, slow 0.93 (defaults)
+python3 -m studio vo the_dilemma --voice en_US-norman-medium   # slow 0.93 (default); public-domain voice
 python3 -m studio render the_dilemma --format 4x5
 python3 -m studio sound the_dilemma --format 4x5
 python3 -m studio type the_dilemma --format 4x5

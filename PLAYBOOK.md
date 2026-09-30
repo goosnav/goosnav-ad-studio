@@ -1,6 +1,6 @@
 # PLAYBOOK: how Goosnav films get made
 
-These lessons were paid for in render hours on the first films: THE DILEMMA, LIGHTS OUT, and the sessions that followed. Read this before building anything, and add to it when you learn something new.
+These lessons were paid for in render hours on the first films: THE DILEMMA, LIGHTS OUT, and the sessions that followed. Read this before building anything. For the business-wide learning rule, see [`../../business/README.md`](../../business/README.md). Keep reusable animation lessons here and one-off notes in the film's README.
 
 ---
 
@@ -12,14 +12,14 @@ These lessons were paid for in render hours on the first films: THE DILEMMA, LIG
 4. **Each film gets its own world.** The palette, narrator register and set pieces must not overlap with earlier films. Watch the existing films before writing.
 5. **Name the real drawings on screen.** When the narration names a drawing ("a machine for oiling feet"), a hero page with that drawing passes the lens during that sentence. Time it from `gaps.json` (sentence gaps in the dry VO), not by guessing.
 6. **The ending is fixed.** Hero shot with the product lines and prices (Helvetica Bold), then a white card with the addresses as old web links (Times, `#0000EE`, underlined, bottom left). Always write `www.goosnav.shop` and `www.patreon.com/goosnav` with the `www.`.
-7. **Length:** 60–90 s. **Format: 4:5 portrait (1080×1350) is the default** (owner, 2026-09-28). Make 16:9 or 9:16 alternates by re-rendering with `--format`, never by cropping.
+7. **Length:** long-form films may run 60–90 s; short-form ads follow their brief (7–20 s for the current short-ad work). **Format: 4:5 portrait (1080×1350) is the default** (owner, 2026-09-28). Make alternates by re-rendering with `--format`, never by cropping.
 
 ## 2. Owner decisions (binding)
 
 | Date | Decision |
 |---|---|
 | 2026-09-25 | Ads may break the brand bible's no-motion, no-colour rules ("don't be constrained by the business folder"). Real art stays real: never draw, redraw, extend or AI-generate Goosnav drawings. |
-| 2026-09-26 | **Products are generic.** No product photographs as textures. Book 2 = a Book Two blue `#0033A0` hardcover with white Helvetica "Goosnav / Book 2". Goosklerf cards and packs are built around the crisp flat logo file. Anything that can't be rendered perfectly (cropped, skewed, soft) gets a generic Helvetica version. |
+| 2026-09-26 (superseded 2026-09-29) | ~~Products are generic; do not use product photographs as textures.~~ **Correction:** use verified, current product artwork in ads when it is legible and unaltered (including the supplied Book Two and Goosklerf textures). Keep comic drawings real and unchanged. If the correct product art is missing or unusable, use a clearly identified proxy for a draft and replace it before delivery. |
 | 2026-09-26 | On screen the book is "Goosnav Book 2". |
 | 2026-09-28 | All films in **4:5 portrait**; existing films re-rendered in 4:5. |
 
@@ -27,7 +27,7 @@ Facts that may be stated (check `https://www.goosnav.shop/products.json` before 
 
 - Book 2: $19.95, hardcover, signed, 2025 drawings.
 - Goosklerf: booster $13.95 (12 cards); kits $29.95 / $49.95 / $89.95. Dice-based combat, fortresses; win by capturing fortresses or eliminating enemies.
-- Patreon: $3 a month, a full digital archive with new art monthly.
+- Patreon: $3/month entry price per the 2026-09-29 supplied script bank; verify the live offer before publishing. Do not promise particular benefits or posting frequency unless the current page states them.
 - Never state comic counts, sales or awards.
 
 ## 3. Blender / Eevee on the studio machine
@@ -73,7 +73,11 @@ Facts that may be stated (check `https://www.goosnav.shop/products.json` before 
 
 ## 4. Sound
 
-- **Narration** comes from Piper TTS (`python3 -m studio vo FILM --voice ...`). Voices: `en_US-ryan-high` (deep, prophetic after tape-slow), `en_GB-alan-medium` (BBC documentary), `en_US-joe-medium`, `en_GB-northern_english_male-medium`. Download others (female: `en_US-amy-medium`, `en_GB-jenny_dioco-medium`, `en_US-lessac-high`) with `tools/setup.sh --voice NAME`.
+- **Narration** comes from Piper TTS (`python3 -m studio vo FILM --voice ...`). **Voice licences matter: ads are commercial use.** Each Piper voice inherits its training dataset's licence, and several popular ones are non-commercial. `studio.vo` refuses any voice not in `SAFE_VOICES`.
+  - Cleared: `en_US-norman-medium`, `en_US-bryce-medium` and `en_US-john-medium` (public-domain male); `en_US-joe-medium` (CC0 male); `en_US-kristin-medium`, `en_US-ljspeech-high` and `en_GB-cori-medium` (public-domain female); `en_GB-jenny_dioco-medium` (commercial use permitted).
+  - Not cleared: `en_US-ryan-high` (CC BY-NC-SA), `lessac` (research-only), `amy` and `hfc_*` (derived from lessac or NC), `en_GB-alan-medium` (all rights reserved).
+  - The first films used `ryan` and `alan` and were re-voiced on 2026-09-29.
+  - Fetch cleared voices with `tools/setup.sh --voice NAME`, after checking the MODEL_CARD.
 - `...` in a line becomes a real pause. Tape-slow 0.93 gives weight. Add reverb to taste.
 - Say URLs phonetically in `lines.txt` ("W W W dot goosnav dot shop").
 - **Everything else is synthesized** (`studio.audio`), which keeps it rights-clean: drone, wind, choir, bells, boom, slam, dice hits, paper flutter, whoosh, reverse swell. Hit points come from `events.json`, which the film writes with the exact times of every landing and slam.
@@ -93,9 +97,10 @@ Facts that may be stated (check `https://www.goosnav.shop/products.json` before 
 
 ## 6. Delivery
 
-- `python3 -m studio deliver FILM --name TITLE [--dest EXISTING_FOLDER]` runs `rclone copy` to `agent-exchange:deliverables/claude/<UTC>-claude-<TITLE>`, then `rclone lsl` (a server-side listing, which is the proof), then mirrors to `local_delivery`.
-- The claude.ai Google Drive connector can't see the Agent Exchange folder (it uses a different account), and it can't upload video anyway (inline base64 only). rclone is the way.
-- rclone's shared client_id is being retired during 2026. If uploads start failing, that's the first suspect.
+- Existing Claude film projects can use `python3 -m studio deliver FILM --name TITLE` to deliver under `agent-exchange:deliverables/claude/`.
+- Other agents can upload a finished package with `rclone copy PACKAGE/ agent-exchange:deliverables/<agent>/<project>/`, then run `rclone check PACKAGE/ agent-exchange:deliverables/<agent>/<project>/ --one-way`. A local folder or sync queue alone is not proof of delivery.
+- The `agent-exchange` remote was verified on this host on 2026-09-29. If it fails, keep the local source, report the failure, and verify Drive before saying the item is shared. Large video files should use the remote copy path.
+- The shared rclone client ID is scheduled for retirement during 2026; migrate its configuration if the provider stops accepting it.
 
 ## 7. Running unattended Claude sessions
 
@@ -130,7 +135,22 @@ Sessions tend to rush into the final render. THE LONGEST TURN started after 34 m
 | Vortex soundbed was a hiss wall | Lowpass the flutter; lower gains; check the spectrogram |
 | Watcher misread "72/2073" as 72% | The parser computes the fraction |
 | `pkill -f` killed the calling shell | Kill by PID |
+| Narration shipped in the non-commercial `ryan` and all-rights-reserved `alan` voices | Re-voiced with public-domain voices; `studio.vo` now refuses uncleared voices |
+| The back of a low-poly head read as a blank face | `lowpoly.Human` has a hair-back piece |
 
-## 9. Session behaviour seen so far
+## 9. Low-poly vignettes (GLPV-001): what worked
+
+- The house actor (`lowpoly.Human`) is a few hundred triangles of primitives parented at the joints, posed by setting joint rotations every frame. It reads as an early-2000s NPC, and transform-only animation renders reliably in Eevee. Give every head a hair-back piece, or a figure seen from behind reads as a blank face.
+- Jaw flap: `Lines` turns the dialogue WAVs into per-frame envelopes quantised to three openings. Blinks run every 3–7 s. Poses update on 2s (`on_twos`).
+- Each vignette renders in about 10 minutes (540×960, 16 samples, no motion blur, which is the game look). Iterate on stills with `--times` and fix composition, not texture detail.
+- Traps found:
+  - A low sun behind a tall hall throws the whole apron outside into shadow. Light exterior hero objects with their own floods.
+  - Background haze in the same colour as a white object hides it.
+  - Glow thresholds must use world position (`Geometry > Position`), not per-object coordinates.
+  - Cameras for insert shots land inside actors unless the actors are moved aside.
+  - Dense PA or radio voices (band-limited plus saturation) measure about 10 dB hot. Mix them at about 0.3 gain.
+- Every vignette ships with a README containing the brief grid (person, want, obstacle, turn, product), transcript, CTA text, and asset and licence manifest (bible §68).
+
+## 10. Session behaviour seen so far
 
 - A `claude -p` session may end its turn with a render still running in the background ("I'll pick up when it finishes") despite the brief. Its STATUS.md then stops updating. Watch the frames folder with `watch_frames.sh`, and when the render ends, resume the session with `claude -p --resume <id> "render finished: assemble, QA, deliver"`.

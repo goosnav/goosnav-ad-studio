@@ -34,7 +34,11 @@ def assemble(spec_path, fmt, name, film=None):
     for o in ovs:
         cmd += ['-loop', '1', '-framerate', str(fps), '-t', str(dur), '-i', sub(o['file'])]
     cmd += ['-i', sub(spec['audio'])]
-    fx = ['format=gbrp']
+    fx = []
+    if spec.get('upscale'):   # e.g. [1080, 1920, "neighbor"]: internal-resolution renders
+        uw, uh, flags = spec['upscale']
+        fx.append(f'scale={uw}:{uh}:flags={flags}')
+    fx.append('format=gbrp')
     if spec.get('vignette', True):
         fx.append('vignette=angle=PI/5:mode=forward')
     if spec.get('grain', 0):
@@ -55,17 +59,24 @@ def assemble(spec_path, fmt, name, film=None):
     fo = spec.get('fade_out')
     tail += (f"fade=t=out:st={fo[0]}:d={fo[1]}," if fo else '') + 'format=yuv420p[v]'
     chains.append(tail)
-    master = outdir / f'{name}_Goosnav_{fmt}.mp4'
+    label = {'lpv': '9x16'}.get(fmt, fmt)   # lpv renders at 540x960 and ships as 9:16
+    master = outdir / f'{name}_Goosnav_{label}.mp4'
     cmd += ['-filter_complex', ';'.join(chains), '-map', '[v]', '-map', f'{len(ovs) + 1}:a',
             '-c:v', 'libx264', '-preset', 'slow', '-crf', str(spec.get('crf', 16)), '-profile:v', 'high',
             '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-af', spec.get('audio_filter', 'lowpass=f=18000,aresample=192000,alimiter=limit=0.79:level=false:attack=0.5:release=60,aresample=48000'),
             '-c:a', 'aac', '-b:a', '320k', '-ar', '48000',
             '-t', str(dur), str(master)]
     subprocess.run(cmd, check=True)
-    web = outdir / f'{name}_Goosnav_{fmt}_web.mp4'
+    web = outdir / f'{name}_Goosnav_{label}_web.mp4'
     subprocess.run([ff, '-y', '-v', 'error', '-i', str(master), '-c:v', 'libx264', '-preset', 'slow',
                     '-crf', str(spec.get('web_crf', 22)), '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
                     '-c:a', 'aac', '-b:a', '192k', str(web)], check=True)
+    for v in spec.get('crops', []):   # e.g. {"name": "4x5", "crop": "1080:1350:0:285"}
+        out = outdir / f"{name}_Goosnav_{v['name']}.mp4"
+        subprocess.run([ff, '-y', '-v', 'error', '-i', str(master), '-vf', f"crop={v['crop']}", '-c:v', 'libx264',
+                        '-preset', 'slow', '-crf', str(spec.get('web_crf', 20)), '-pix_fmt', 'yuv420p',
+                        '-movflags', '+faststart', '-c:a', 'copy', str(out)], check=True)
+        print(out)
     print(master); print(web)
     return master, web
 
