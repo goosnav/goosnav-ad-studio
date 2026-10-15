@@ -112,7 +112,11 @@ evidence. Return verdict pass|revise and findings [{target, severity, problem, f
 
 def brief(task, config, inputs, sources, repair=''):
     guide = REPO / 'dev' / 'WORKER_GUIDE.md'
-    return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] +
+    o = config['output']
+    length = (f"\n\nTARGET LENGTH: {o['target_seconds']} seconds per ad, including the CTA hold "
+              f"(accepted {o['min_seconds']}-{o['max_seconds']}). Scripts are timed to land on it; "
+              'audio, animation and edit keep to it. Critics flag scripts that cannot fit it.')
+    return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] + length +
             '\n\nPROJECT\n' + json.dumps({'stage': task['stage'], 'ad': task['ad'],
              'config': config, 'source_index': sources, 'accepted_inputs': inputs,
              'tool_guide': str(guide), 'repo_read_only': str(REPO)}, indent=2) +

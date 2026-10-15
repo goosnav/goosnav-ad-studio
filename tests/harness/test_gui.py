@@ -53,3 +53,12 @@ def test_config_is_validated_before_saving(server):
     assert post('{"bogus": 1}') == 400 and not (tmp / 'harness.local.json').exists()
     assert post('{"website": "www.example.com"}') == 200
     assert 'example.com' in (tmp / 'harness.local.json').read_text()
+
+
+def test_make_form_shows_and_validates_target_seconds(server):
+    base, _, _ = server
+    assert 'name="seconds"' in get(base + '/')[1] and 'value="10"' in get(base + '/')[1]
+    data = urllib.parse.urlencode({'count': '1', 'seconds': '0'}).encode()
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(base + '/make', data)
+    assert e.value.code == 400 and 'target_seconds' in e.value.read().decode()

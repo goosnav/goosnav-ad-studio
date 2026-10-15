@@ -25,7 +25,7 @@ def test_real_video_validation_and_no_cta_audio_preservation(tmp_path):
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=64x64:rate=24',
         '-f','lavfi','-i','sine=frequency=300:sample_rate=48000','-t','1','-c:v','libx264',
         '-pix_fmt','yuv420p','-c:a','aac',str(p)],check=True)
-    c=load_config(None,{'output':{'width':64,'height':64,'min_seconds':1,'max_seconds':2,'cta':False}})
+    c=load_config(None,{'output':{'width':64,'height':64,'target_seconds':1,'min_seconds':1,'max_seconds':2,'cta':False}})
     assert check_video(p,c)['audio']
     out=tmp_path/'out';out.mkdir()
     result=finish_frame(str(p),{'cta':'None: fictional demo'},c,out,cancelled=lambda:False)

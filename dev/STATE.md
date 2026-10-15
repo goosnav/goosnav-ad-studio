@@ -31,6 +31,10 @@ Session 2:
   only `blocking` findings stop for a person.
 - `output.folder`: delivered ads are copied to `<folder>/<run>/ad-NN.mp4|zip`.
   Locally `business/studio/output/harness`.
+- Target length: `output.target_seconds` (default 10). The accepted range is
+  derived as 80-130 % unless `min/max_seconds` are set. Every worker brief states
+  it, writers time scripts to it, and `check_video` enforces the range. It can be
+  set with `make --seconds N`, the GUI's "Target seconds" field, or the config.
 - Fixed `finish_frame` with relative paths (subprocess ran with `cwd=work`).
 - Owner film rules (www. addresses, real drawings only, library product models,
   usable over polished) added to the local `brand.direction`.
@@ -39,7 +43,7 @@ Session 2:
 ## Evidence
 
 Fixture tests (scheduling, not creative quality): `python3 -m pytest -q tests`,
-42 passing. They cover config validation, store/lock, contracts and path escape,
+46 passing. They cover config validation, store/lock, contracts and path escape,
 quota failover, resume without repeating work, repair rewinds, exhausted
 reviews, a two-ad pipeline with real FFmpeg media and delivery copies, CLI
 errors, and the GUI.

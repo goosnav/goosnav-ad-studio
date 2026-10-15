@@ -19,8 +19,9 @@ DEFAULTS = {
     'website': '', 'products': [], 'concept': '', 'count': 1,
     'brand': {'name': '', 'direction': '', 'documents': []},
     'sources': {'assets': [], 'scripts': [], 'inspiration': []},
-    'output': {'width': 1080, 'height': 1350, 'fps': 24, 'min_seconds': 7,
-               'max_seconds': 20, 'cta': True, 'folder': ''},
+    # min/max 0 = derive an accepted range around the target (80-130 %).
+    'output': {'width': 1080, 'height': 1350, 'fps': 24, 'target_seconds': 10,
+               'min_seconds': 0, 'max_seconds': 0, 'cta': True, 'folder': ''},
     'workers': {'researcher': profiles('balanced'), 'writer': profiles('quality'),
                 'critic': profiles('economy'), 'selector': profiles('quality'),
                 'producer': profiles('balanced'), 'checker': profiles('economy')},
@@ -88,12 +89,16 @@ def load_config(path=None, overrides=None):
         if type(value) is not int or not (0 if key == 'repairs' else 1) <= value <= 86400:
             raise ConfigError(f'limits.{key} is out of range')
     o = c['output']
-    for key in ('width', 'height', 'fps', 'min_seconds', 'max_seconds'):
-        if type(o[key]) is not int or o[key] <= 0:
+    for key in ('width', 'height', 'fps', 'target_seconds', 'min_seconds', 'max_seconds'):
+        if type(o[key]) is not int or o[key] < (0 if key.endswith(('min_seconds', 'max_seconds')) else 1):
             raise ConfigError(f'output.{key} must be a positive integer')
+    o['min_seconds'] = o['min_seconds'] or max(1, round(o['target_seconds'] * .8))
+    o['max_seconds'] = o['max_seconds'] or round(o['target_seconds'] * 1.3)
+    if not o['min_seconds'] <= o['target_seconds'] <= o['max_seconds']:
+        raise ConfigError('output.target_seconds must lie between min_seconds and max_seconds')
     if any(o[k] % 2 or not 64 <= o[k] <= 4096 for k in ('width', 'height')):
         raise ConfigError('output dimensions must be even and between 64 and 4096')
-    if o['min_seconds'] > o['max_seconds'] or o['max_seconds'] > 300 or o['fps'] > 60:
+    if o['target_seconds'] > 300 or o['max_seconds'] > 390 or o['fps'] > 60:
         raise ConfigError('invalid output duration or fps')
     if type(o['cta']) is not bool or type(c['audio']['allow_piper_fallback']) is not bool:
         raise ConfigError('cta and allow_piper_fallback must be booleans')

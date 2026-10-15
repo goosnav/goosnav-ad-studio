@@ -12,11 +12,12 @@ python3 -m harness doctor                       # tools, CLI logins, Frame, sour
 python3 -m harness make --count 3               # open brief: agents pick the idea
 python3 -m harness make --concept "A paperweight takes its job too seriously" --count 2
 python3 -m harness make --count 1 --plan        # create the run, start nothing
+python3 -m harness make --count 2 --seconds 15  # target length per ad (default 10 s)
 ./"Start Ad Studio.sh"                          # the same, from a browser page (port 8788)
 ```
 
 `make` reads `harness.local.json` when it exists (it is git-ignored); pass
-`--config FILE` for another project. `--concept`, `--website` and `--count`
+`--config FILE` for another project. `--concept`, `--website`, `--count` and `--seconds`
 override the file for one run. The run's configuration is frozen when it is
 created; editing the config later does not change a run already started.
 
@@ -108,7 +109,7 @@ before saving. Unknown keys are errors.
 | `sources.scripts` | Example or ready-made scripts for writers to learn from or use. |
 | `sources.inspiration` | Theory, style bibles, reference notes or URLs. |
 | `sources.assets` | Read-only folders of 3D assets, photos, footage. |
-| `output` | `width/height/fps` (default 1080x1350 at 24), `min/max_seconds`, `cta`, `folder`. |
+| `output` | `target_seconds` (default 10; writers time scripts to it), `min/max_seconds` (0 = 80-130 % of target), `width/height/fps` (1080x1350 at 24), `cta`, `folder`. |
 | `audio` | `python` (the local model venv), `voice_provider`, `voice`, `music`, `allow_piper_fallback`. |
 | `tools` | `blender/ffmpeg/ffprobe` commands, `frame_root`, `frame_python`. |
 | `workers`, `limits` | Role routing (above); timeouts, repair rounds, cooldown, log cap. |

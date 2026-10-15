@@ -27,3 +27,10 @@ def test_cli_unknown_run_and_invalid_input_are_clean_errors(tmp_path):
     assert r.returncode!=0 and 'Traceback' not in r.stderr
     r=cli(tmp_path,'make','--count','0','--plan')
     assert r.returncode!=0 and 'count' in r.stderr
+
+
+def test_cli_seconds_sets_target_length(tmp_path):
+    cfg=tmp_path/'blank.json';cfg.write_text('{}')
+    d=json.loads(cli(tmp_path,'make','--config',str(cfg),'--seconds','15','--plan').stdout)
+    assert d['config']['output']['target_seconds']==15 and d['config']['output']['max_seconds']==20
+    assert cli(tmp_path,'make','--config',str(cfg),'--seconds','0','--plan').returncode==2

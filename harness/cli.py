@@ -44,6 +44,7 @@ def main(argv=None):
     for name in ('make','new'):
         q=sub.add_parser(name);q.add_argument('--config',default=default_config())
         q.add_argument('--concept');q.add_argument('--website');q.add_argument('--count',type=int)
+        q.add_argument('--seconds',type=int,help='Target length per ad (default 10)')
         q.add_argument('--plan',action='store_true',help='Create the run without starting any agents')
     for name in ('run','resume'):
         q=sub.add_parser(name);q.add_argument('id');q.add_argument('--steps',type=int)
@@ -68,6 +69,7 @@ def main(argv=None):
             store=Store(a.home)
             if a.cmd in ('make','new'):
                 overrides={k:getattr(a,k) for k in ('concept','website','count') if getattr(a,k) is not None}
+                if a.seconds is not None:overrides['output']={'target_seconds':a.seconds}
                 result=store.create(load_config(a.config,overrides));result['tasks']=build_tasks(result['config']['count'])
                 store.save(result,'planned')
                 if a.cmd=='make' and not a.plan:

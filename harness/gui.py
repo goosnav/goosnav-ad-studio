@@ -99,14 +99,17 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             if path == '/make':
-                overrides = {k: form[k].strip() for k in ('concept', 'website', 'count') if form.get(k, '').strip()}
-                if 'count' in overrides:
-                    overrides['count'] = int(overrides['count'])
-                # Validate here so input errors appear in the browser rather than a log.
-                load_config(self.config_path(), overrides)
+                overrides = {k: form[k].strip() for k in ('concept', 'website', 'count', 'seconds') if form.get(k, '').strip()}
+                for key in ('count', 'seconds'):
+                    if key in overrides:
+                        overrides[key] = int(overrides[key])
                 args = ['make'] + (['--config', self.config_path()] if self.config_path() else [])
                 for key, value in overrides.items():
                     args += [f'--{key}', str(value)]
+                if 'seconds' in overrides:
+                    overrides['output'] = {'target_seconds': overrides.pop('seconds')}
+                # Validate here so input errors appear in the browser rather than a log.
+                load_config(self.config_path(), overrides)
                 spawn(self.store.root, *args)
                 time.sleep(1.5)
                 return self.redirect('/')
@@ -146,9 +149,11 @@ class Handler(BaseHTTPRequestHandler):
             f'<td>{esc(r["config"]["concept"] or "(open brief)")}</td><td>{r["config"]["count"]}</td>'
             f'<td>{sum(t["stage"] == "package" and t["status"] == "succeeded" for t in r["tasks"])}</td></tr>'
             for r in self.store.list())
+        target = load_config(self.config_path())['output']['target_seconds']
         return page('Ad Studio', '''<form method="post" action="/make">
 <p><label>Concept (optional)<br><input name="concept" size="70" placeholder="Leave empty for an open brief"></label></p>
 <p><label>Ads <input name="count" type="number" min="1" max="50" value="1"></label>
+<label>Target seconds <input name="seconds" type="number" min="1" max="300" value="''' + str(target) + '''"></label>
 <label>Website override <input name="website" placeholder="from config"></label></p>
 <p><button>Make ads</button> Research, writing contest and production run unattended.</p></form>
 <h2>Runs</h2><table><tr><th>Run</th><th>Status</th><th>Concept</th><th>Ads</th><th>Delivered</th></tr>''' + rows + '</table>',

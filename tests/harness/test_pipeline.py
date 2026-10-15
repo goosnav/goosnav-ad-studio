@@ -19,7 +19,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         '-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(video)],check=True)
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=300:sample_rate=48000',
         '-t','1','-c:a','pcm_s16le',str(audio)],check=True)
-    c=load_config(None,{'count':2,'output':{'width':64,'height':64,'min_seconds':1,'max_seconds':2,'cta':False,
+    c=load_config(None,{'count':2,'output':{'width':64,'height':64,'target_seconds':1,'min_seconds':1,'max_seconds':2,'cta':False,
         'folder':str(tmp_path/'delivered')}})
     store=Store(tmp_path/'state');s=store.create(c);calls=[];review_count=[0]
     def execute(profile,work,prompt,log,**kwargs):
