@@ -19,7 +19,8 @@ Never overwrite accepted inputs; copy a file here if you need to edit it.
 
 Deliver result.json in this workspace, a JSON object with summary (short text), files (array of
 {path: relative file path, kind: source|video|audio|timeline|manifest|notes|caption|image}), and the
-stage-specific fields below. Declare every file needed to reproduce your output. No absolute
+stage-specific fields below. Declare every file needed to reproduce your output. files lists
+only files you wrote in this workspace; mention accepted inputs in text instead. No absolute
 paths, symlinks or ../ in files. A text response is not a deliverable. Do not fabricate review
 evidence, source claims, licenses, tool runs, or measurements. Report an actual blocker in
 handoff.md when tools/inputs are unavailable. Files and JSON are validated by the controller.
