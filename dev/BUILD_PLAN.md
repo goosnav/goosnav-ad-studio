@@ -30,22 +30,24 @@ bounded research, robust exceptions, and creative autonomy inside scoped jobs.
 
 ## Work sequence and tests
 
-- [ ] Configuration and state: strict input validation, blank public config,
+- [x] Configuration and state: strict input validation, blank public config,
   verified Goosnav local config, atomic state, locking, source snapshots.
   Tests: invalid inputs, immutable snapshots, escaping paths, concurrent locks.
-- [ ] CLI workers: exact command arrays, explicit role models, timeouts,
+- [x] CLI workers: exact command arrays, explicit role models, timeouts,
   cancellation, streaming logs, quota/context classification and backup handoff.
   Tests: quota primary -> backup, missing/invalid output, hung subprocess,
   denied tools, quota cooldown, no key-based billing fallback.
-- [ ] Workflow: research -> writing -> critique -> revise -> final critique ->
+- [x] Workflow: research -> writing -> critique -> revise -> final critique ->
   selection -> per-ad assets/audio/animation/review/edit -> Frame -> media QA ->
   creative QA -> package. Tests: actual graph order, review rejection/repair
   bounds, insufficient selections, restart, invalid artifacts, partial batches.
-- [ ] Production helpers: supervised commands, media validation, Frame wrapper,
+- [x] Production helpers: supervised commands, media validation, Frame wrapper,
   local Hugging Face voice/effects runner, measured audio manifest. Tests: real
   FFmpeg fixture, audio preservation, missing model/dependency, local path checks.
-- [ ] CLI and documentation: make/plan/status/run/pause/cancel/resume/retry,
+- [x] CLI and documentation: make/plan/status/run/pause/cancel/resume/retry,
   doctor and local outputs. Tests: subprocess CLI and subscription worker smoke.
+- [x] GUI: `python -m harness gui` / `Start Ad Studio.sh`; runs, videos, controls,
+  validated config editor. Tests: escaping, file containment, config validation.
 - [ ] Verification: run behavioral tests and actual interface checks, fresh
   review, fix important findings, record exact evidence and remaining limits.
 
@@ -55,3 +57,8 @@ No hosted service, generic plugin marketplace, distributed queue, custom agent
 framework, automatic ad publishing, or elaborate scoring UI. Use a small number
 of modules and readable JSON contracts. Every document records decisions,
 trade-offs and evidence, not private deliberation or a running thought transcript.
+
+## Build status (2026-10-15, second session)
+
+Ticked items are implemented and covered by `tests/harness` (42 tests). See
+STATE.md for which parts have live evidence versus fixture-only evidence.

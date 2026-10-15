@@ -118,3 +118,22 @@ def test_cancelled_task_cannot_be_skipped(tmp_path):
     store=Store(tmp_path);s=store.create(load_config());s['tasks']=build_tasks(1)
     s['tasks'][0]['status']='cancelled'
     assert Engine(store).next_task(s) is None
+
+
+def exhausted_review(severity):
+    state ={'config': load_config(), 'tasks': build_tasks(1)}
+    task = next(t for t in state['tasks'] if t['stage'] == 'critique_final')
+    task.update(status='succeeded', revision=state['config']['limits']['repairs'], result={
+        'summary': 'still flawed', 'verdict': 'revise', 'files': [],
+        'findings': [{'target': 'A', 'severity': severity, 'problem': 'p', 'fix': 'f'}]})
+    return state, task
+
+
+def test_exhausted_review_proceeds_on_nonblocking_and_stops_on_blocking(tmp_path):
+    engine = Engine(Store(tmp_path))
+    state, task = exhausted_review('important')
+    engine.review_transition(state, task)
+    assert task['status'] == 'succeeded' and task['result']['accepted_with_notes'] is True
+    state, task = exhausted_review('blocking')
+    engine.review_transition(state, task)
+    assert task['status'] == 'needs_review'

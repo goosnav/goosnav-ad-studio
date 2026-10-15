@@ -20,7 +20,7 @@ DEFAULTS = {
     'brand': {'name': '', 'direction': '', 'documents': []},
     'sources': {'assets': [], 'scripts': [], 'inspiration': []},
     'output': {'width': 1080, 'height': 1350, 'fps': 24, 'min_seconds': 7,
-               'max_seconds': 20, 'cta': True},
+               'max_seconds': 20, 'cta': True, 'folder': ''},
     'workers': {'researcher': profiles('balanced'), 'writer': profiles('quality'),
                 'critic': profiles('economy'), 'selector': profiles('quality'),
                 'producer': profiles('balanced'), 'checker': profiles('economy')},
@@ -123,7 +123,7 @@ def load_config(path=None, overrides=None):
         for key in keys:
             if not isinstance(c[group][key], str):
                 raise ConfigError(f'{group}.{key} must be text')
-    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python')]:
+    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python'), ('output', 'folder')]:
         value = c[group][key]
         if not isinstance(value, str):
             raise ConfigError(f'{group}.{key} must be a path string')

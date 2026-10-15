@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import time
 
@@ -256,7 +257,12 @@ class Engine:
         if task['stage'] not in ('critique_final', 'review', 'creative_qa') or task['result']['verdict'] == 'pass':
             return
         if task['revision'] >= state['config']['limits']['repairs']:
-            task['status'] = 'needs_review'; return
+            # Out of repair rounds: only blockers need a human. Other notes travel downstream.
+            if any(f['severity'] == 'blocking' for f in task['result']['findings']):
+                task['status'] = 'needs_review'
+            else:
+                task['result']['accepted_with_notes'] = True
+            return
         start_stage = 'revise' if task['stage'] == 'critique_final' else 'audio'
         feedback = json.dumps(task['result'], indent=2)
         self.rewind(state,task['ad'],start_stage,feedback)
@@ -279,6 +285,11 @@ class Engine:
             else:
                 data = package(inputs, state, work)
             self.verify_history(state)
+            if task['stage'] == 'package' and state['config']['output'].get('folder'):
+                # Convenience copies for people; the accepted artifacts remain the record.
+                out = Path(state['config']['output']['folder']) / state['id']; out.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(result('frame')['master'], out / f'ad-{ad+1:02}.mp4')
+                shutil.copy2(work / 'ad.zip', out / f'ad-{ad+1:02}.zip')
             task['result'] = promote(data, work, root/'artifacts'/task['id']/f'revision-{task["revision"]}-{time.time_ns()}')
             task['status'] = 'succeeded'
         except Exception as e:

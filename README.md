@@ -1,7 +1,23 @@
 # goosnav-ad-studio
 
-The proposed agent-harness upgrade, repository audit, and build roadmap are in
-[`dev/`](dev/README.md). See [`dev/STATE.md`](dev/STATE.md) for implementation status.
+## Hands-off ad engine
+
+```sh
+cp harness.example.json harness.local.json   # website, products, brand docs, script banks, asset folders
+python3 -m harness doctor                    # checks tools, codex/claude logins, Frame, sources
+python3 -m harness make --count 3            # or add --concept "..."; omit both for an open brief
+./"Start Ad Studio.sh"                       # the same from a browser page: runs, videos, config, pause/resume
+```
+
+A deterministic state machine (`harness/`) runs research, a three-scripts-per-ad
+writing contest with an adversarial critic and a selector, then per ad: assets,
+local neural audio, Blender animation, review, edit, a Goosnav Frame CTA, technical
+QA, creative QA and packaging. Each creative step is a long, tool-using `codex exec`
+or `claude -p` session using your existing subscriptions, with the other CLI as
+backup. Strong models write, cheap models critique. Operations: [`dev/OPERATIONS.md`](dev/OPERATIONS.md).
+Status and next steps: [`dev/STATE.md`](dev/STATE.md).
+
+## Film toolkit
 
 The code and the repeatable process behind Goosnav's animated ads. Each ad is a Blender scene with narration, synthesized sound, type, and a white end card with the addresses, rendered for 4:5 portrait (or any other format).
 

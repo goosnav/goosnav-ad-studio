@@ -96,7 +96,7 @@ def check_audio(path, timeline, config):
 
 
 def finish_frame(master, script, config, work, cancelled):
-    work=Path(work); destination=work/'final.mp4'
+    work=Path(work).resolve(); destination=work/'final.mp4'; master=str(Path(master).resolve())
     cta=script.get('cta','')
     enabled=config['output']['cta'] and config['website'] and not cta.lower().startswith('none')
     if not enabled:

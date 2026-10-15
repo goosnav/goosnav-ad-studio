@@ -53,8 +53,14 @@ def main(argv=None):
     sub.add_parser('list')
     for name in ('doctor','models'):
         q=sub.add_parser(name);q.add_argument('--config',default=default_config())
+    q=sub.add_parser('gui',help='Local browser page for runs, config and controls')
+    q.add_argument('--host',default='127.0.0.1',help='0.0.0.0 to reach it from the LAN');q.add_argument('--port',type=int,default=8788)
+    q.add_argument('--no-browser',action='store_true')
     a=p.parse_args(argv)
     try:
+        if a.cmd=='gui':
+            from .gui import serve
+            serve(a.home,a.host,a.port,not a.no_browser);return 0
         if a.cmd in ('doctor','models'):
             c=load_config(a.config)
             result=doctor(c) if a.cmd=='doctor' else resolve_workers(c['workers'])
