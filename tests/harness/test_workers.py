@@ -10,10 +10,11 @@ def test_explicit_models_and_no_shell(tmp_path):
     task = tmp_path / 'task'; task.mkdir()
     a = command({'provider': 'codex', 'model': 'gpt-6-luna', 'effort': 'low'}, task)
     assert a[a.index('-m') + 1] == 'gpt-6-luna'
-    assert '--dangerously-bypass-approvals-and-sandbox' not in a
+    # Owner decision: workers need unsandboxed, prompt-free access (Blender, renders, caches).
+    assert '--dangerously-bypass-approvals-and-sandbox' in a and '-s' not in a
     b = command({'provider': 'claude', 'model': 'haiku'}, task)
     assert b[b.index('--model') + 1] == 'haiku'
-    assert '--dangerously-skip-permissions' not in b
+    assert '--dangerously-skip-permissions' in b and '--permission-mode' not in b
 
 
 def test_subscription_environment():

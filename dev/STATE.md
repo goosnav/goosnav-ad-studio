@@ -29,6 +29,9 @@ Session 2:
 - Review exhaustion no longer stalls a hands-off batch: after the last repair
   round, non-blocking findings continue downstream as `accepted_with_notes`;
   only `blocking` findings stop for a person.
+- Workers run with full access by owner decision: `claude --dangerously-skip-permissions`
+  and `codex exec --dangerously-bypass-approvals-and-sandbox` (no sandbox or approval
+  prompts to stall an unattended job). Live-smoked: Claude ran Blender unprompted.
 - `output.folder`: delivered ads are copied to `<folder>/<run>/ad-NN.mp4|zip`.
   Locally `business/studio/output/harness`.
 - Target length: `output.target_seconds` (default 10). The accepted range is

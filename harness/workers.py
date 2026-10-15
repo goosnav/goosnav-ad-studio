@@ -22,14 +22,16 @@ def command(profile, workspace):
         raise ValueError('Resolve model selectors before launching a worker')
     if profile['provider'] == 'codex':
         return ['codex', 'exec', '--ignore-user-config', '--skip-git-repo-check',
-                '-C', str(workspace), '-s', 'workspace-write', '-c', 'approval_policy="never"',
-                '-c', 'sandbox_workspace_write.network_access=true', '-c', 'forced_login_method="chatgpt"',
+                # Full access by owner decision: a sandbox or approval prompt stalls an unattended worker.
+                '-C', str(workspace), '--dangerously-bypass-approvals-and-sandbox',
+                '-c', 'forced_login_method="chatgpt"',
                 '-m', model, '-c', f'model_reasoning_effort="{profile.get("effort", "medium")}"',
                 '--json', '-']
     return ['claude', '-p', '--model', model, '--output-format', 'stream-json', '--verbose',
             '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-            '--permission-mode', 'dontAsk', '--tools', 'Read,Write,Edit,Bash,WebSearch,WebFetch',
-            '--allowedTools', 'Read,Write,Edit,Bash,WebSearch,WebFetch']
+            '--dangerously-skip-permissions',
+            # The tool set scopes the job (no sub-agents); it is not a permission gate.
+            '--tools', 'Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch,TodoWrite']
 
 
 def subscription_status(provider):
