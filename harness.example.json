@@ -1,0 +1,9 @@
+{
+  "website": "",
+  "products": [],
+  "concept": "",
+  "brand": {"name": "", "direction": "", "documents": []},
+  "sources": {"assets": [], "scripts": [], "inspiration": []},
+  "tools": {"frame_root": "", "frame_python": ""},
+  "audio": {"python": "", "music": []}
+}

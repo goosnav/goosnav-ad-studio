@@ -1,0 +1,151 @@
+"""Native CLI workers. No API SDK, shell interpolation, or hidden model fallback."""
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import time
+
+
+def worker_env(source=None):
+    env = dict(os.environ if source is None else source)
+    for key in list(env):
+        if key.startswith(('ANTHROPIC_', 'OPENAI_', 'CLAUDE_CODE_USE_', 'AWS_', 'AZURE_')) or key in (
+                'CLAUDECODE', 'CLAUDE_CODE_OAUTH_TOKEN', 'CODEX_API_KEY'):
+            env.pop(key, None)
+    return env
+
+
+def command(profile, workspace):
+    model = profile['model']
+    if model.startswith('auto:'):
+        raise ValueError('Resolve model selectors before launching a worker')
+    if profile['provider'] == 'codex':
+        return ['codex', 'exec', '--ignore-user-config', '--skip-git-repo-check',
+                '-C', str(workspace), '-s', 'workspace-write', '-c', 'approval_policy="never"',
+                '-c', 'sandbox_workspace_write.network_access=true', '-c', 'forced_login_method="chatgpt"',
+                '-m', model, '-c', f'model_reasoning_effort="{profile.get("effort", "medium")}"',
+                '--json', '-']
+    return ['claude', '-p', '--model', model, '--output-format', 'stream-json', '--verbose',
+            '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+            '--permission-mode', 'dontAsk', '--tools', 'Read,Write,Edit,Bash,WebSearch,WebFetch',
+            '--allowedTools', 'Read,Write,Edit,Bash,WebSearch,WebFetch']
+
+
+def subscription_status(provider):
+    cmd = ['codex', 'login', 'status'] if provider == 'codex' else ['claude', 'auth', 'status']
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=20, env=worker_env())
+        if provider == 'codex':
+            return r.returncode == 0 and 'using ChatGPT' in r.stdout + r.stderr
+        d = json.loads(r.stdout)
+        return d.get('loggedIn') is True and d.get('authMethod') == 'claude.ai'
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+
+
+def classify(code, output):
+    s = output.lower()
+    # Prefer structured terminal events; callers pass only a bounded log tail.
+    terminal = []
+    for line in output.splitlines():
+        try:
+            e = json.loads(line)
+            if e.get('type') in ('error', 'turn.failed') or e.get('is_error'):
+                terminal.append(json.dumps(e))
+        except (ValueError, AttributeError):
+            pass
+    if code == 0 and not terminal:
+        return 'ok'
+    if terminal:
+        s = '\n'.join(terminal).lower()
+    for kind, words in {
+        'quota': ['rate limit', 'rate_limit', 'usage limit', 'usage_limit', 'quota', 'out of credits',
+                  'hit your limit', 'too many requests', 'limit reached'],
+        'context': ['context window', 'context_length', 'context limit', 'max_tokens', 'max_turns'],
+        'auth': ['authentication', 'unauthorized', 'not logged in', 'login required',
+                 'token_expired', 'log in again', 'invalid_api_key', 'invalid login', 'login expired'],
+        'model': ['model not found', 'model_not_found', 'not supported', 'model is unavailable'],
+        'permission': ['permission denied', 'permission_denied', 'tool denied'],
+    }.items():
+        if any(w in s for w in words):
+            return kind
+    return 'crash'
+
+
+def terminate_group(proc):
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        pass
+    # Also reap descendants when the session leader has already exited.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proc.wait()
+
+
+def tail(path, size=65536):
+    with Path(path).open('rb') as f:
+        f.seek(0, 2); f.seek(max(0, f.tell() - size))
+        return f.read().decode('utf-8', 'replace')
+
+
+def session_metadata(path):
+    models=set();session_id=None;usage={};errors=[]
+    with Path(path).open(errors='replace') as f:
+        for line in iter(lambda:f.readline(1024*1024), ''):
+            try:
+                d=json.loads(line)
+                if not isinstance(d,dict):continue
+                if d.get('type')=='system' and d.get('subtype')=='init':
+                    session_id=d.get('session_id')
+                    if isinstance(d.get('model'),str):models.add(d['model'])
+                if d.get('type')=='thread.started':session_id=d.get('thread_id')
+                message=d.get('message',{})
+                if isinstance(message,dict) and isinstance(message.get('model'),str):models.add(message['model'])
+                if isinstance(d.get('modelUsage'),dict):
+                    models.update(d['modelUsage']);usage=d['modelUsage']
+                if d.get('type')=='turn.completed':usage=d.get('usage',{})
+                if d.get('type') in ('error','turn.failed') or d.get('is_error'):
+                    errors.append(line[:4000]);errors=errors[-5:]
+            except (ValueError,TypeError):pass
+    return {'observed_models':sorted(models),'session_id':session_id,'usage':usage,'terminal_errors':errors}
+
+
+def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, started=None):
+    start = time.monotonic()
+    log = Path(log); log.parent.mkdir(parents=True, exist_ok=True)
+    kind = None
+    # A file for stdin avoids blocking the supervisor on a large pipe write.
+    prompt_path = Path(cwd) / '.worker-input.txt'
+    prompt_path.write_text(prompt)
+    try:
+        with prompt_path.open() as inp, log.open('w') as out:
+            proc = subprocess.Popen(argv, cwd=cwd, stdin=inp, stdout=out,
+                                    stderr=subprocess.STDOUT, env=worker_env(), start_new_session=True)
+            if started:
+                started(proc.pid)
+            try:
+                while proc.poll() is None:
+                    if cancelled():
+                        kind = 'cancelled'; break
+                    if time.monotonic() - start > timeout:
+                        kind = 'timeout'; break
+                    if log.stat().st_size > max_log_mb * 1024 * 1024:
+                        kind = 'log_limit'; break
+                    time.sleep(.1)
+            finally:
+                terminate_group(proc)
+        output = tail(log)
+        metadata=session_metadata(log)
+        error_text='\n'.join(metadata['terminal_errors']) or output
+        return {'kind': kind or classify(proc.returncode, error_text), 'code': proc.returncode,
+                'elapsed': round(time.monotonic() - start, 2), 'detail': error_text[-4000:], **metadata}
+    except OSError as e:
+        return {'kind': 'dependency', 'code': None, 'elapsed': 0, 'detail': str(e)}

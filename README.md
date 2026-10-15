@@ -1,5 +1,8 @@
 # goosnav-ad-studio
 
+The proposed agent-harness upgrade, repository audit, and build roadmap are in
+[`dev/`](dev/README.md). See [`dev/STATE.md`](dev/STATE.md) for implementation status.
+
 The code and the repeatable process behind Goosnav's animated ads. Each ad is a Blender scene with narration, synthesized sound, type, and a white end card with the addresses, rendered for 4:5 portrait (or any other format).
 
 The code and the method live here. The creative material lives in the business folder. The two are joined by paths in `studio.local.json`:

@@ -1,9 +1,9 @@
 {
-  "assets": "~/Desktop/business/AD STUDIO/assets",
-  "output": "~/Desktop/business/AD STUDIO/output/films",
-  "work": "~/goosnav-studio-work",
-  "cache": "~/.cache/goosnav-studio",
+  "assets": "",
+  "output": "",
+  "work": "",
+  "cache": "",
   "local_delivery": "",
-  "rclone_remote": "agent-exchange:",
-  "rclone_subdir": "deliverables/claude"
+  "rclone_remote": "",
+  "rclone_subdir": ""
 }

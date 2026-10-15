@@ -25,8 +25,8 @@ These lessons were paid for in render hours on the first films: THE DILEMMA, LIG
 
 Facts that may be stated (check `https://www.goosnav.shop/products.json` before each film):
 
-- Book 2: $19.95, hardcover, signed, 2025 drawings.
-- Goosklerf: booster $13.95 (12 cards); kits $29.95 / $49.95 / $89.95. Dice-based combat, fortresses; win by capturing fortresses or eliminating enemies.
+- Book 2: $29.95 on the live shop as of 2026-10-08 (was $19.95), hardcover, signed, 2025 drawings. Always re-check products.json.
+- Goosklerf (live 2026-10-08): booster $14.95 (12 cards); kits $34.95 / $59.95 / $99.95; game/rule book $19.95. Dice-based combat, fortresses; win by capturing fortresses or eliminating enemies.
 - Patreon: $3/month entry price per the 2026-09-29 supplied script bank; verify the live offer before publishing. Do not promise particular benefits or posting frequency unless the current page states them.
 - Never state comic counts, sales or awards.
 
@@ -151,6 +151,22 @@ Sessions tend to rush into the final render. THE LONGEST TURN started after 34 m
   - Dense PA or radio voices (band-limited plus saturation) measure about 10 dB hot. Mix them at about 0.3 gain.
 - Every vignette ships with a README containing the brief grid (person, want, obstacle, turn, product), transcript, CTA text, and asset and licence manifest (bible §68).
 
-## 10. Session behaviour seen so far
+## 10. Goosnav characters in 3D (2026-10-08)
+
+The rigged characters (guy, gal, expert; HQ and PS1) and their scripts are in `business/studio/assets/3D/characters/`. Its README has the rig controls.
+
+- **Look:** white toon emission (Shader to RGB), one cel-shadow tone and an inverted-hull ink outline (Solidify, flipped, backface-culled black). Render with the **Standard** view transform: AgX turns emission white grey.
+- **Proportions that read as the comic:**
+  - The head is a tall dome, widest at the eyes, about 27% of the height.
+  - The snout comes out about two-thirds of the way up the head and is about 1.1× as long as the head is wide. The eyes sit on its root.
+  - Hands are big mittens, feet are long flat paddles (0.4 m on a 1.74 m figure), and the shirt is tucked inside the pants.
+- **Armature deformation renders reliably in batch Eevee** when every frame is keyed (bake, then `frame_set`). The section 3 trap is about editing vertices, not armatures.
+- **Walking:**
+  - **Stops:** time each stop with `Walk.stop_window()` so it lands with both feet planted, then use `Walk.settle()` for a closing step. A frozen mid-stride stop folds the back leg.
+  - **Toe roll:** roll about the toe or heel only while the foot is on the ground. In the air, the pivot lift makes the foot kick up behind.
+- **Props in hands:** animate the prop's transform in the character's armature space and drive the hands with `grip` (IK wrist position plus finger and palm directions). Don't parent the prop to a hand.
+- **Prop scale in wide shots:** life-size products vanish at PS1 resolution in a wide two-shot (a booster pack is 7 cm). Scale them up as Minecraft-style drops, or cut to a close-up.
+
+## 11. Session behaviour seen so far
 
 - A `claude -p` session may end its turn with a render still running in the background ("I'll pick up when it finishes") despite the brief. Its STATUS.md then stops updating. Watch the frames folder with `watch_frames.sh`, and when the render ends, resume the session with `claude -p --resume <id> "render finished: assemble, QA, deliver"`.
