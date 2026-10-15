@@ -78,6 +78,7 @@ and only `blocking` findings stop for a person (`needs_review`).
 | researcher, producer | balanced | latest workhorse | `sonnet` |
 | writer, selector | quality | frontier model, high effort | `opus` |
 | critic, checker | economy | affordable model, low effort | `haiku` |
+| critic, checker (last resort) | balanced | workhorse | `sonnet` |
 
 Codex models are discovered from the account's live catalog (`codex
 app-server` metadata, no inference). Claude aliases are pinned to the concrete
@@ -86,6 +87,11 @@ model observed in the first session. Override any role in the config:
 ```json
 "workers": {"writer": [{"provider": "claude", "model": "opus"}, {"provider": "codex", "model": "gpt-6-astra", "effort": "high"}]}
 ```
+
+Routes are tried in order, each with `limits.repairs + 1` attempts. Critics and
+checkers only reach the balanced routes after the cheap ones fail the output
+contract (in the first live run Haiku twice reviewed well but never wrote
+`result.json`).
 
 A quota/usage-limit error puts that provider on cooldown
 (`limits.provider_cooldown_seconds`, default 1 h) and the same role moves to

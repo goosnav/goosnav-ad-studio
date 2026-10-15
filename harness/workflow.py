@@ -178,19 +178,23 @@ class Engine:
             context['candidate_ids'] = [s['id'] for t in state['tasks'] if t['stage'] == 'revise' for s in t['result']['scripts']]
         routes = state['models']['workers'][ROLES[task['stage']]]
         unavailable = []
-        for profile in routes:
+        for route, profile in enumerate(routes):
             provider = profile['provider']
             if profile.get('unavailable') or self.store.cooldown(provider) or not self.auth(provider):
                 unavailable.append(f'{provider}: {profile.get("unavailable") or "cooldown or subscription login unavailable"}')
                 continue
             # Attempts are durable. Resume cannot silently reset a consumed budget.
-            used = sum(a['provider'] == provider and a['revision'] == task['revision']
+            # Budgets are per route; attempts from before routes were recorded count against
+            # the provider's first route.
+            first = next(i for i, r in enumerate(routes) if r['provider'] == provider)
+            used = sum(a.get('route', first if a['provider'] == provider else -1) == route
+                       and a['revision'] == task['revision']
                        and a.get('kind') not in ('cancelled', None) for a in task['attempts'])
             for _ in range(max(0, c['limits']['repairs'] + 1 - used)):
                 if self.store.control_value(state['id']) == 'cancel':
                     task['status'] = 'cancelled'; return
                 number = len(task['attempts']) + 1
-                attempt = {'number': number, 'provider': provider, 'model': profile['model'],
+                attempt = {'number': number, 'route': route, 'provider': provider, 'model': profile['model'],
                            'effort': profile.get('effort'), 'revision': task['revision'], 'started': time.time()}
                 task['attempts'].append(attempt)
                 result_file = work/'result.json'

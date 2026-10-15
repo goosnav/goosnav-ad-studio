@@ -23,8 +23,9 @@ DEFAULTS = {
     'output': {'width': 1080, 'height': 1350, 'fps': 24, 'target_seconds': 10,
                'min_seconds': 0, 'max_seconds': 0, 'cta': True, 'folder': ''},
     'workers': {'researcher': profiles('balanced'), 'writer': profiles('quality'),
-                'critic': profiles('economy'), 'selector': profiles('quality'),
-                'producer': profiles('balanced'), 'checker': profiles('economy')},
+                # Cheap reviewers first; a stronger route only after they fail the contract.
+                'critic': profiles('economy') + profiles('balanced'), 'selector': profiles('quality'),
+                'producer': profiles('balanced'), 'checker': profiles('economy') + profiles('balanced')},
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'repairs': 2, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': 'af_heart',

@@ -137,3 +137,19 @@ def test_exhausted_review_proceeds_on_nonblocking_and_stops_on_blocking(tmp_path
     state, task = exhausted_review('blocking')
     engine.review_transition(state, task)
     assert task['status'] == 'needs_review'
+
+
+def test_cheap_reviewer_escalates_to_stronger_route_on_contract_failures(tmp_path):
+    assert [p['model'] for p in load_config()['workers']['critic']] == [
+        'auto:economy', 'auto:economy', 'auto:balanced', 'auto:balanced']
+    store = Store(tmp_path); c = load_config(); c['limits']['repairs'] = 0
+    run = store.create(c); calls = []
+    routes = [{'provider': 'claude', 'model': 'cheap'}, {'provider': 'claude', 'model': 'strong'}]
+    def worker(profile, work, prompt, log, cancelled, timeout, started):
+        calls.append(profile['model'])
+        if profile['model'] == 'strong':
+            research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    e = Engine(store, execute=worker, resolve=lambda w: {'workers': {r: routes for r in w}}, auth=lambda _: True)
+    e.run(run['id'], max_steps=1)
+    assert calls == ['cheap', 'strong'] and store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
