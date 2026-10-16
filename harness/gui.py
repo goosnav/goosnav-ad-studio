@@ -11,8 +11,10 @@ import mimetypes
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
 from urllib.parse import parse_qs, quote, urlparse
+import urllib.request
 
 from .config import load_config
 from .store import Store
@@ -75,6 +77,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(self.index())
             elif url.path.startswith('/run/'):
                 self.send(self.run_page(url.path.split('/')[2]))
+            elif url.path == '/health':
+                self.send(json.dumps({'app': 'goosnav-ad-studio', 'home': str(self.store.root)}),
+                          kind='application/json')
             elif url.path == '/file':
                 self.file(q.get('path', [''])[0])
             elif url.path == '/config':
@@ -190,15 +195,46 @@ class Handler(BaseHTTPRequestHandler):
         self.send(p.read_bytes(), kind=mimetypes.guess_type(p.name)[0] or 'application/octet-stream')
 
 
+def running_studio(host, port):
+    """The harness home of an Ad Studio already answering on this port, else None."""
+    try:
+        with urllib.request.urlopen(f'http://{host}:{port}/health', timeout=1.5) as r:
+            body = json.loads(r.read())
+        return body.get('home') if body.get('app') == 'goosnav-ad-studio' else None
+    except (OSError, ValueError):
+        return None
+
+
+def start(home, host='127.0.0.1', port=8788, tries=20):
+    """Serve in a background thread and return (server, url). server is None when this
+    studio is already being served on one of the ports; url then points at it."""
+    probe = '127.0.0.1' if host in ('0.0.0.0', '') else host
+    handler = type('StudioHandler', (Handler,), {'store': Store(home)})
+    for candidate in [port] if port == 0 else range(port, port + tries):
+        if candidate and running_studio(probe, candidate) == str(handler.store.root):
+            return None, f'http://{probe}:{candidate}/'
+        try:
+            server = ThreadingHTTPServer((host, candidate), handler)
+        except OSError:
+            continue  # taken by something else; try the next port
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        if candidate != port:
+            print(f'Port {port} is busy; using {server.server_port}.', file=sys.stderr, flush=True)
+        return server, f'http://{probe}:{server.server_port}/'
+    raise OSError(f'No free port in {port}-{port + tries - 1}; pass --port')
+
+
 def serve(home, host='127.0.0.1', port=8788, browser=True):
-    Handler.store = Store(home)
-    server = ThreadingHTTPServer((host, port), Handler)
-    url = f'http://{"127.0.0.1" if host in ("0.0.0.0", "") else host}:{port}/'
-    print(f'Ad Studio GUI: {url}  (Ctrl+C to stop; runs continue in the background)', file=sys.stderr, flush=True)
+    server, url = start(home, host, port)
+    print(f'Ad Studio GUI: {url}' + ('  (already running)' if not server else
+          '  (Ctrl+C to stop; runs continue in the background)'), file=sys.stderr, flush=True)
     if browser:
         import webbrowser
         webbrowser.open(url)
+    if not server:
+        return
     try:
-        server.serve_forever()
+        while True:
+            time.sleep(3600)
     except KeyboardInterrupt:
-        pass
+        server.shutdown()

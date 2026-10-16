@@ -62,3 +62,27 @@ def test_make_form_shows_and_validates_target_seconds(server):
     with pytest.raises(urllib.error.HTTPError) as e:
         urllib.request.urlopen(base + '/make', data)
     assert e.value.code == 400 and 'target_seconds' in e.value.read().decode()
+
+
+def test_start_reuses_running_studio_or_moves_off_busy_port(tmp_path, monkeypatch):
+    import socket, json as _json
+    monkeypatch.setattr(gui, 'LOCAL_CONFIG', tmp_path / 'harness.local.json')
+    home = tmp_path / 'home'
+    first, _ = gui.start(home, port=0)              # port 0: let the OS pick
+    try:
+        port = first.server_port
+        body = _json.loads(urllib.request.urlopen(f'http://127.0.0.1:{port}/health').read())
+        assert body['app'] == 'goosnav-ad-studio' and body['home'] == str(home.resolve())
+        assert gui.start(home, port=port) == (None, f'http://127.0.0.1:{port}/')   # reuse it
+        other, _ = gui.start(tmp_path / 'other-home', port=port)
+        assert other.server_port != port            # different home: next free port
+        other.shutdown(); other.server_close()
+    finally:
+        first.shutdown(); first.server_close()
+    blocker = socket.socket(); blocker.bind(('127.0.0.1', 0)); blocker.listen()
+    try:
+        moved, _ = gui.start(home, port=blocker.getsockname()[1])
+        assert moved.server_port != blocker.getsockname()[1]
+        moved.shutdown(); moved.server_close()
+    finally:
+        blocker.close()
