@@ -40,7 +40,13 @@ Changes:
 - No default voice. Briefs for every stage carry the end-card budget, phone
   readability and the "no baked text" rule.
 
-Tests: 67 passing (`python3 -m pytest -q tests`).
+- `output.look: ps1` (owner request, 2026-10-16) is the crunchy late-90s console look.
+  Frame crunches the story picture (pixel 5, 15-bit dither, scanlines) and types
+  the end card in retro pixel type with a cursor. Briefs require PS1-native
+  production: PS1 library models, 1/5-size render, nearest upscale. The local
+  config uses it.
+
+Tests: 68 passing (`python3 -m pytest -q tests`).
 
 ## What was built
 

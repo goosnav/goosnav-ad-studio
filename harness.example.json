@@ -2,7 +2,7 @@
   "website": "",
   "products": [],
   "concept": "",
-  "output": {"target_seconds": 10, "folder": ""},
+  "output": {"target_seconds": 10, "folder": "", "look": "clean"},
   "brand": {"name": "", "direction": "", "documents": []},
   "sources": {"assets": [], "scripts": [], "inspiration": []},
   "tools": {"frame_root": "", "frame_python": ""},

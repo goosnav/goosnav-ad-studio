@@ -120,61 +120,100 @@ def balance(title, longest=16):
     return title[:cut] + '\n' + title[cut + 1:]
 
 
+# Frame retro settings per look. ps1: late-90s console crunch. Pixel-sized type without
+# anti-aliasing, RGB split, jitter, a shadow and a typewriter with a cursor; the picture
+# pixelated to 15-bit colour with ordered dither; scanlines over the whole frame.
+LOOKS = {
+    'clean': {'retro': {'enabled': False}, 'media_fx': {'mode': 'none'}},
+    'ps1': {'retro': {'enabled': True, 'pixel': 4, 'aliased': True, 'rgb_split': 2, 'scanlines': 'frame',
+                      'scanline_strength': 45, 'shadow': True, 'shadow_color': '#7f7f7f', 'jitter': True,
+                      'typewriter': True, 'type_delay': 0.15, 'cursor': True},
+            'media_fx': {'mode': 'ps1', 'pixel': 5}},
+}
+
+
+def look_settings(look, seconds=None, text_chars=0, text=True):
+    """Frame retro/media_fx for a segment. The typewriter finishes in the first half of the card."""
+    d = json.loads(json.dumps(LOOKS[look]))
+    r = d['retro']
+    if r['enabled']:
+        if not text:
+            r.update(typewriter=False, jitter=False, cursor=False)
+        elif r.get('typewriter') and seconds:
+            r['type_speed'] = round(min(200, max(12, text_chars / max(.3, seconds * .5 - r['type_delay']))), 1)
+    return d
+
+
 def finish_frame(master, script, config, work, cancelled, direction=None):
     """Frame writes all end text. end_card: the closing seconds become a native Frame card
     (title above the picture, link below, Frame's own fonts); full: the whole ad is framed.
-    The picture before the card is untouched and the ad's audio runs straight through."""
+    output.look sets Frame's treatment of text and picture (clean or ps1). The ad's audio
+    runs straight through."""
     work=Path(work).resolve(); destination=work/'final.mp4'; master=str(Path(master).resolve())
+    o=config['output']; look=o.get('look','clean')
     title=end_text(script, direction)
-    enabled=config['output']['cta'] and config['website'] and title and not title.lower().startswith('none')
-    if not enabled:
+    enabled=o['cta'] and config['website'] and title and not title.lower().startswith('none')
+    if not enabled and look=='clean':
         shutil.copy2(master,destination)
         return {'summary':'CTA skipped by project/script policy', 'master':'final.mp4',
                 'files':[{'path':'final.mp4','kind':'video'}]}
     tools=config['tools']; root=Path(tools['frame_root'])
     python=tools['frame_python']
     if not tools['frame_root'] or not (root/'app/src/goosnav_frame').is_dir() or not Path(python).is_file():
-        raise ContractError('CTA requested: configure tools.frame_root and tools.frame_python')
-    o=config['output']
+        raise ContractError('Frame finishing requested: configure tools.frame_root and tools.frame_python')
     probe=json.loads(run([tools['ffprobe'],'-v','error','-show_entries','format=duration','-of','json',master]).stdout)
     duration=float(probe['format']['duration'])
-    if o['frame']=='full':
+    if not enabled:
+        start=duration
+    elif o['frame']=='full':
         start=0.0
     else:
         card=(direction or {}).get('end_card') or {}
         seconds=min(card.get('seconds') or o['end_card_seconds'], duration/2)
         start=round((duration-seconds)*o['fps'])/o['fps']  # cut on a frame boundary
-    # Only content goes to Frame; its layout, fonts, sizes and link style are Frame's own,
-    # scaled from its 1080-wide defaults to this canvas.
-    settings={'canvas':{'preset':'custom','width':o['width'],'height':o['height'],'layout':'stacked',
-                        'background':'#ffffff'},
-              'title':{'visible':True,'text':balance(title)},
-              'link':{'visible':True,'text':link_text(config['website'])},
-              'media':{'fit':'contain','trim_start':start,'keep_audio':False},
-              'export':{'format':'mp4','fps':o['fps'],'quality':'high'},'retro':{'enabled':False}}
-    framed=work/'framed.mp4'
+    canvas={'preset':'custom','width':o['width'],'height':o['height'],'background':'#ffffff'}
+    export_settings={'format':'mp4','fps':o['fps'],'quality':'high'}
+    jobs=[]
+    if start>0:
+        # The story keeps the edit's picture; only the look is applied, never text.
+        jobs.append({'output':str(work/'story.mp4'),'settings':{
+            'canvas':{**canvas,'layout':'overlay'},'title':{'visible':False},'link':{'visible':False},
+            'media':{'fit':'cover','trim_start':0,'trim_duration':start,'keep_audio':False},
+            'export':export_settings,**look_settings(look,text=False)}})
+    if enabled:
+        text=balance(title); link=link_text(config['website'])
+        jobs.append({'output':str(work/'card.mp4'),'still':str(work/'end_card.png'),
+            'still_time':min(1.5,(duration-start)*.75),'settings':{
+            'canvas':{**canvas,'layout':'stacked'},'title':{'visible':True,'text':text},
+            'link':{'visible':True,'text':link},
+            'media':{'fit':'contain','trim_start':start,'keep_audio':False},
+            'export':export_settings,**look_settings(look,duration-start,len(text)+len(link))}})
     request=work/'frame.json';request.write_text(json.dumps({'root':str(root),'input':master,
-        'output':str(framed),'still':str(work/'end_card.png'),'still_time':min(1.0,(duration-start)/2),
-        'scale':o['width']/1080,'settings':settings},indent=2))
+        'scale':o['width']/1080,'jobs':jobs},indent=2))
     runner=Path(__file__).with_name('frame_runner.py')
     r=supervise([python,str(runner),str(request)],cwd=work,prompt='',log=work/'frame.log',
                 timeout=config['limits']['production_timeout_seconds'],cancelled=cancelled)
     if r['kind'] != 'ok':
         raise ContractError(f'Frame failed ({r["kind"]}): {r["detail"][-1000:]}')
-    video=('[1:v]setpts=PTS-STARTPTS[v]' if start==0 else
-           f'[0:v]trim=end={start:.6f},setpts=PTS-STARTPTS[a];[1:v]setpts=PTS-STARTPTS[b];'
-           '[a][b]concat=n=2:v=1:a=0[v]')
-    run([tools['ffmpeg'],'-v','error','-y','-i',master,'-i',str(framed),'-filter_complex',
+    inputs=[]
+    for job in jobs:
+        inputs+=['-i',job['output']]
+    parts=''.join(f'[{i+1}:v]setpts=PTS-STARTPTS[s{i}];' for i in range(len(jobs)))
+    video=parts+''.join(f'[s{i}]' for i in range(len(jobs)))+f'concat=n={len(jobs)}:v=1:a=0[v]'
+    run([tools['ffmpeg'],'-v','error','-y','-i',master,*inputs,'-filter_complex',
          f'{video};[v]fps={o["fps"]},format=yuv420p[out]','-map','[out]','-map','0:a:0',
          '-c:v','libx264','-crf','17','-preset','medium','-c:a','copy','-t',f'{duration:.6f}',
          '-movflags','+faststart',str(destination)],timeout=config['limits']['production_timeout_seconds'])
-    framed.unlink()
+    for job in jobs:
+        Path(job['output']).unlink()
     check_video(destination,config)
-    return {'summary':f'Frame {o["frame"].replace("_"," ")} from {start:.2f} s: "{title}" + '
-                      f'{link_text(config["website"])}; audio kept from the edit',
-            'master':'final.mp4','end_card_start':start,
-            'files':[{'path':'final.mp4','kind':'video'},{'path':'end_card.png','kind':'image'},
-                     {'path':'frame.json','kind':'source'}]}
+    files=[{'path':'final.mp4','kind':'video'},{'path':'frame.json','kind':'source'}]
+    if enabled:
+        files.insert(1,{'path':'end_card.png','kind':'image'})
+    what=(f'Frame {o["frame"].replace("_"," ")} from {start:.2f} s: "{title}" + {link_text(config["website"])}'
+          if enabled else 'CTA skipped by project/script policy')
+    return {'summary':f'{what}; {look} look; audio kept from the edit','master':'final.mp4',
+            'end_card_start':start if enabled else None,'files':files}
 
 
 def check_final_mix(path, timeline, config, work):

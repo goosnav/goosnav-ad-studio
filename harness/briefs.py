@@ -160,6 +160,48 @@ is generated from your end_card title; a wording fix there means restart direct.
 }
 
 
+LOOK_PIXEL = {'ps1': 5}  # matches media.LOOKS['ps1'] media_fx pixel: native renders align to Frame's grid
+
+LOOKS = {'ps1': {
+ 'all': '''LOOK: crunchy late-1990s/early-2000s console game (PlayStation 1 era). Not polished, not
+modern-smooth. Low-poly models, tiny unfiltered textures, hard pixel edges, wobbly vertices,
+fog where the world ends, dithered colour. Goosnav Frame adds 15-bit dither, scanlines and
+pixel type at the end; the scene itself has to look like the game, not a clean render that
+was pixelated afterwards.''',
+ 'write': 'Write for that world: staging, framing and gags that play like a PS1 cutscene.',
+ 'direct': '''Direct it like a PS1 cutscene: blocky staging, simple readable silhouettes, stiff
+stepped character motion, hard cuts, big chunky close-ups (detail dies at this resolution:
+make subjects and products large in frame). Plan the end card picture as a chunky hero shot.''',
+ 'assets': '''Use the library's PS1 variants: products from assets/3D/ps1, cards from cards/ps1, the
+PS1 character rigs. Their textures are already 15-bit dithered with nearest sampling. Only use
+HQ models if no PS1 variant exists, and then degrade them (decimate, tiny nearest textures).''',
+ 'audio': '''Sound can be of the era too: short sampled-sounding effects, a little crunch (lower
+sample-rate or bit-depth effects), simple sequenced/chip-style music if music is used. Voices
+stay clear and intelligible; the mix gates still apply.''',
+ 'animate': '''Render the PS1 way: native resolution {native}, no anti-aliasing (Eevee filter size
+minimal, no TAA smoothing), Closest texture interpolation, flat or vertex-style lighting, no
+soft shadows/AO/bloom/motion blur/depth of field, distance fog, vertex snapping to a coarse
+screen grid (wobble), and character animation stepped on twos or threes (about 12 fps held).
+Upscale exactly {pixel}x with nearest-neighbour to the delivery size, so pixels line up with
+Frame's crunch grid. Previews may stay native size.''',
+ 'edit': '''Keep the PS1 render crunchy: nearest-neighbour {pixel}x upscale from {native}, hard cuts
+or a plain fade to black, no smoothing, sharpening, grading or film effects. Frame adds dither
+and scanlines afterwards.''',
+ 'review': 'Reject clean modern-looking frames, smooth shading, anti-aliased edges or tiny unreadable detail.',
+ 'creative_qa': 'Reject clean modern-looking frames, smooth shading, anti-aliased edges or tiny unreadable detail.',
+}}
+
+
+def look_brief(stage, output):
+    look = LOOKS.get(output.get('look', 'clean'))
+    if not look:
+        return ''
+    pixel = LOOK_PIXEL[output['look']]
+    native = f"{output['width'] // pixel}x{output['height'] // pixel}"
+    parts = [look['all']] + ([look[stage]] if stage in look else [])
+    return '\n\n' + '\n'.join(parts).format(native=native, pixel=pixel)
+
+
 def brief(task, config, inputs, sources, repair=''):
     guide = REPO / 'dev' / 'WORKER_GUIDE.md'
     o = config['output']
@@ -168,7 +210,7 @@ def brief(task, config, inputs, sources, repair=''):
     length = (f"\n\nTARGET LENGTH: {o['target_seconds']} seconds per ad, including the CTA hold "
               f"(accepted {o['min_seconds']}-{o['max_seconds']}).{card} Scripts are timed to land on it; "
               'audio, animation and edit keep to it. Critics flag scripts that cannot fit it.')
-    return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] + length +
+    return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] + length + look_brief(task['stage'], o) +
             '\n\nPROJECT\n' + json.dumps({'stage': task['stage'], 'ad': task['ad'],
              'config': config, 'source_index': sources, 'accepted_inputs': inputs,
              'tool_guide': str(guide), 'repo_read_only': str(REPO)}, indent=2) +

@@ -84,8 +84,17 @@ video's audio again.
 (default 2.5; the director may lengthen it) become a native Frame stacked card:
 the director's title in Frame's bold type over the closing picture, the website as
 Frame's blue underlined link, white ground, Frame's own sizes scaled to the canvas.
-Everything before it is the edit's picture, untouched; the audio runs straight
-through. `output.frame: "full"` frames the whole ad instead.
+Everything before it is the edit's picture; the audio runs straight through.
+`output.frame: "full"` frames the whole ad instead.
+
+`output.look` sets the visual era. `clean` (the default) is plain Frame. `ps1` is
+late-90s console crunch end to end. Every stage's brief asks for a PS1 cutscene,
+using the library's PS1 models rendered natively at 1/5 size with no anti-aliasing,
+nearest textures, vertex wobble, fog and stepped motion, then a 5x nearest
+upscale. Frame then crunches the story picture (15-bit Bayer dither on a 5 px grid,
+scanlines) without adding text. The end card types out in Frame's pixel type
+(aliased, RGB split, jitter, shadow, blinking cursor) and finishes in the first half
+of the card. The Goosnav local config uses `ps1`.
 
 A review that says `revise` rewinds to the stage it names in `restart` (scripts go
 back to `revise`; an ad to `direct`, `assets`, `audio`, `animate` or, after the

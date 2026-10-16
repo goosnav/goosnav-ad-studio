@@ -24,7 +24,9 @@ DEFAULTS = {
                'min_seconds': 0, 'max_seconds': 0, 'cta': True, 'folder': '',
                # Frame writes the end text. end_card: the last seconds become a Frame card
                # (title, picture, link); full: the whole ad is framed like a Frame post.
-               'frame': 'end_card', 'end_card_seconds': 2.5},
+               'frame': 'end_card', 'end_card_seconds': 2.5,
+               # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
+               'look': 'clean'},
     'workers': {'researcher': profiles('balanced'), 'writer': profiles('quality'),
                 # Cheap reviewers first; a stronger route only after they fail the contract.
                 'critic': profiles('economy') + profiles('balanced'), 'selector': profiles('quality'),
@@ -107,6 +109,8 @@ def load_config(path=None, overrides=None):
         raise ConfigError('output dimensions must be even and between 64 and 4096')
     if o['target_seconds'] > 300 or o['max_seconds'] > 390 or o['fps'] > 60:
         raise ConfigError('invalid output duration or fps')
+    if o['look'] not in ('clean', 'ps1'):
+        raise ConfigError('output.look must be clean or ps1')
     if o['frame'] not in ('end_card', 'full'):
         raise ConfigError('output.frame must be end_card or full')
     if type(o['end_card_seconds']) not in (int, float) or not 0.5 <= o['end_card_seconds'] <= 30:

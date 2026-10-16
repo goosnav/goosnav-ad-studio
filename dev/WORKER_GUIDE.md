@@ -111,7 +111,9 @@ Frame's bold type above the picture, the web address in Frame's blue underlined 
 below, on white. That window of the master should therefore be a clean product hero
 shot (the real product model, large and square to camera). With `output.frame: full`
 Frame frames the whole ad the same way. The ad's audio runs unchanged under the card.
-`cta: "none"` is supported when an ad should have no CTA.
+`cta: "none"` is supported when an ad should have no CTA. With `output.look: ps1`,
+Frame also crunches the whole picture and types the end text out in pixel type, and
+your brief carries the PS1 rendering rules (native 1/5 resolution, nearest 5x upscale).
 
 ## The director
 
