@@ -3,6 +3,7 @@ import array
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import wave
@@ -215,6 +216,64 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
           if enabled else 'CTA skipped by project/script policy')
     return {'summary':f'{what}; {look} look; edit audio at {level["integrated"]} LUFS','master':'final.mp4',
             'end_card_start':start if enabled else None,'loudness':level,'files':files}
+
+
+MAX_FREEZE = 1.9      # s of identical picture in the story (a held beat still has life in it)
+MAX_BLACK = 0.75      # s of black picture in the story
+MIN_CONTRAST = 30     # luma range (signalstats YHIGH-YLOW) below which a frame is washed out
+FLAT_SECONDS = 1.0
+
+
+def _gray(path, t, tools, size=(54, 68)):
+    r = subprocess.run([tools['ffmpeg'], '-v', 'error', '-ss', f'{t:.3f}', '-i', str(path), '-frames:v', '1',
+                        '-vf', f'scale={size[0]}:{size[1]}', '-pix_fmt', 'gray', '-f', 'rawvideo', '-'],
+                       capture_output=True, timeout=120)
+    if r.returncode or len(r.stdout) != size[0] * size[1]:
+        raise ContractError(f'Could not read a frame at {t:.2f} s of {path}')
+    return r.stdout
+
+
+def check_picture(path, config, story_end, master=None, check_freeze=True):
+    """Bad animation and unreadable pictures, measured on the encoded video.
+
+    Story (before story_end): no long frozen stretch, no black gap, no washed-out stretch.
+    End card (after story_end, when master is given): Frame's card is really there, i.e. the
+    picture differs from the edit master and carries dark type on a light ground."""
+    tools = config['tools']; problems = []
+    r = subprocess.run([tools['ffmpeg'], '-nostats', '-t', f'{story_end:.3f}', '-i', str(path), '-an', '-vf',
+                        f'freezedetect=n=-60dB:d={MAX_FREEZE},blackdetect=d={MAX_BLACK}:pix_th=0.1,'
+                        'fps=4,signalstats,metadata=print:file=-', '-f', 'null', '-'],
+                       capture_output=True, text=True, timeout=600)
+    log = r.stdout + r.stderr
+    starts = [float(v) for v in re.findall(r'freeze_start: ([\d.]+)', log)]
+    lengths = [float(v) for v in re.findall(r'freeze_duration: ([\d.]+)', log)]
+    # An unfinished freeze at the cut-off point still counts up to story_end.
+    freezes = [(a, round(d, 2)) for a, d in zip(starts, lengths + [story_end - a for a in starts[len(lengths):]])]
+    if check_freeze:
+        problems += [f'picture frozen {d:.1f} s from {a:.1f} s' for a, d in freezes if d >= MAX_FREEZE]
+    problems += [f'black picture from {float(a):.1f} s' for a in re.findall(r'black_start:([\d.]+)', log)]
+    lows = [float(v) for v in re.findall(r'signalstats.YLOW=([\d.]+)', log)]
+    highs = [float(v) for v in re.findall(r'signalstats.YHIGH=([\d.]+)', log)]
+    run_flat = longest = 0
+    for lo, hi in zip(lows, highs):
+        run_flat = run_flat + 1 if hi - lo < MIN_CONTRAST else 0
+        longest = max(longest, run_flat)
+    if longest / 4 >= FLAT_SECONDS:
+        problems.append(f'washed-out, low-contrast picture for {longest / 4:.1f} s (luma range under '
+                        f'{MIN_CONTRAST}): subjects will not read on a phone')
+    card = None
+    if master is not None:
+        duration = float(json.loads(run([tools['ffprobe'], '-v', 'error', '-show_entries', 'format=duration',
+                                          '-of', 'json', str(path)]).stdout)['format']['duration'])
+        t = story_end + (duration - story_end) / 2
+        framed, plain = _gray(path, t, tools), _gray(master, t, tools)
+        diff = sum(abs(a - b) for a, b in zip(framed, plain)) / max(1, len(framed))
+        card = {'difference': round(diff, 1), 'darkest': min(framed), 'lightest': max(framed)}
+        if diff < 8 or max(framed) - min(framed) < 100:
+            problems.append(f'the Frame end card is missing or unreadable at {t:.1f} s ({card})')
+    if problems:
+        raise ContractError('Picture QA: ' + '; '.join(problems))
+    return {'freezes': freezes, 'flat_seconds': longest / 4, 'end_card': card}
 
 
 def check_final_mix(path, timeline, config, work):

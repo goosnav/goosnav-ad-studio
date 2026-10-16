@@ -279,6 +279,11 @@ class Engine:
                                       'recognised': check_speech(work/data['mix'], timeline, config)}
             elif task['stage'] == 'animate':
                 check_video(work/data['preview'], config, preview=True)
+                from .media import check_picture
+                direction = self.direction(state, task['ad']) if state else None
+                card = (direction or {}).get('end_card') or {}
+                story_end = (direction['duration'] - card.get('seconds', 0)) if direction else config['output']['max_seconds']
+                data['picture'] = check_picture(work/data['preview'], config, story_end)
                 self.check_talking(state, task['ad'], data, work, config)
             else:
                 check_video(work/data['master'], config)
@@ -378,6 +383,10 @@ class Engine:
                 report['mix'] = check_final_mix(result('frame')['master'], timeline, state['config'], work)
                 from .speech import check_speech, loudness, TRUE_PEAK
                 report['speech'] = check_speech(result('frame')['master'], timeline, state['config'])
+                from .media import check_picture
+                framed = result('frame').get('end_card_start')
+                report['picture'] = check_picture(result('frame')['master'], state['config'],
+                                                  framed or report['duration'], master=result('edit')['master'] if framed else None)
                 report['loudness'] = level = loudness(result('frame')['master'])
                 target = state['config']['output']['loudness']
                 if abs(level['integrated'] - target) > 1.5 or level['true_peak'] > TRUE_PEAK + 0.5:

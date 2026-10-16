@@ -100,3 +100,24 @@ def test_frame_text_is_clean_for_every_look(tmp_path):
     assert max(rows)-min(rows)<3                      # story picture untouched: no scanlines/crunch
     ink=lambda f:sum(v<60 for v in f[:432*120])       # dark title pixels in the top band
     assert ink(gray(2.1)) > 0 and abs(ink(gray(2.1))-ink(gray(3.8))) < 50   # whole title at once, steady
+
+
+def _clip(path, source, seconds=4, size='108x136'):
+    spec=source+(':' if '=' in source else '=')+f's={size}:r=24'
+    subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i',spec,'-f','lavfi',
+        '-i','sine=frequency=300:sample_rate=48000','-t',str(seconds),'-c:v','libx264','-pix_fmt','yuv420p',
+        '-c:a','aac','-ar','48000',str(path)],check=True)
+    return path
+
+
+def test_picture_qa_rejects_frozen_flat_and_missing_card(tmp_path):
+    from harness.media import check_picture
+    c=load_config(None,{'output':{'width':108,'height':136,'target_seconds':4}})
+    moving=_clip(tmp_path/'moving.mp4','testsrc2')
+    assert check_picture(moving,c,story_end=4)['freezes']==[]
+    with pytest.raises(ContractError,match='frozen'):
+        check_picture(_clip(tmp_path/'still.mp4','smptebars'),c,story_end=4)
+    with pytest.raises(ContractError,match='contrast'):
+        check_picture(_clip(tmp_path/'flat.mp4','color=0xb0b0b0'),c,story_end=4,check_freeze=False)
+    with pytest.raises(ContractError,match='end card'):
+        check_picture(moving,c,story_end=2,master=moving)   # "framed" video identical to the master
