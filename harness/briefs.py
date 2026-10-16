@@ -47,8 +47,15 @@ Budget honestly: the last seconds are a Goosnav Frame end card (CTA title above 
 shot, web address below), so the story must land before it. Speech runs about 2.5 words per
 second; one clear turn beats three crammed lines. Every beat must read on a phone screen
 with the sound off: big, near subjects, not specks in a wide.
-Return scripts: [{id, title, premise, script, visual_direction, product, cta}]. The script field
-contains the complete timed scene/action/dialogue/performance directions. CTA is copy plus a
+The script field is a numbered shot list that an animator could build without asking you a
+question. For every shot: start-end time; camera (shot size, angle, lens, height, any move);
+what is in frame and where (who, which prop, left/centre/right, how large); exactly what
+happens, action by action; every sound. For every line: who says it, to whom, how (volume,
+pace, emotion, any pause), and whose face we see while it is said. The audience must always
+know who is talking: put the speaker's face on screen for at least part of their line, and
+never hide it behind a prop. An off-screen voice needs a visible source and a reason. No
+on-screen text, captions or titles in the story: Goosnav Frame sets the only text, the end card.
+Return scripts: [{id, title, premise, script, visual_direction, product, cta}]. CTA is copy plus a
 verified destination, or an explicit reason for no CTA. Keep IDs stable through revisions.''',
  'critique': '''Act as an independent, skeptical script editor. Read all candidates. Identify what
 is stupid, generic, confusing, unfunny, unearned, irrelevant to the product or impossible to fit
@@ -77,16 +84,21 @@ were crammed into three seconds over a static shot, and the reveal was a few spe
 wide shot nobody could read. Prevent all of that here.
 
 Plan the whole ad second by second against TARGET LENGTH:
-- beats: contiguous shots from 0 to the end card, each {start, end, shot (size/angle/lens),
-  picture (what we see and what moves), sound (what we hear)}. Hold every beat long enough to
+- beats: contiguous shots from 0 to the end card, each {start, end, shot (size/angle/lens/
+  height/move), picture (who and what is in frame, where and how large, and exactly what
+  moves, in order), sound (what we hear), faces (the speakers whose faces are visible)}.
+  Specify it so an animator needs no guesswork. Hold every beat long enough to
   read (at least 0.75 s; the turn/reveal usually 1.5 s or more). A wide shot must still show
   the subject large enough to read on a phone; show the payoff, do not imply it.
 - cast: [{speaker, character, gender: male|female|neutral, voice, performance}]. The voice
   must fit the character: with Kokoro, a male character takes an m voice (am_onyx, am_michael,
   am_adam, bm_george, bm_lewis...), a female one an f voice (af_heart, af_bella, af_nicole,
   bf_emma...). The controller rejects a mismatch. Speakers on screen should sound distinct.
-- lines: [{speaker, text, start, end}] in order, at most 3 words per second, with air between
-  lines. Generate scratch takes with the cast voices through the audio helper and time the
+- lines: [{speaker, text, start, end, delivery, offscreen?}] in order, at most 3 words per
+  second, with air between lines. delivery says how it is spoken (volume, pace, emotion,
+  pauses) and becomes the voice direction. The speaker's face must be in a beat's faces while
+  they talk, unobstructed and large enough to see the mouth move; the controller rejects a
+  line nobody can be seen saying unless offscreen gives the reason and the visible source. Generate scratch takes with the cast voices through the audio helper and time the
   lines from measured durations; rewrite or cut a line rather than rush it.
 - end_card: {seconds, title, picture}. Goosnav Frame writes the end text, nothing else does:
   it puts the title above the closing picture and the web address under it on a white card.

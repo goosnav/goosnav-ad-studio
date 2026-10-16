@@ -16,15 +16,18 @@ RETURN_SLOT = Path.home()/'.local/share/goosnav-ad-studio/runs/20261015-130307-2
 
 PLAN = {
     'duration': 10,
-    'beats': [{'start': 0, 'end': 3, 'shot': 'medium', 'picture': 'man at slot', 'sound': 'wind'},
-              {'start': 3, 'end': 5.5, 'shot': 'close', 'picture': 'hands stop', 'sound': 'line'},
-              {'start': 5.5, 'end': 7.5, 'shot': 'reverse wide', 'picture': 'queue, large', 'sound': 'quiet'}],
+    'beats': [{'start': 0, 'end': 3, 'shot': 'medium', 'picture': 'man at slot', 'sound': 'wind', 'faces': []},
+              {'start': 3, 'end': 5.5, 'shot': 'close', 'picture': 'his face, hands stop', 'sound': 'line',
+               'faces': ['A']},
+              {'start': 5.5, 'end': 7.5, 'shot': 'reverse wide', 'picture': 'queue, large', 'sound': 'quiet',
+               'faces': []}],
     'cast': [{'speaker': 'A', 'character': 'borrower, a man', 'gender': 'male', 'voice': 'am_onyx',
               'performance': 'polite'},
              {'speaker': 'B', 'character': 'unseen clerk', 'gender': 'neutral', 'voice': 'af_bella',
               'performance': 'flat'}],
-    'lines': [{'speaker': 'B', 'text': "There's a hold on it.", 'start': 1.0, 'end': 3.0},
-              {'speaker': 'A', 'text': 'For who?', 'start': 3.3, 'end': 4.3}],
+    'lines': [{'speaker': 'B', 'text': "There's a hold on it.", 'start': 1.0, 'end': 3.0,
+               'delivery': 'flat, close-miked, through a grille', 'offscreen': 'the clerk is never seen; the slot grille lights as B speaks'},
+              {'speaker': 'A', 'text': 'For who?', 'start': 3.3, 'end': 4.3, 'delivery': 'quiet, puzzled'}],
     'end_card': {'seconds': 2.5, 'title': 'Goosnav Book Two. Keep yours.', 'picture': 'book hero'},
     'mix': 'dialogue lead, wind under',
 }
@@ -46,6 +49,10 @@ def test_valid_plan_passes():
 
 @pytest.mark.parametrize('changes,message', [
     ({'cast.0.voice': 'af_heart'}, 'female voice'),
+    ({'lines.1.delivery': ''}, 'delivery'),
+    ({'beats.1.faces': []}, "A's face"),
+    ({'lines.0.offscreen': ''}, "B's face"),
+    ({'beats.0.faces': 'A'}, 'faces'),
     ({'lines.0.end': 1.6}, 'words/s'),
     ({'beats.1.start': 3.5}, 'contiguous'),
     ({'beats.2.end': 7.0}, 'end where the end card'),

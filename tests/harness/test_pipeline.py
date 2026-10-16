@@ -37,7 +37,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
             if stage=='review':review_count[0]+=1
         elif stage=='select':d.update(selected=['0','1'],reason='distinct')
         elif stage=='direct':
-            d['direction']=dict(duration=1,beats=[dict(start=0,end=1,shot='wide',picture='test pattern',sound='tone')],
+            d['direction']=dict(duration=1,beats=[dict(start=0,end=1,shot='wide',picture='test pattern',sound='tone',faces=[])],
                                 cast=[],lines=[],mix='tone only')
         elif stage=='assets':
             (work/'manifest.txt').write_text('original test source');file('manifest.txt','manifest')

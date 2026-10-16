@@ -78,6 +78,8 @@ def check_direction(direction, config):
         start, end = _num(b, 'start', where), _num(b, 'end', where)
         for key in ('shot', 'picture', 'sound'):
             _text(b, key, where)
+        if not isinstance(b.get('faces'), list) or not all(isinstance(f, str) for f in b['faces']):
+            raise ContractError(f'{where}.faces must list the speakers whose faces are visible (may be empty)')
         if abs(start - cursor) > frame:
             raise ContractError(f'{where} starts at {start}; beats must be contiguous from 0 (expected {cursor:.3f})')
         if end - start < MIN_BEAT_SECONDS - 1e-6:
@@ -115,9 +117,16 @@ def check_direction(direction, config):
         if not isinstance(line, dict):
             raise ContractError(f'{where} must be an object')
         speaker = _text(line, 'speaker', where); text = _text(line, 'text', where)
+        _text(line, 'delivery', where)
         start, end = _num(line, 'start', where), _num(line, 'end', where)
         if speaker not in voices:
             raise ContractError(f'{where}: speaker {speaker} is not in the cast')
+        # The audience has to see who is talking: the speaker's face is in a beat the line
+        # overlaps, unless the plan says why the voice is off screen.
+        seen = any(speaker in b['faces'] for b in beats if b['start'] < end and b['end'] > start)
+        if not seen and not (isinstance(line.get('offscreen'), str) and line['offscreen'].strip()):
+            raise ContractError(f'{where}: no beat during "{text}" shows {speaker}\'s face; '
+                                'show the speaker while they talk or give an offscreen reason')
         if not 0 <= start < end <= duration:
             raise ContractError(f'{where} timing is outside the ad')
         if start < previous - 1e-6:
