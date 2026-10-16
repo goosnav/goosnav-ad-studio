@@ -38,3 +38,23 @@ def test_missing_frame_does_not_silently_skip_requested_cta(tmp_path):
     c=load_config(None,{'website':'example.com'})
     with pytest.raises(ContractError):
         finish_frame('/missing.mp4',{'cta':'Buy the book'},c,tmp_path,cancelled=lambda:False)
+
+
+def test_frame_cta_only_appears_in_final_two_seconds(tmp_path):
+    if not __import__('pathlib').Path('harness.local.json').is_file():
+        pytest.skip('local Frame config unavailable')
+    c=load_config('harness.local.json')
+    if not __import__('pathlib').Path(c['tools']['frame_python']).is_file():
+        pytest.skip('local Frame runtime unavailable')
+    c['output'].update(width=320,height=400,target_seconds=3,min_seconds=3,max_seconds=3)
+    p=tmp_path/'input.mp4'
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=black:s=320x400:r=24',
+        '-f','lavfi','-i','anullsrc=r=48000:cl=stereo','-t','3','-c:v','libx264',
+        '-pix_fmt','yuv420p','-c:a','aac',str(p)],check=True)
+    finish_frame(p,{'cta':'Read the book'},c,tmp_path,lambda:False)
+    def brightness(t):
+        r=subprocess.run(['ffmpeg','-v','error','-ss',str(t),'-i',str(tmp_path/'final.mp4'),
+            '-frames:v','1','-pix_fmt','gray','-f','rawvideo','-'],capture_output=True,check=True)
+        return sum(r.stdout)/len(r.stdout)
+    assert brightness(.5)<1
+    assert brightness(2)>1

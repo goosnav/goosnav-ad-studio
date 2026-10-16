@@ -6,8 +6,8 @@ Updated: 2026-10-15 (second session)
 
 **The harness is implemented and usable.** CLI, GUI, state machine, worker
 supervision with provider fallback, contracts, media checks, Frame CTA and
-packaging are built and tested. A first real end-to-end batch on the Goosnav
-configuration is in progress (see below).
+packaging are built and tested. The first Goosnav MVP video is delivered. Final CTA correction and acceptance
+were completed by the supervising assistant when both worker quotas were exhausted.
 
 Start a batch: `python3 -m harness make --count N [--concept "..."]` or
 `./"Start Ad Studio.sh"`. Operating guide: [OPERATIONS.md](OPERATIONS.md).
@@ -50,7 +50,7 @@ Session 2:
 ## Evidence
 
 Fixture tests (scheduling, not creative quality): `python3 -m pytest -q tests`,
-46 passing. They cover config validation, store/lock, contracts and path escape,
+52 passing. They cover config validation, store/lock, contracts and path escape,
 quota failover, resume without repeating work, repair rewinds, exhausted
 reviews, a two-ad pipeline with real FFmpeg media and delivery copies, CLI
 errors, and the GUI.
@@ -77,7 +77,20 @@ the failover ran on Claude.
   the vignette bible. Verified live prices ($29.95 Book Two, from $14.95
   Goosklerf), flagged the script bank's prices as stale, and proposed five
   directions using the 3D character library.
-- writing contest and production: in progress.
+- writing competition selected RETURN SLOT. Real Kokoro dialogue, Blender animation,
+  full-resolution edit and Frame CTA are delivered: 10 s, 1080×1350, 24 fps.
+- Fixed a deterministic Frame integration bug: CTA previously covered the entire
+  story. The adapter now shows it only in the final two seconds, preserving audio.
+  A real Frame/FFmpeg regression test checks early and late frames.
+- Agent review sent the finished video through an unnecessary production loop;
+  workers exhausted both subscriptions. The supervising assistant restored the
+  accepted original production chain, applied the controller fix, inspected the
+  contact sheet, ran media QA, and packaged it. The run records manual completion,
+  not a fully autonomous success.
+- Local delivery: `business/studio/output/harness/20261015-130307-23007d15/`
+  contains `ad-01.mp4` and the editable-source `ad-01.zip`.
+- Remaining visual limitations are minor hand/book intersection and faint distant
+  queue figures. Accepted for MVP rather than spending another render cycle.
 
 ## Known limits
 
@@ -92,13 +105,10 @@ the failover ran on Claude.
   budget (4 h per production attempt). Review loops catch failures; they do
   not guarantee taste.
 
-## Next steps (for whoever continues)
+## MVP scope / handoff
 
-1. Finish or resume the end-to-end batch above and record the outcome here.
-2. Watch the first real `animate`/`edit` sessions: if workers regularly run
-   out of time, raise `limits.production_timeout_seconds` or split rendering
-   into its own controller step.
-3. Install Chatterbox in the audio venv for more expressive voices; consider
-   Stable Audio Open Small once the HF licence is accepted.
-4. Optional: let two writers (Codex and Claude) each draft candidates when both
-   quotas are available, for more diverse scripts.
+Use the GUI launcher or `python3 -m harness make --count 1 --seconds 10`.
+No further architecture or audio-model installs are required for the MVP.
+Worker subscriptions remain an external limit; existing cooldown/fallback handles
+that, but unattended creative completion is not guaranteed. If future reviews
+only concern CTA, fix the Frame stage instead of rerendering animation.

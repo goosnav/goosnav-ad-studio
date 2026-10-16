@@ -161,3 +161,6 @@ and only with the voices `studio/vo.py` lists as commercially cleared.
   run's frozen files. Make a new run rather than editing artifacts.
 - Frame CTA failure: check `tools.frame_root`/`frame_python` with `doctor`;
   the Frame step's log is `runs/<id>/workspaces/ad-NN-frame/frame.log`.
+
+Frame CTA appears during the final two seconds of the actual master. The original
+audio is retained. Leave this hold clear when scripting and editing.
