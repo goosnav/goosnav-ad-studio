@@ -61,7 +61,7 @@ def test_exit_zero_without_result_fails_closed(tmp_path):
 
 def test_all_providers_unavailable_wait_without_spinning(tmp_path):
     store = Store(tmp_path); r = store.create(load_config())
-    e = Engine(store, resolve=fake_models, auth=lambda _: False)
+    e = Engine(store, resolve=fake_models, auth=lambda _: False, preflight=lambda c: [])
     e.run(r['id'])
     assert store.get(r['id'])['status'] == 'waiting_provider'
 

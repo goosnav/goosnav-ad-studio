@@ -41,8 +41,12 @@ def execute_worker(profile, work, prompt, log, cancelled, timeout, started):
 
 
 class Engine:
-    def __init__(self, store, execute=execute_worker, resolve=resolve_workers, auth=subscription_status):
+    def __init__(self, store, execute=execute_worker, resolve=resolve_workers, auth=subscription_status,
+                 preflight=None):
         self.store, self.execute, self.resolve, self.auth = store, execute, resolve, auth
+        # Real workers need real tools; scripted test workers do not.
+        from .preflight import check_dependencies
+        self.preflight = preflight or (check_dependencies if execute is execute_worker else lambda config: [])
 
     def run(self, run_id, max_steps=None):
         with self.store.worker_lock():
@@ -52,6 +56,9 @@ class Engine:
                     state['tasks'] = build_tasks(state['config']['count'])
                     self.store.save(state, 'planned')
                 self.reconcile(state)
+                problems = self.preflight(state['config'])
+                if problems:
+                    raise ContractError('Missing dependencies (fix, then resume): ' + '; '.join(problems))
                 if not state.get('sources_ready'):
                     state['sources'] = snapshot(state['config'], root/'sources')
                     state['sources_ready'] = True

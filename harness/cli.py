@@ -35,6 +35,8 @@ def doctor(config):
     checks['audio_python']=config['audio']['python'] or 'Not configured'
     checks['missing_sources']=[v for values in [config['brand']['documents'],config['sources']['scripts'],
                              config['sources']['assets']] for v in values if not v.startswith(('http://','https://')) and not Path(v).exists()]
+    from .preflight import check_dependencies
+    checks['run_blockers']=check_dependencies(config) or 'none'
     return checks
 
 

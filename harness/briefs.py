@@ -245,6 +245,12 @@ def look_brief(stage, output):
     return '\n\n' + '\n'.join(parts).format(native=native, pixel=pixel)
 
 
+TARGETED = '''TARGETED REPAIR. Your previous files are still in this workspace and the earlier accepted
+work is in accepted_inputs. Fix exactly the findings below and anything they force; keep every
+other decision, take, shot and file. Do not start over or re-render more than the fix needs.
+'''
+
+
 def brief(task, config, inputs, sources, repair='', previous_runs=''):
     guide = REPO / 'dev' / 'WORKER_GUIDE.md'
     o = config['output']
@@ -257,4 +263,4 @@ def brief(task, config, inputs, sources, repair='', previous_runs=''):
             '\n\nPROJECT\n' + json.dumps({'stage': task['stage'], 'ad': task['ad'],
              'config': config, 'source_index': sources, 'accepted_inputs': inputs,
              'tool_guide': str(guide), 'repo_read_only': str(REPO), 'previous_runs': previous_runs}, indent=2) +
-            '\n\nREPAIR/HANDOFF\n' + (repair or 'First attempt.'))
+            '\n\nREPAIR/HANDOFF\n' + (TARGETED if repair and task['revision'] else '') + (repair or 'First attempt.'))
