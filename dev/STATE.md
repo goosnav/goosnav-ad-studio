@@ -112,3 +112,12 @@ No further architecture or audio-model installs are required for the MVP.
 Worker subscriptions remain an external limit; existing cooldown/fallback handles
 that, but unattended creative completion is not guaranteed. If future reviews
 only concern CTA, fix the Frame stage instead of rerendering animation.
+
+Drive delivery attempted twice after completion, including after a quota-window
+wait. Both returned Google HTTP 403 RATE_LIMIT_EXCEEDED for rclone's shared API
+client (no bytes uploaded). MP4 also copied to local Agent Exchange; this is not
+proof of cloud delivery. Retry with:
+
+```sh
+rclone copyto /home/goosnav/Desktop/business/studio/output/harness/20261015-130307-23007d15/ad-01.mp4 agent-exchange:deliverables/codex/RETURN-SLOT-10s.mp4
+```
