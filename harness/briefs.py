@@ -91,9 +91,9 @@ Plan the whole ad second by second against TARGET LENGTH:
   read (at least 0.75 s; the turn/reveal usually 1.5 s or more). A wide shot must still show
   the subject large enough to read on a phone; show the payoff, do not imply it.
 - cast: [{speaker, character, gender: male|female|neutral, voice, performance}]. The voice
-  must fit the character: with Kokoro, a male character takes an m voice (am_onyx, am_michael,
-  am_adam, bm_george, bm_lewis...), a female one an f voice (af_heart, af_bella, af_nicole,
-  bf_emma...). The controller rejects a mismatch. Speakers on screen should sound distinct.
+  must fit the character: with Kokoro, a male character takes an m voice, a female one an f
+  voice. Prefer the voices measured clear on a phone: am_michael, bm_lewis, am_adam, am_fenrir,
+  bf_emma, af_heart, af_nicole (am_onyx and af_bella are muffled). The controller rejects a mismatch. Speakers on screen should sound distinct.
 - lines: [{speaker, text, start, end, delivery, offscreen?}] in order, at most 3 words per
   second, with air between lines. delivery says how it is spoken (volume, pace, emotion,
   pauses) and becomes the voice direction. The speaker's face must be in a beat's faces while
