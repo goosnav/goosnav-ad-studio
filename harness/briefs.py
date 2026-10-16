@@ -129,8 +129,16 @@ stretch outside dialogue more than 3 dB louder than the loudest line. Measure; d
 Keep dry stems and report provider/model/revision/source rights and any downgrade. Use real
 measured durations to create a timeline with fps, sample_rate=48000, duration, dialogue entries
 with start_sample/end_sample/text/speaker/voice, and events with sample positions. Resample correctly.
-Produce a mixed WAV. Effects/music must leave dialogue clear. Return mix and timeline, both
-relative paths declared in files, and declare stems and generation/mix source code as well.
+Make every word easy to understand on a phone speaker. Treat each voice take: high-pass about
+90 Hz, cut mud around 250-400 Hz, lift presence around 2.5-4 kHz, light compression so quiet
+syllables survive, no reverb, distortion or "radio/grille" filtering on lines. Speak the
+director's delivery through Kokoro's speed and phrasing; regenerate takes that sound wrong.
+A local speech recogniser transcribes the mix and must hear the planned words; the controller
+also normalises the final loudness, so balance the mix rather than chasing level.
+Produce a mixed WAV and dialogue_stem: a WAV of the voices alone, same length and alignment as
+the mix. The controller measures mouth movement from it (mouths.json, delivered to the
+animator). Return mix, timeline and dialogue_stem, all relative paths declared in files, and
+declare stems and generation/mix source code as well.
 A deliberately silent film still needs an explicit sound rationale and a valid timeline/mix.''',
  'animate': '''Bring the selected script to life. You own visual staging, performance, camera,
 lighting, prop interaction and animation. Use tools and iterate; do not just generate a shot list.
@@ -141,6 +149,13 @@ Render a low-cost animatic with audio, representative stills and any contact/phy
 Check composition and movement. Do not use a static color card as an animated ad. Actual audio
 durations determine speech/gesture timing. Use declared frame rate and aspect ratio; previews
 may be smaller. Render no titles, captions, URLs or end cards: Goosnav Frame writes all end text.
+Talking: the accepted audio carries mouths.json, the measured jaw curve of every speaker. Key it
+with blender/lipsync.py (lipsync.apply(mouths, {speaker: armature})) after the body animation,
+and give the face something more: a head turn, blink or gesture on the line. Frame each
+speaker's face, unblocked, while they talk, preferably three-quarter so the jaw reads past the
+snout. Save the animated scene as a .blend and return scene (that file) and rigs ({speaker:
+armature object name}); the controller opens it in Blender and rejects lines where the jaw does
+not move, the mouth flaps in silence, or the face is off camera, too small or behind a prop.
 The end card window is the director's clean product hero shot, which Frame shows under its title. Return preview (video path), source (main editable source), and declare all
 dependent files. Include production notes with the command for a full-quality render.''',
  'review': '''Review the actual animatic and source evidence. Inspect frames across the whole clip,

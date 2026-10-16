@@ -80,6 +80,23 @@ All timings must reflect actual generated audio. Preserve text/voice/seed/model
 metadata. Write viseme or envelope alignment when applicable and state which it
 is. No guessed phoneme timestamps labeled as measured alignment.
 
+## Talking characters
+
+The accepted audio artifacts include `mouths.json`: per speaker, one jaw openness value
+(0..1) per frame, measured from the dialogue stem. Key it after the body animation:
+
+```python
+import sys; sys.path.insert(0, '<repo>/blender')
+import lipsync
+lipsync.apply('<audio artifacts>/mouths.json', {'GUY': 'guy', 'FRIEND': 'gal'})
+bpy.ops.wm.save_as_mainfile(filepath='scene.blend')
+```
+
+The controller runs `harness/scene_check.py` on the saved `scene` with your `rigs` map. For
+every line it needs the speaker's jaw open on at least 30 % of the line's frames, shut while
+they are silent, and the head inside the active camera's frame, at least 3.5 % of the frame
+wide/tall and not blocked by a prop (camera ray hits the character) for 30 % of the line.
+
 ## Animation and editing
 
 Blender's Python has its own libraries. Invoke configured Blender with a local

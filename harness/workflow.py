@@ -262,10 +262,48 @@ class Engine:
             if task['stage'] == 'audio':
                 check_audio(work/data['mix'], work/data['timeline'], config,
                             self.direction(state, task['ad']) if state else None)
+                self.measure_mouths(data, work, config)
             elif task['stage'] == 'animate':
                 check_video(work/data['preview'], config, preview=True)
+                self.check_talking(state, task['ad'], data, work, config)
             else:
                 check_video(work/data['master'], config)
+
+    def measure_mouths(self, data, work, config):
+        """Jaw curves per speaker from the dialogue stem, delivered with the audio for the animator."""
+        from .lipsync import mouth_curves
+        timeline = json.loads((work/data['timeline']).read_text())
+        if not timeline['dialogue']:
+            return
+        declared = {f['path'] for f in data['files']}
+        if data.get('dialogue_stem') not in declared:
+            raise ContractError('dialogue_stem must name a declared WAV of the voices alone, aligned to the mix')
+        mouths = mouth_curves(work/data['dialogue_stem'], timeline, config['output']['fps'])
+        (work/'mouths.json').write_text(json.dumps(mouths))
+        data['files'] = [f for f in data['files'] if f['path'] != 'mouths.json'] + [{'path': 'mouths.json', 'kind': 'timeline'}]
+        data['mouths'] = 'mouths.json'
+
+    def check_talking(self, state, ad, data, work, config):
+        """Each speaker's jaw moves on their lines and their face is on camera (saved scene)."""
+        audio = next((t['result'] for t in (state or {}).get('tasks', []) if t['ad'] == ad and t['stage'] == 'audio'), None)
+        if not audio:
+            return
+        timeline = json.loads(Path(audio['timeline']).read_text())
+        if not timeline['dialogue']:
+            return
+        declared = {f['path'] for f in data['files']}
+        if not str(data.get('scene', '')).endswith('.blend') or data['scene'] not in declared:
+            raise ContractError('scene must name the declared, saved .blend of the animated film')
+        speakers = {line['speaker'] for line in timeline['dialogue']}
+        if not isinstance(data.get('rigs'), dict) or not speakers <= set(data['rigs']):
+            raise ContractError(f'rigs must map every speaker {sorted(speakers)} to its armature object name')
+        planned = (self.direction(state, ad) or {}).get('lines', [])
+        rate = timeline['sample_rate']
+        lines = [{'speaker': l['speaker'], 'text': l['text'], 'start': l['start_sample'] / rate,
+                  'end': l['end_sample'] / rate, 'offscreen': bool((planned[i] if i < len(planned) else {}).get('offscreen'))}
+                 for i, l in enumerate(timeline['dialogue'])]
+        from .media import check_scene
+        data['talking'] = check_scene(work/data['scene'], data['rigs'], lines, config['output']['fps'])
 
     def review_transition(self, state, task):
         if task['stage'] not in ('critique_final', 'review', 'creative_qa') or task['result']['verdict'] == 'pass':

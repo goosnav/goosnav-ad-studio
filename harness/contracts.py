@@ -134,7 +134,7 @@ def promote(data, workspace, destination):
         target.chmod(0o444)
         mapping[f['path']] = str(target)
         f.update(path=str(target), sha256=digest(target), bytes=target.stat().st_size)
-    for key in ('mix', 'timeline', 'preview', 'source', 'master'):
+    for key in ('mix', 'timeline', 'preview', 'source', 'master', 'dialogue_stem', 'mouths', 'scene'):
         if key in accepted:
             accepted[key] = mapping[accepted[key]]
     (destination / 'accepted.json').write_text(json.dumps(accepted, indent=2))
