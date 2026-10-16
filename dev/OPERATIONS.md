@@ -95,8 +95,11 @@ contract (in the first live run Haiku twice reviewed well but never wrote
 
 A quota/usage-limit error puts that provider on cooldown
 (`limits.provider_cooldown_seconds`, default 1 h) and the same role moves to
-the other CLI. Writers never downgrade to a cheaper tier. If every route is
-unavailable the run stops as `waiting_provider`; `resume` it later. API-key
+the other CLI. Writers never downgrade to a cheaper tier. Both CLIs report when their limit resets ("resets 5:40pm", "try again at
+4:24 PM"); that time becomes the cooldown. Quota failures do not use up a task's
+repair budget. If every route is cooling down, `make`/`resume`/`retry` sleep until
+the earliest reset and continue (`--no-wait` stops at `waiting_provider` instead).
+A logged-out CLI has no cooldown, so the run stops for a person. API-key
 environment variables are removed from worker environments, so workers only
 use the logged-in subscriptions (`codex login`, `claude auth login`).
 

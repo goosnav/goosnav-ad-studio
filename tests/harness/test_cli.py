@@ -34,3 +34,25 @@ def test_cli_seconds_sets_target_length(tmp_path):
     d=json.loads(cli(tmp_path,'make','--config',str(cfg),'--seconds','15','--plan').stdout)
     assert d['config']['output']['target_seconds']==15 and d['config']['output']['max_seconds']==20
     assert cli(tmp_path,'make','--config',str(cfg),'--seconds','0','--plan').returncode==2
+
+
+def test_drive_waits_for_provider_reset_then_continues(tmp_path):
+    from harness.cli import drive
+    from harness.store import Store
+    store = Store(tmp_path); outcomes = ['waiting_provider', 'complete']; slept = []
+    class Fake:
+        def run(self, run_id, max_steps=None):
+            status = outcomes.pop(0)
+            if status == 'waiting_provider':
+                store.cooldown('claude', 90)
+            return {'id': run_id, 'status': status}
+    run = store.create({'count': 1})
+    assert drive(Fake(), store, run['id'], wait=True, sleep=slept.append)['status'] == 'complete'
+    assert 0 < sum(slept) <= 91
+    outcomes[:] = ['waiting_provider']
+    with store.connect() as db:
+        db.execute('DELETE FROM cooldowns')
+    class NoCooldown(Fake):
+        def run(self, run_id, max_steps=None):
+            return {'id': run_id, 'status': 'waiting_provider'}
+    assert drive(NoCooldown(), store, run['id'], wait=True, sleep=slept.append)['status'] == 'waiting_provider'

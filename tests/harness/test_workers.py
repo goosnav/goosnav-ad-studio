@@ -55,3 +55,19 @@ def test_cancel_terminates_process(tmp_path):
     result = supervise([sys.executable, '-c', 'import time; time.sleep(30)'],
         cwd=tmp_path, prompt='', log=tmp_path/'log', timeout=10, cancelled=lambda: True)
     assert result['kind'] == 'cancelled'
+
+
+def test_subscription_session_limits_are_quota():
+    line = json.dumps({'type': 'result', 'is_error': True, 'api_error_status': 429,
+                       'result': "You've hit your session limit · resets 5:40pm (America/Los_Angeles)"})
+    assert classify(1, line) == 'quota'
+    assert classify(1, "You've hit your session limit") == 'quota'
+
+
+def test_reset_time_becomes_cooldown():
+    from datetime import datetime
+    from harness.workers import reset_delay
+    now = datetime(2026, 10, 15, 17, 0)
+    assert reset_delay('session limit · resets 5:40pm (America/Los_Angeles)', now) == 40 * 60 + 60
+    assert reset_delay('try again at 4:24 PM.', now) == (23 * 60 + 24) * 60 + 60   # tomorrow
+    assert reset_delay('usage limit, no time given', now) is None

@@ -1,7 +1,9 @@
 """Native CLI workers. No API SDK, shell interpolation, or hidden model fallback."""
+from datetime import datetime, timedelta
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import time
@@ -53,6 +55,8 @@ def classify(code, output):
     for line in output.splitlines():
         try:
             e = json.loads(line)
+            if e.get('api_error_status') == 429:
+                return 'quota'
             if e.get('type') in ('error', 'turn.failed') or e.get('is_error'):
                 terminal.append(json.dumps(e))
         except (ValueError, AttributeError):
@@ -63,7 +67,7 @@ def classify(code, output):
         s = '\n'.join(terminal).lower()
     for kind, words in {
         'quota': ['rate limit', 'rate_limit', 'usage limit', 'usage_limit', 'quota', 'out of credits',
-                  'hit your limit', 'too many requests', 'limit reached'],
+                  'hit your limit', 'session limit', 'too many requests', 'limit reached'],
         'context': ['context window', 'context_length', 'context limit', 'max_tokens', 'max_turns'],
         'auth': ['authentication', 'unauthorized', 'not logged in', 'login required',
                  'token_expired', 'log in again', 'invalid_api_key', 'invalid login', 'login expired'],
@@ -73,6 +77,19 @@ def classify(code, output):
         if any(w in s for w in words):
             return kind
     return 'crash'
+
+
+def reset_delay(text, now=None):
+    """Seconds until a reset the CLI announced ("resets 5:40pm", "try again at 4:24 PM"), plus a minute."""
+    m = re.search(r'(?:resets|try again at)\s+(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m', text, re.I)
+    if not m:
+        return None
+    now = now or datetime.now()
+    hour = int(m[1]) % 12 + (12 if m[3].lower() == 'p' else 0)
+    target = now.replace(hour=hour, minute=int(m[2] or 0), second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return int((target - now).total_seconds()) + 60
 
 
 def terminate_group(proc):

@@ -32,6 +32,10 @@ Session 2:
 - Workers run with full access by owner decision: `claude --dangerously-skip-permissions`
   and `codex exec --dangerously-bypass-approvals-and-sandbox` (no sandbox or approval
   prompts to stall an unattended job). Live-smoked: Claude ran Blender unprompted.
+- Usage limits (found live): Claude's subscription 429 "session limit" was
+  misread as a crash, burning all attempts in seconds. Now any `api_error_status`
+  429 or "session limit" is `quota`, the announced reset time sets the cooldown,
+  quota attempts do not use up repair budget, and the CLI waits out cooldowns.
 - `output.folder`: delivered ads are copied to `<folder>/<run>/ad-NN.mp4|zip`.
   Locally `business/studio/output/harness`.
 - Target length: `output.target_seconds` (default 10). The accepted range is

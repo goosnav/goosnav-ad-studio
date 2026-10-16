@@ -7,6 +7,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 
 from .config import load_config
 from .models import resolve_workers
@@ -37,6 +38,21 @@ def doctor(config):
     return checks
 
 
+def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
+    """Run; while every provider is cooling down, sleep to the earliest reset and continue."""
+    while True:
+        result=engine.run(run_id,max_steps=max_steps)
+        delay=min([c for c in (store.cooldown(p) for p in ('codex','claude')) if c] or [0])
+        if not wait or result.get('status')!='waiting_provider' or not delay:
+            return result
+        print(f'All providers are at their usage limits; waiting {delay/60:.0f} min, then continuing '
+              f'(pause/cancel still work).',file=sys.stderr,flush=True)
+        while delay>0:
+            if store.control_value(run_id)!='run':
+                return store.get(run_id)
+            step=min(30,delay);sleep(step);delay-=step
+
+
 def main(argv=None):
     p=argparse.ArgumentParser(prog='python -m harness',description='Hands-off animated ads using your installed CLI agents.')
     p.add_argument('--home',default=os.environ.get('STUDIO_HARNESS_HOME',str(Path.home()/'.local/share/goosnav-ad-studio')))
@@ -46,8 +62,10 @@ def main(argv=None):
         q.add_argument('--concept');q.add_argument('--website');q.add_argument('--count',type=int)
         q.add_argument('--seconds',type=int,help='Target length per ad (default 10)')
         q.add_argument('--plan',action='store_true',help='Create the run without starting any agents')
+        q.add_argument('--no-wait',action='store_true',help='Stop instead of waiting out provider usage limits')
     for name in ('run','resume'):
         q=sub.add_parser(name);q.add_argument('id');q.add_argument('--steps',type=int)
+        q.add_argument('--no-wait',action='store_true',help='Stop instead of waiting out provider usage limits')
     for name in ('status','events','pause','cancel'):
         q=sub.add_parser(name);q.add_argument('id')
     q=sub.add_parser('retry');q.add_argument('id');q.add_argument('--task',required=True)
@@ -74,7 +92,7 @@ def main(argv=None):
                 store.save(result,'planned')
                 if a.cmd=='make' and not a.plan:
                     print(f'Run {result["id"]} — inspect with: python -m harness --home {str(store.root)!r} status {result["id"]}',file=sys.stderr,flush=True)
-                    result=Engine(store).run(result['id'])
+                    result=drive(Engine(store),store,result['id'],not a.no_wait)
             elif a.cmd in ('run','resume'):
                 if a.steps is not None and a.steps<0:raise ValueError('steps must be nonnegative')
                 if a.cmd=='resume':
@@ -84,10 +102,10 @@ def main(argv=None):
                             if task['status']=='cancelled':task['status']='pending'
                         store.save(result,'resumed')
                         store.control(a.id,'run')
-                result=Engine(store).run(a.id,max_steps=a.steps)
+                result=drive(Engine(store),store,a.id,not a.no_wait,a.steps)
             elif a.cmd=='retry':
                 Engine(store).prepare_retry(a.id,a.task)
-                result=Engine(store).run(a.id)
+                result=drive(Engine(store),store,a.id)
             elif a.cmd in ('pause','cancel'):
                 store.control(a.id,a.cmd);result={'id':a.id,'requested':a.cmd}
             elif a.cmd=='status':result=store.get(a.id)

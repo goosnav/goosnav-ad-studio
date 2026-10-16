@@ -10,7 +10,7 @@ from .briefs import brief
 from .contracts import ContractError, validate, promote, verify_accepted
 from .models import resolve_workers
 from .sources import snapshot
-from .workers import command, subscription_status, supervise
+from .workers import command, reset_delay, subscription_status, supervise
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'assets': 'producer', 'audio': 'producer',
@@ -189,7 +189,7 @@ class Engine:
             first = next(i for i, r in enumerate(routes) if r['provider'] == provider)
             used = sum(a.get('route', first if a['provider'] == provider else -1) == route
                        and a['revision'] == task['revision']
-                       and a.get('kind') not in ('cancelled', None) for a in task['attempts'])
+                       and a.get('kind') not in ('cancelled', 'quota', None) for a in task['attempts'])
             for _ in range(max(0, c['limits']['repairs'] + 1 - used)):
                 if self.store.control_value(state['id']) == 'cancel':
                     task['status'] = 'cancelled'; return
@@ -238,7 +238,8 @@ class Engine:
                 if attempt['kind'] == 'cancelled':
                     task['status'] = 'cancelled'; return
                 if attempt['kind'] == 'quota':
-                    self.store.cooldown(provider, c['limits']['provider_cooldown_seconds'])
+                    self.store.cooldown(provider, reset_delay(attempt.get('detail', ''))
+                                        or c['limits']['provider_cooldown_seconds'])
                 if attempt['kind'] in ('quota', 'auth', 'model', 'permission', 'dependency'):
                     unavailable.append(task['feedback']); break
         task['status'] = 'waiting_provider' if unavailable and all(

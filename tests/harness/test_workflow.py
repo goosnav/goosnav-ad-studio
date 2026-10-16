@@ -153,3 +153,21 @@ def test_cheap_reviewer_escalates_to_stronger_route_on_contract_failures(tmp_pat
     e = Engine(store, execute=worker, resolve=lambda w: {'workers': {r: routes for r in w}}, auth=lambda _: True)
     e.run(run['id'], max_steps=1)
     assert calls == ['cheap', 'strong'] and store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+
+
+def test_quota_attempts_do_not_consume_repair_budget(tmp_path):
+    store = Store(tmp_path); c = load_config(); c['limits']['repairs'] = 0
+    run = store.create(c); calls = []
+    routes = [{'provider': 'claude', 'model': 'only'}]
+    def worker(profile, work, prompt, log, cancelled, timeout, started):
+        calls.append(1)
+        if len(calls) == 1:
+            return {'kind': 'quota', 'detail': 'session limit'}
+        research_result(work); return {'kind': 'ok', 'detail': ''}
+    e = Engine(store, execute=worker, resolve=lambda w: {'workers': {r: routes for r in w}}, auth=lambda _: True)
+    e.run(run['id'], max_steps=1)
+    assert store.get(run['id'])['tasks'][0]['status'] == 'waiting_provider'
+    with store.connect() as db:
+        db.execute('DELETE FROM cooldowns')
+    e.run(run['id'], max_steps=1)
+    assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
