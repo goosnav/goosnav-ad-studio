@@ -20,6 +20,20 @@ def validate_request(request):
     return request
 
 
+# Dialogue treatment applied to every voice take: rumble off, mud down, consonants up, gentle
+# compression, safety limit. Measured on Kokoro: am_onyx's 2-5 kHz share rises about 5x.
+VOICE_CHAIN = ('highpass=f=90,equalizer=f=320:t=o:w=1.2:g=-4,equalizer=f=3200:t=o:w=1.6:g=7,'
+               'equalizer=f=6500:t=o:w=1:g=2,acompressor=threshold=-24dB:ratio=3:attack=5:release=80:makeup=4dB,'
+               'alimiter=limit=0.89')
+
+
+def polish(source, output):
+    """48 kHz PCM16 voice take with VOICE_CHAIN applied (FFmpeg only; importable anywhere)."""
+    import subprocess
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(source), '-af', VOICE_CHAIN + ',aresample=48000',
+                    '-ar', '48000', '-c:a', 'pcm_s16le', str(output)], check=True)
+
+
 def generate(request, output):
     request=validate_request(request)
     import numpy as np
@@ -78,7 +92,12 @@ def generate(request, output):
     output=Path(output).resolve();output.parent.mkdir(parents=True,exist_ok=True)
     native=output.with_suffix('.native.wav');sf.write(native,signal,rate,subtype='PCM_16')
     import subprocess
-    subprocess.run(['ffmpeg','-v','error','-y','-i',str(native),'-ar','48000','-c:a','pcm_s16le',str(output)],check=True)
+    dry=output.with_suffix('.dry.wav')
+    subprocess.run(['ffmpeg','-v','error','-y','-i',str(native),'-ar','48000','-c:a','pcm_s16le',str(dry)],check=True)
+    if provider!='stable-audio' and request.get('polish',True):
+        polish(dry,output)   # the take to use; .dry.wav keeps the untreated voice
+    else:
+        dry.replace(output)
     info=sf.info(output)
     cached=[]
     for entry in scan_cache_dir().repos:
@@ -88,6 +107,7 @@ def generate(request, output):
               'cached_revisions':cached,'request':request,'sample_rate':info.samplerate,
               'channels':info.channels,'frames':info.frames,'duration':info.duration,
               'wall_seconds':round(time.monotonic()-started,3),'device':device,
+              'polish':VOICE_CHAIN if provider!='stable-audio' and request.get('polish',True) else None,
               'revision_note':'Pinned snapshot' if resolved_revision else 'Provider-managed weights; cache revisions recorded, exact revision not asserted'}
     output.with_suffix('.json').write_text(json.dumps(metadata,indent=2))
     return metadata

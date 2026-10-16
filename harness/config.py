@@ -26,7 +26,7 @@ DEFAULTS = {
                # (title, picture, link); full: the whole ad is framed like a Frame post.
                'frame': 'end_card', 'end_card_seconds': 2.5,
                # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
-               'look': 'clean'},
+               'look': 'clean', 'loudness': -14},
     'workers': {'researcher': profiles('balanced'), 'writer': profiles('quality'),
                 # Cheap reviewers first; a stronger route only after they fail the contract.
                 'critic': profiles('economy') + profiles('balanced'), 'selector': profiles('quality'),
@@ -36,7 +36,7 @@ DEFAULTS = {
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'repairs': 2, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
-    'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '',
+    'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},
     'tools': {'blender': 'blender', 'ffmpeg': 'ffmpeg', 'ffprobe': 'ffprobe',
               'frame_root': '', 'frame_python': ''},
@@ -109,6 +109,10 @@ def load_config(path=None, overrides=None):
         raise ConfigError('output dimensions must be even and between 64 and 4096')
     if o['target_seconds'] > 300 or o['max_seconds'] > 390 or o['fps'] > 60:
         raise ConfigError('invalid output duration or fps')
+    if type(o['loudness']) not in (int, float) or not -24 <= o['loudness'] <= -9:
+        raise ConfigError('output.loudness is integrated LUFS between -24 and -9 (social video: -14)')
+    if not isinstance(c['audio']['asr_model'], str) or not c['audio']['asr_model']:
+        raise ConfigError('audio.asr_model must name a Hugging Face speech-recognition model')
     if o['look'] not in ('clean', 'ps1'):
         raise ConfigError('output.look must be clean or ps1')
     if o['frame'] not in ('end_card', 'full'):

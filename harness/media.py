@@ -9,6 +9,7 @@ import wave
 import zipfile
 
 from .contracts import ContractError, digest
+from .speech import normalize_loudness
 from .workers import supervise
 
 
@@ -153,8 +154,9 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
     enabled=o['cta'] and config['website'] and title and not title.lower().startswith('none')
     if not enabled and look=='clean':
         shutil.copy2(master,destination)
-        return {'summary':'CTA skipped by project/script policy', 'master':'final.mp4',
-                'files':[{'path':'final.mp4','kind':'video'}]}
+        level=normalize_loudness(destination,config)
+        return {'summary':f'CTA skipped by project/script policy; loudness {level["integrated"]} LUFS',
+                'master':'final.mp4','loudness':level,'files':[{'path':'final.mp4','kind':'video'}]}
     tools=config['tools']; root=Path(tools['frame_root'])
     python=tools['frame_python']
     if not tools['frame_root'] or not (root/'app/src/goosnav_frame').is_dir() or not Path(python).is_file():
@@ -204,14 +206,15 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
          '-movflags','+faststart',str(destination)],timeout=config['limits']['production_timeout_seconds'])
     for job in jobs:
         Path(job['output']).unlink()
+    level=normalize_loudness(destination,config)
     check_video(destination,config)
     files=[{'path':'final.mp4','kind':'video'},{'path':'frame.json','kind':'source'}]
     if enabled:
         files.insert(1,{'path':'end_card.png','kind':'image'})
     what=(f'Frame {o["frame"].replace("_"," ")} from {start:.2f} s: "{title}" + {link_text(config["website"])}'
           if enabled else 'CTA skipped by project/script policy')
-    return {'summary':f'{what}; {look} look; audio kept from the edit','master':'final.mp4',
-            'end_card_start':start if enabled else None,'files':files}
+    return {'summary':f'{what}; {look} look; edit audio at {level["integrated"]} LUFS','master':'final.mp4',
+            'end_card_start':start if enabled else None,'loudness':level,'files':files}
 
 
 def check_final_mix(path, timeline, config, work):

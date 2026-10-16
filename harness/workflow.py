@@ -263,6 +263,11 @@ class Engine:
                 check_audio(work/data['mix'], work/data['timeline'], config,
                             self.direction(state, task['ad']) if state else None)
                 self.measure_mouths(data, work, config)
+                timeline = json.loads((work/data['timeline']).read_text())
+                if timeline['dialogue']:
+                    from .speech import check_presence, check_speech
+                    data['speech'] = {'presence': check_presence(work/data['dialogue_stem'], timeline),
+                                      'recognised': check_speech(work/data['mix'], timeline, config)}
             elif task['stage'] == 'animate':
                 check_video(work/data['preview'], config, preview=True)
                 self.check_talking(state, task['ad'], data, work, config)
@@ -336,6 +341,12 @@ class Engine:
                 report = check_video(result('frame')['master'], state['config'])
                 timeline = json.loads(Path(result('audio')['timeline']).read_text())
                 report['mix'] = check_final_mix(result('frame')['master'], timeline, state['config'], work)
+                from .speech import check_speech, loudness, TRUE_PEAK
+                report['speech'] = check_speech(result('frame')['master'], timeline, state['config'])
+                report['loudness'] = level = loudness(result('frame')['master'])
+                target = state['config']['output']['loudness']
+                if abs(level['integrated'] - target) > 1.5 or level['true_peak'] > TRUE_PEAK + 0.5:
+                    raise ContractError(f'Final loudness {level} misses {target} LUFS / {TRUE_PEAK} dBTP')
                 (work/'qa.json').write_text(json.dumps(report, indent=2))
                 data = {'summary': 'Encoded media passed technical checks', 'files': [{'path':'qa.json','kind':'notes'}]}
             else:
