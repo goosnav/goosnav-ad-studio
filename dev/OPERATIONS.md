@@ -58,14 +58,19 @@ error, 130 interrupted (state is saved; `resume`).
 ## What happens in a run
 
 ```text
-research -> write (3 scripts per ad) -> critique -> revise -> critique_final -> select
+research -> write (3 scripts per ad) -> critique -> [revise -> critique_final] -> select
 then per selected ad:
-direct -> assets -> audio -> animate -> review -> edit -> frame (end card) -> qa -> creative_qa -> package
+direct -> assets (+storyboard) -> board_review -> audio -> animate -> review -> edit
+       -> frame (end card, loudness) -> qa -> creative_qa -> package
 ```
 
 Agent stages are separate `codex exec` / `claude -p` sessions with their own
 workspace, full local tools and a long deadline (1 h campaign, 4 h production).
-`frame`, `qa` and `package` are controller code.
+`frame`, `qa` and `package` are controller code. `revise` and `critique_final` are
+skipped when the first critique passes. `board_review` is the director looking at one
+still per beat, rendered from the blocked scene, before voices or animation exist.
+Every stage's result is checked by controller code before it is accepted; the full
+list of gates is in [WORKER_GUIDE.md](WORKER_GUIDE.md#controller-gates-what-gets-a-result-rejected).
 
 `direct` is the director: on the quality tier it writes the plan every later
 stage follows (timed beats, cast with voice and gender, timed lines, the end card

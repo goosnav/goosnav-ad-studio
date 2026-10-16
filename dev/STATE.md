@@ -1,6 +1,6 @@
 # Development state
 
-Updated: 2026-10-16 (third session)
+Updated: 2026-10-16 (fourth session)
 
 ## Current position
 
@@ -11,6 +11,33 @@ were completed by the supervising assistant when both worker quotas were exhaust
 
 Start a batch: `python3 -m harness make --count N [--concept "..."]` or
 `./"Start Ad Studio.sh"`. Operating guide: [OPERATIONS.md](OPERATIONS.md).
+
+## Session 4: quality gates before features
+
+Owner feedback on the DRAW DISTANCE export (run `20261015-232206-803b773f`): scanlines and
+jittery typed text do not work; mouths look like an afterthought; dialogue was unclear; scripts
+must specify every shot and who is speaking; the GUI fails when its port is taken. Priority:
+consistently good ads with minimal intervention before more features or bigger batches.
+
+Measured causes, then fixes:
+
+| Problem | Measured | Fix |
+|---|---|---|
+| Unclear dialogue | GUY (`am_onyx`) had 0.6 % of its energy at 2-5 kHz (clear speech ~5-10 %); final at -23 LUFS | `audio.py` polishes every take (`VOICE_CHAIN`); presence gate (-13 dB) on the dialogue stem; Whisper (local `openai/whisper-small.en`) must hear the words on the mix and the final; final normalised to -14 LUFS / -1.5 dBTP; director told which Kokoro voices are clear |
+| Mouths | Library jaw at 17 deg barely shows past the snout; nothing keyed or checked it; GUY spoke from behind the book | Controller measures `mouths.json` from the stem; `blender/lipsync.py` keys it (28 deg); `harness/scene_check.py` opens the saved `.blend` and requires jaw motion on each line, a shut mouth in silence, and the speaker's face on camera, readable and unblocked (camera ray) |
+| Who speaks / shot detail | Plans had no face or delivery fields | Writer brief: numbered shot list (camera, framing, action, who speaks, how, whose face); director plan: `faces` per beat, `delivery` per line, `offscreen` reason or the line is rejected |
+| Text and look | Frame retro mode: scanlines, RGB split, jitter, typewriter | Frame never post-processes; clean type only; `look: ps1` now only changes production (models, native low-res, nearest upscale) |
+| Slideshow animation | RETURN SLOT froze 2.4 s and 2.0 s mid-story; opening contrast 27/255; CTA overlay barely changed the picture | `check_picture`: freezes of 1.9 s or more, black gaps, washed-out stretches, and a real Frame card, on the animatic and the final. RETURN SLOT fails all four; DRAW DISTANCE passes |
+| Expensive mistakes found late | Review only after full animation | `assets` blocks the film and renders one board per beat; director `board_review` gates before audio/animation |
+| Redundant sessions | Rewrite + second critique even when the first critique passed | Skipped when the critique passes; rewinds carry a TARGETED REPAIR brief; workers get `previous_runs` to reuse assets |
+| GUI start | Fixed port, no reuse | `/health`; an Ad Studio already serving the same home is reused; a busy port moves to the next free one |
+| Late dependency failures | Discovered mid-run | `harness/preflight.py` before any agent (also in `doctor` as `run_blockers`) |
+
+Graph now: research, write, critique, [revise, critique_final], select, then per ad direct,
+assets (+boards), board_review, audio, animate, review, edit, frame, qa, creative_qa, package.
+
+Tests: 86 passing, including real-rig Blender scene checks (good / silent / blocked) and real
+FFmpeg loudness/presence/picture checks calibrated on the two earlier exports.
 
 ## Session 3: director, mix gates, Frame end card
 
