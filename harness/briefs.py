@@ -160,14 +160,14 @@ is generated from your end_card title; a wording fix there means restart direct.
 }
 
 
-LOOK_PIXEL = {'ps1': 5}  # matches media.LOOKS['ps1'] media_fx pixel: native renders align to Frame's grid
+LOOK_PIXEL = {'ps1': 5}  # native render = delivery size / 5, nearest-neighbour upscale
 
 LOOKS = {'ps1': {
  'all': '''LOOK: crunchy late-1990s/early-2000s console game (PlayStation 1 era). Not polished, not
-modern-smooth. Low-poly models, tiny unfiltered textures, hard pixel edges, wobbly vertices,
-fog where the world ends, dithered colour. Goosnav Frame adds 15-bit dither, scanlines and
-pixel type at the end; the scene itself has to look like the game, not a clean render that
-was pixelated afterwards.''',
+modern-smooth. Low-poly models, tiny unfiltered textures, hard pixel edges, fog where the
+world ends. The look comes from the scene itself. Nothing is added afterwards: no scanlines,
+no dither or CRT filters, no jitter, and no text in the picture (Goosnav Frame sets the end
+text in its clean type).''',
  'write': 'Write for that world: staging, framing and gags that play like a PS1 cutscene.',
  'direct': '''Direct it like a PS1 cutscene: blocky staging, simple readable silhouettes, stiff
 stepped character motion, hard cuts, big chunky close-ups (detail dies at this resolution:
@@ -180,13 +180,11 @@ sample-rate or bit-depth effects), simple sequenced/chip-style music if music is
 stay clear and intelligible; the mix gates still apply.''',
  'animate': '''Render the PS1 way: native resolution {native}, no anti-aliasing (Eevee filter size
 minimal, no TAA smoothing), Closest texture interpolation, flat or vertex-style lighting, no
-soft shadows/AO/bloom/motion blur/depth of field, distance fog, vertex snapping to a coarse
-screen grid (wobble), and character animation stepped on twos or threes (about 12 fps held).
-Upscale exactly {pixel}x with nearest-neighbour to the delivery size, so pixels line up with
-Frame's crunch grid. Previews may stay native size.''',
+soft shadows/AO/bloom/motion blur/depth of field, distance fog, and body animation stepped on
+twos (about 12 fps held; mouths still follow the dialogue every frame). Upscale exactly {pixel}x
+with nearest-neighbour to the delivery size. Previews may stay native size.''',
  'edit': '''Keep the PS1 render crunchy: nearest-neighbour {pixel}x upscale from {native}, hard cuts
-or a plain fade to black, no smoothing, sharpening, grading or film effects. Frame adds dither
-and scanlines afterwards.''',
+or a plain fade to black, no smoothing, sharpening, grading, scanlines or film effects.''',
  'review': 'Reject clean modern-looking frames, smooth shading, anti-aliased edges or tiny unreadable detail.',
  'creative_qa': 'Reject clean modern-looking frames, smooth shading, anti-aliased edges or tiny unreadable detail.',
 }}

@@ -120,34 +120,15 @@ def balance(title, longest=16):
     return title[:cut] + '\n' + title[cut + 1:]
 
 
-# Frame retro settings per look. ps1: late-90s console crunch. Pixel-sized type without
-# anti-aliasing, RGB split, jitter, a shadow and a typewriter with a cursor; the picture
-# pixelated to 15-bit colour with ordered dither; scanlines over the whole frame.
-LOOKS = {
-    'clean': {'retro': {'enabled': False}, 'media_fx': {'mode': 'none'}},
-    'ps1': {'retro': {'enabled': True, 'pixel': 4, 'aliased': True, 'rgb_split': 2, 'scanlines': 'frame',
-                      'scanline_strength': 45, 'shadow': True, 'shadow_color': '#7f7f7f', 'jitter': True,
-                      'typewriter': True, 'type_delay': 0.15, 'cursor': True},
-            'media_fx': {'mode': 'ps1', 'pixel': 5}},
-}
-
-
-def look_settings(look, seconds=None, text_chars=0, text=True):
-    """Frame retro/media_fx for a segment. The typewriter finishes in the first half of the card."""
-    d = json.loads(json.dumps(LOOKS[look]))
-    r = d['retro']
-    if r['enabled']:
-        if not text:
-            r.update(typewriter=False, jitter=False, cursor=False)
-        elif r.get('typewriter') and seconds:
-            r['type_speed'] = round(min(200, max(12, text_chars / max(.3, seconds * .5 - r['type_delay']))), 1)
-    return d
+# Frame never post-processes the picture or animates text (owner, 2026-10-16: no scanlines,
+# crunch, jitter or typewriter). A look only changes how workers build the film itself.
+CLEAN = {'retro': {'enabled': False}, 'media_fx': {'mode': 'none'}}
 
 
 def finish_frame(master, script, config, work, cancelled, direction=None):
     """Frame writes all end text. end_card: the closing seconds become a native Frame card
     (title above the picture, link below, Frame's own fonts); full: the whole ad is framed.
-    output.look sets Frame's treatment of text and picture (clean or ps1). The ad's audio
+    Frame's type is always clean (CLEAN); output.look only affects production. The ad's audio
     runs straight through."""
     work=Path(work).resolve(); destination=work/'final.mp4'; master=str(Path(master).resolve())
     o=config['output']; look=o.get('look','clean')
@@ -175,11 +156,11 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
     export_settings={'format':'mp4','fps':o['fps'],'quality':'high'}
     jobs=[]
     if start>0:
-        # The story keeps the edit's picture; only the look is applied, never text.
+        # The story keeps the edit's picture untouched, never text.
         jobs.append({'output':str(work/'story.mp4'),'settings':{
             'canvas':{**canvas,'layout':'overlay'},'title':{'visible':False},'link':{'visible':False},
             'media':{'fit':'cover','trim_start':0,'trim_duration':start,'keep_audio':False},
-            'export':export_settings,**look_settings(look,text=False)}})
+            'export':export_settings,**CLEAN}})
     if enabled:
         text=balance(title); link=link_text(config['website'])
         jobs.append({'output':str(work/'card.mp4'),'still':str(work/'end_card.png'),
@@ -187,7 +168,7 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
             'canvas':{**canvas,'layout':'stacked'},'title':{'visible':True,'text':text},
             'link':{'visible':True,'text':link},
             'media':{'fit':'contain','trim_start':start,'keep_audio':False},
-            'export':export_settings,**look_settings(look,duration-start,len(text)+len(link))}})
+            'export':export_settings,**CLEAN}})
     request=work/'frame.json';request.write_text(json.dumps({'root':str(root),'input':master,
         'scale':o['width']/1080,'jobs':jobs},indent=2))
     runner=Path(__file__).with_name('frame_runner.py')

@@ -78,7 +78,7 @@ def test_long_end_titles_break_into_two_big_lines():
     assert balance('The card game nobody asked for') == 'The card game\nnobody asked for'
 
 
-def test_ps1_look_crunches_the_story_and_types_the_end_text(tmp_path):
+def test_frame_text_is_clean_for_every_look(tmp_path):
     from pathlib import Path
     if not Path('harness.local.json').is_file():
         pytest.skip('local Frame config unavailable')
@@ -97,6 +97,6 @@ def test_ps1_look_crunches_the_story_and_types_the_end_text(tmp_path):
         return r.stdout
     story=gray(1)
     rows=[sum(story[y*432:(y+1)*432])/432 for y in range(0,540)]
-    assert max(rows)-min(rows)>15                     # scanlines over the story picture
+    assert max(rows)-min(rows)<3                      # story picture untouched: no scanlines/crunch
     ink=lambda f:sum(v<60 for v in f[:432*120])       # dark title pixels in the top band
-    assert ink(gray(2.1)) < ink(gray(3.8))            # the typewriter is still typing early on
+    assert ink(gray(2.1)) > 0 and abs(ink(gray(2.1))-ink(gray(3.8))) < 50   # whole title at once, steady
