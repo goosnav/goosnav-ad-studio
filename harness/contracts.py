@@ -11,7 +11,8 @@ class ContractError(ValueError):
 
 # Where a review may send an ad back to. The reviewer picks the earliest stage that is
 # actually wrong, so a bad cut does not re-render the animation and a bad mix does not re-cast.
-RESTARTS = {'review': ('direct', 'assets', 'audio', 'animate'),
+RESTARTS = {'board_review': ('direct', 'assets'),
+            'review': ('direct', 'assets', 'audio', 'animate'),
             'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit')}
 
 
@@ -73,7 +74,7 @@ def validate(stage, data, workspace, context):
             ids.append(script['id'])
         if len(set(ids)) != len(ids):
             raise ContractError('Script IDs must be unique')
-    elif stage in ('critique', 'critique_final', 'review', 'creative_qa'):
+    elif stage in ('critique', 'critique_final', 'board_review', 'review', 'creative_qa'):
         if data.get('verdict') not in ('pass', 'revise'):
             raise ContractError('Review verdict must be pass or revise')
         if not isinstance(data.get('findings'), list):
@@ -87,7 +88,7 @@ def validate(stage, data, workspace, context):
             raise ContractError('Review cannot pass unresolved blockers')
         if data['verdict'] == 'revise' and not data['findings']:
             raise ContractError('Revision needs actionable findings')
-        if stage in RESTARTS and data['verdict'] == 'revise' and data.get('restart', 'audio') not in RESTARTS[stage]:
+        if stage in RESTARTS and data['verdict'] == 'revise' and data.get('restart', RESTARTS[stage][-1]) not in RESTARTS[stage]:
             raise ContractError(f'restart must be one of {", ".join(RESTARTS[stage])}')
     elif stage == 'direct':
         if not isinstance(data.get('direction'), dict):

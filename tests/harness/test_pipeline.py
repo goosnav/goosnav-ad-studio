@@ -30,7 +30,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         if stage=='research':d.update(brand_brief='fictional',creative_directions='object comedy',references=[])
         elif stage in ('write','revise'):
             d['scripts']=[dict(id=str(i),title='fixture',premise='test',script='test',visual_direction='motion',product='demo',cta='none') for i in range(6)]
-        elif stage in ('critique','critique_final','review','creative_qa'):
+        elif stage in ('critique','critique_final','board_review','review','creative_qa'):
             d.update(verdict='pass',findings=[])
             if stage=='review' and review_count[0]==0:
                 d.update(verdict='revise',findings=[dict(target='0.5s',severity='important',problem='test repair',fix='rebuild')])
@@ -42,6 +42,8 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         elif stage=='assets':
             (work/'manifest.txt').write_text('original test source');file('manifest.txt','manifest')
             d['assets']=[dict(name='testsrc',source='generated',rights='test only',proxy=False)]
+            subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=64x64','-frames:v','1',str(work/'b0.png')],check=True)
+            file('b0.png','image');d['boards']=[dict(beat=0,image='b0.png')]
         elif stage=='audio':
             shutil.copy2(audio,work/'mix.wav');file('mix.wav','audio')
             (work/'timeline.json').write_text(json.dumps(dict(fps=24,sample_rate=48000,duration=1,
@@ -61,6 +63,9 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
     assert state['status']=='complete',state.get('error') or [(t['id'],t['status'],t['feedback']) for t in state['tasks']]
     assert len([t for t in state['tasks'] if t['stage']=='package' and t['status']=='succeeded'])==2
     assert calls.count('ad-01-animate')==2 and calls.count('ad-01-direct')==1
+    # A passing first critique makes the rewrite and second critique redundant.
+    assert 'campaign-revise' not in calls and 'campaign-critique_final' not in calls
+    assert calls.count('ad-01-board_review')==1
     out=tmp_path/'delivered'/s['id']
     assert sorted(f.name for f in out.iterdir())==['ad-01.mp4','ad-01.zip','ad-02.mp4','ad-02.zip']
     before=list(calls);engine.run(s['id']);assert calls==before

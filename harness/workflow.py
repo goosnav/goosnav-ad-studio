@@ -15,9 +15,9 @@ from .workers import command, reset_delay, subscription_status, supervise
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'assets': 'producer', 'audio': 'producer',
          'animate': 'producer', 'review': 'director', 'edit': 'producer', 'creative_qa': 'director',
-         'direct': 'director'}
+         'direct': 'director', 'board_review': 'director'}
 CAMPAIGN = ['research', 'write', 'critique', 'revise', 'critique_final', 'select']
-PRODUCTION = ['direct', 'assets', 'audio', 'animate', 'review', 'edit', 'frame', 'qa', 'creative_qa', 'package']
+PRODUCTION = ['direct', 'assets', 'board_review', 'audio', 'animate', 'review', 'edit', 'frame', 'qa', 'creative_qa', 'package']
 
 
 def build_tasks(count):
@@ -201,7 +201,7 @@ class Engine:
                 result_file = work/'result.json'
                 if result_file.exists():
                     result_file.rename(work/f'result.previous-{number}.json')
-                prompt = brief(task, c, self.inputs(state, task), state['sources'], task['feedback'])
+                prompt = brief(task, c, self.inputs(state, task), state['sources'], task['feedback'], str(self.store.root/'runs'))
                 (work/'TASK.md').write_text(prompt)
                 log = root/'logs'/f'{task["id"]}-{number}.jsonl'
                 attempt['log'] = str(log)
@@ -257,6 +257,8 @@ class Engine:
         if task['stage'] == 'direct':
             from .direction import check_direction
             check_direction(data['direction'], config)
+        if task['stage'] == 'assets':
+            self.check_boards(state, task['ad'], data, config)
         if task['stage'] in ('audio', 'animate', 'edit'):
             from .media import check_audio, check_video
             if task['stage'] == 'audio':
@@ -273,6 +275,22 @@ class Engine:
                 self.check_talking(state, task['ad'], data, work, config)
             else:
                 check_video(work/data['master'], config)
+
+    def check_boards(self, state, ad, data, config):
+        """One storyboard still per directed beat (and the end-card picture), rendered from the scene."""
+        direction = self.direction(state, ad) if state else None
+        if direction is None:
+            return
+        declared = {f['path'] for f in data['files']}
+        boards = data.get('boards')
+        if not isinstance(boards, list) or not all(isinstance(b, dict) and b.get('image') in declared for b in boards):
+            raise ContractError('boards must list {beat, image} with every image a declared file')
+        if any(not b['image'].lower().endswith(('.png', '.jpg', '.jpeg')) for b in boards):
+            raise ContractError('board images must be PNG or JPEG stills rendered from the blocked scene')
+        wanted = set(range(len(direction['beats']))) | ({'end_card'} if direction.get('end_card') else set())
+        missing = wanted - {b.get('beat') for b in boards}
+        if missing:
+            raise ContractError(f'Storyboard is missing beats {sorted(missing, key=str)}')
 
     def measure_mouths(self, data, work, config):
         """Jaw curves per speaker from the dialogue stem, delivered with the audio for the animator."""
@@ -311,7 +329,16 @@ class Engine:
         data['talking'] = check_scene(work/data['scene'], data['rigs'], lines, config['output']['fps'])
 
     def review_transition(self, state, task):
-        if task['stage'] not in ('critique_final', 'review', 'creative_qa') or task['result']['verdict'] == 'pass':
+        if task['stage'] == 'critique' and task['result']['verdict'] == 'pass':
+            # Nothing to fix: the drafts stand as the revision and this critique as the final one.
+            stage = {t['stage']: t for t in state['tasks'] if t['ad'] is None}
+            for name, source in (('revise', 'write'), ('critique_final', 'critique')):
+                if stage[name]['status'] == 'pending':
+                    stage[name].update(status='succeeded', result={**stage[source]['result'], 'skipped': True},
+                                       feedback=f'Skipped: the first critique passed; reusing {source}.')
+            self.store.save(state, 'revision_skipped', {'task': task['id']})
+            return
+        if task['stage'] not in ('critique_final', 'board_review', 'review', 'creative_qa') or task['result']['verdict'] == 'pass':
             return
         if task['revision'] >= state['config']['limits']['repairs']:
             # Out of repair rounds: only blockers need a human. Other notes travel downstream.
@@ -320,7 +347,8 @@ class Engine:
             else:
                 task['result']['accepted_with_notes'] = True
             return
-        start_stage = 'revise' if task['stage'] == 'critique_final' else task['result'].get('restart', 'audio')
+        default = {'critique_final': 'revise', 'board_review': 'assets'}.get(task['stage'], 'audio')
+        start_stage = 'revise' if task['stage'] == 'critique_final' else task['result'].get('restart', default)
         feedback = json.dumps(task['result'], indent=2)
         self.rewind(state,task['ad'],start_stage,feedback)
         self.store.save(state, 'revision_requested', {'task': task['id']})

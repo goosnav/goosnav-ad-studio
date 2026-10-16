@@ -111,13 +111,30 @@ Plan the whole ad second by second against TARGET LENGTH:
 Keep the selected script's idea; you may cut lines, simplify or re-stage it so it plays in
 the time. Return direction (the object above) and declare a direction.md with the reasoning
 and any scratch-take measurements.''',
- 'assets': '''Prepare the selected ad's storyboard and assets. Inspect the configured 3D library,
-photos, footage and supplied art. Reuse suitable rigs, textures and clips; create new props or
-supporting 3D objects where useful. Original product artwork must remain accurate. Do not alter
-shared assets. Keep a manifest of actual paths/hashes/source/rights, dimensions/rig conventions,
-and what will be created by the animation script. No unresolved proxy may enter production.
-Return assets: [{name, source, rights, proxy: false}], and declare the manifest/storyboard/source
-files. An original procedural object can be described in the manifest for construction later.''',
+ 'assets': '''Prepare the assets and storyboard for the selected ad, from the director's plan.
+Inspect the configured 3D library, photos, footage and supplied art, and reuse before you build:
+suitable rigs, products, props, sets, voices or scene code from the library and from earlier runs
+(previous_runs in PROJECT holds their accepted artifacts, read-only). Create new props or
+supporting objects only where needed. Original product artwork must remain accurate. Do not
+alter shared assets. Then BLOCK THE FILM: build the real scene in Blender (sets, characters in
+their poses, products, one camera per beat as the director specified) and render one still per
+beat at preview size, plus the end-card picture. These boards are the cheap place to find out
+that a shot is unreadable, a face is hidden, the product is small or the pacing is wrong, before
+voices and animation are made. Save the blocked scene (.blend and its build script) for the
+animator to continue from. Keep a manifest of actual paths/hashes/source/rights, dimensions/rig
+conventions and what is new. No unresolved proxy may enter production.
+Return assets: [{name, source, rights, proxy: false}], boards: [{beat: index into
+direction.beats or "end_card", image: still path}], and declare manifest, boards, scene and
+source files.''',
+ 'board_review': '''You are the director, reviewing the storyboard before anything expensive is made.
+Look at every board image against your beat sheet, at phone size. Reject a board, and the plan
+if it deserves it, for: a weak or confusing idea; subjects too small or lost in the frame; a
+speaker whose face is hidden, off frame or too small while they talk; the product unclear, tiny,
+wrong or missing where it matters; staging that will not read with the sound off; pacing that
+crams the turn or holds too long; anything that would need on-screen text to make sense. Do not
+pass a board set you would not want animated. Return verdict pass|revise and findings
+[{target: beat/board, severity: blocking|important|minor, problem, fix}]; with revise, set
+restart to direct (the plan or concept is wrong) or assets (the plan is right, the boards are not).''',
  'audio': '''Direct the performance and sound for this ad. Generate/select voice takes, effects,
 ambience and appropriate music, or make an intentional no-voice/no-music choice. Use local models
 through the configured interpreter; the harness audio CLI is documented in the provided tool
@@ -140,7 +157,8 @@ the mix. The controller measures mouth movement from it (mouths.json, delivered 
 animator). Return mix, timeline and dialogue_stem, all relative paths declared in files, and
 declare stems and generation/mix source code as well.
 A deliberately silent film still needs an explicit sound rationale and a valid timeline/mix.''',
- 'animate': '''Bring the selected script to life. You own visual staging, performance, camera,
+ 'animate': '''Bring the selected script to life, continuing from the accepted storyboard scene in the assets
+artifacts (copy it here; do not rebuild what is already blocked). You own visual staging, performance, camera,
 lighting, prop interaction and animation. Use tools and iterate; do not just generate a shot list.
 Follow the director's beat sheet: shot sizes, timings and what each beat must show. Read the
 asset manifest and measured audio timeline. Write editable Blender/Python source or
@@ -227,7 +245,7 @@ def look_brief(stage, output):
     return '\n\n' + '\n'.join(parts).format(native=native, pixel=pixel)
 
 
-def brief(task, config, inputs, sources, repair=''):
+def brief(task, config, inputs, sources, repair='', previous_runs=''):
     guide = REPO / 'dev' / 'WORKER_GUIDE.md'
     o = config['output']
     card = (f" The last {o['end_card_seconds']} s are the Goosnav Frame end card." if o['cta'] and o['frame'] == 'end_card'
@@ -238,5 +256,5 @@ def brief(task, config, inputs, sources, repair=''):
     return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] + length + look_brief(task['stage'], o) +
             '\n\nPROJECT\n' + json.dumps({'stage': task['stage'], 'ad': task['ad'],
              'config': config, 'source_index': sources, 'accepted_inputs': inputs,
-             'tool_guide': str(guide), 'repo_read_only': str(REPO)}, indent=2) +
+             'tool_guide': str(guide), 'repo_read_only': str(REPO), 'previous_runs': previous_runs}, indent=2) +
             '\n\nREPAIR/HANDOFF\n' + (repair or 'First attempt.'))
