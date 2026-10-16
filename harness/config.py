@@ -21,14 +21,20 @@ DEFAULTS = {
     'sources': {'assets': [], 'scripts': [], 'inspiration': []},
     # min/max 0 = derive an accepted range around the target (80-130 %).
     'output': {'width': 1080, 'height': 1350, 'fps': 24, 'target_seconds': 10,
-               'min_seconds': 0, 'max_seconds': 0, 'cta': True, 'folder': ''},
+               'min_seconds': 0, 'max_seconds': 0, 'cta': True, 'folder': '',
+               # Frame writes the end text. end_card: the last seconds become a Frame card
+               # (title, picture, link); full: the whole ad is framed like a Frame post.
+               'frame': 'end_card', 'end_card_seconds': 2.5},
     'workers': {'researcher': profiles('balanced'), 'writer': profiles('quality'),
                 # Cheap reviewers first; a stronger route only after they fail the contract.
                 'critic': profiles('economy') + profiles('balanced'), 'selector': profiles('quality'),
-                'producer': profiles('balanced'), 'checker': profiles('economy') + profiles('balanced')},
+                'producer': profiles('balanced'),
+                # The director plans pacing, casting and the end card, then reviews the cuts.
+                'director': profiles('quality')},
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'repairs': 2, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
-    'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': 'af_heart',
+    # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
+    'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},
     'tools': {'blender': 'blender', 'ffmpeg': 'ffmpeg', 'ffprobe': 'ffprobe',
               'frame_root': '', 'frame_python': ''},
@@ -101,6 +107,10 @@ def load_config(path=None, overrides=None):
         raise ConfigError('output dimensions must be even and between 64 and 4096')
     if o['target_seconds'] > 300 or o['max_seconds'] > 390 or o['fps'] > 60:
         raise ConfigError('invalid output duration or fps')
+    if o['frame'] not in ('end_card', 'full'):
+        raise ConfigError('output.frame must be end_card or full')
+    if type(o['end_card_seconds']) not in (int, float) or not 0.5 <= o['end_card_seconds'] <= 30:
+        raise ConfigError('output.end_card_seconds must be from 0.5 to 30 (capped at half the ad)')
     if type(o['cta']) is not bool or type(c['audio']['allow_piper_fallback']) is not bool:
         raise ConfigError('cta and allow_piper_fallback must be booleans')
     for role, routes in c['workers'].items():

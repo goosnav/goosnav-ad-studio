@@ -1,6 +1,6 @@
 # Development state
 
-Updated: 2026-10-15 (second session)
+Updated: 2026-10-16 (third session)
 
 ## Current position
 
@@ -11,6 +11,36 @@ were completed by the supervising assistant when both worker quotas were exhaust
 
 Start a batch: `python3 -m harness make --count N [--concept "..."]` or
 `./"Start Ad Studio.sh"`. Operating guide: [OPERATIONS.md](OPERATIONS.md).
+
+## Session 3: director, mix gates, Frame end card
+
+The first delivered ad (RETURN SLOT) was rejected by the owner as very bad. Measured causes:
+
+- Buried dialogue. Lines sat around -27 dBFS while the wind bed's median was -19.6
+  and the chute peaked at -9.7. The audio worker reported "16 dB voice over FX" and
+  nothing checked it.
+- Miscasting. The config default voice `af_heart` (female) voiced the male borrower.
+- Pacing. Three lines were crammed into 3.3 s over a static medium shot. The reveal
+  was a few specks in a wide shot, and the opening wide held 1.8 s on a tiny figure.
+- End text was a 56 px Frame overlay over a 3D shot, not Frame's own layout.
+
+Changes:
+
+- `direct` stage (role `director`, quality tier) after `select`. It writes beats, cast,
+  timed lines, the end card and mix direction. `harness/direction.py` validates it.
+  The director also runs `review` and `creative_qa` (the `checker` role is gone).
+- Mix gates (`check_mix`) on the audio stage and again on the finished video in `qa`.
+  `check_cast` requires each planned line, in order, with its cast voice. The real
+  RETURN SLOT mix is a regression test and is rejected.
+- `finish_frame` makes a native Frame stacked end card from the last
+  `end_card_seconds` of the master. It uses Frame's fonts and sizes, a balanced
+  two-line title, white ground and the blue link, and saves `end_card.png`.
+  `output.frame: full` frames the whole ad.
+- `restart` on review results rewinds only from the named stage.
+- No default voice. Briefs for every stage carry the end-card budget, phone
+  readability and the "no baked text" rule.
+
+Tests: 67 passing (`python3 -m pytest -q tests`).
 
 ## What was built
 
@@ -113,11 +143,7 @@ Worker subscriptions remain an external limit; existing cooldown/fallback handle
 that, but unattended creative completion is not guaranteed. If future reviews
 only concern CTA, fix the Frame stage instead of rerendering animation.
 
-Drive delivery attempted twice after completion, including after a quota-window
-wait. Both returned Google HTTP 403 RATE_LIMIT_EXCEEDED for rclone's shared API
-client (no bytes uploaded). MP4 also copied to local Agent Exchange; this is not
-proof of cloud delivery. Retry with:
-
-```sh
-rclone copyto /home/goosnav/Desktop/business/studio/output/harness/20261015-130307-23007d15/ad-01.mp4 agent-exchange:deliverables/codex/RETURN-SLOT-10s.mp4
-```
+Drive delivery: the first two attempts (2026-10-15) hit Google HTTP 403
+RATE_LIMIT_EXCEEDED on rclone's shared client. A retry on 2026-10-16 06:00 UTC
+succeeded: `agent-exchange:deliverables/claude/20261016T060046Z-claude-RETURN-SLOT/RETURN-SLOT-10s.mp4`
+(MD5 matches the local master). A copy is also in the local Agent Exchange folder.

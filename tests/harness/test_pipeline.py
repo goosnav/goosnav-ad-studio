@@ -36,6 +36,9 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
                 d.update(verdict='revise',findings=[dict(target='0.5s',severity='important',problem='test repair',fix='rebuild')])
             if stage=='review':review_count[0]+=1
         elif stage=='select':d.update(selected=['0','1'],reason='distinct')
+        elif stage=='direct':
+            d['direction']=dict(duration=1,beats=[dict(start=0,end=1,shot='wide',picture='test pattern',sound='tone')],
+                                cast=[],lines=[],mix='tone only')
         elif stage=='assets':
             (work/'manifest.txt').write_text('original test source');file('manifest.txt','manifest')
             d['assets']=[dict(name='testsrc',source='generated',rights='test only',proxy=False)]
@@ -57,7 +60,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
     state=engine.run(s['id'])
     assert state['status']=='complete',state.get('error') or [(t['id'],t['status'],t['feedback']) for t in state['tasks']]
     assert len([t for t in state['tasks'] if t['stage']=='package' and t['status']=='succeeded'])==2
-    assert calls.count('ad-01-animate')==2
+    assert calls.count('ad-01-animate')==2 and calls.count('ad-01-direct')==1
     out=tmp_path/'delivered'/s['id']
     assert sorted(f.name for f in out.iterdir())==['ad-01.mp4','ad-01.zip','ad-02.mp4','ad-02.zip']
     before=list(calls);engine.run(s['id']);assert calls==before

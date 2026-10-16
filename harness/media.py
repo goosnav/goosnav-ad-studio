@@ -57,7 +57,7 @@ def check_video(path, config, preview=False):
             'audio':True, 'decoded':True, 'distinct_sampled_frames':len(hashes), 'sha256':digest(path)}
 
 
-def check_audio(path, timeline, config):
+def check_audio(path, timeline, config, direction=None):
     try:
         with wave.open(str(path)) as w:
             rate, frames, channels, width = w.getframerate(),w.getnframes(),w.getnchannels(),w.getsampwidth()
@@ -89,16 +89,44 @@ def check_audio(path, timeline, config):
             raise ContractError('Mix is clipped or silent despite dialogue')
         if not d['dialogue'] and not d.get('sound_rationale'):
             raise ContractError('No-dialogue films need a sound_rationale in the timeline')
-        return {'duration':frames/rate,'peak':peak/32768,'dialogue':len(d['dialogue'])}
+        from .direction import check_cast, check_mix
+        if direction is not None:
+            check_cast(d, direction)
+        levels = check_mix(path, d)
+        return {'duration':frames/rate,'peak':peak/32768,'dialogue':len(d['dialogue']),'levels':levels}
     except (wave.Error, KeyError, TypeError, ValueError) as e:
         if isinstance(e,ContractError):raise
         raise ContractError(f'Invalid audio/timeline: {e}') from e
 
 
-def finish_frame(master, script, config, work, cancelled):
+def link_text(website):
+    return website.removeprefix('https://').removeprefix('http://')
+
+
+def end_text(script, direction):
+    card = (direction or {}).get('end_card') or {}
+    return card.get('title') or script.get('cta', '')
+
+
+def balance(title, longest=16):
+    """Frame shrinks a line to fit the width; break a long title in two so it stays big."""
+    if '\n' in title or len(title) <= longest:
+        return title
+    cuts = [i for i, ch in enumerate(title) if ch == ' ']
+    if not cuts:
+        return title
+    # Prefer a sentence boundary, then the space nearest the middle.
+    cut = min(cuts, key=lambda i: (title[i - 1] not in '.!?,:;', abs(len(title) / 2 - i)))
+    return title[:cut] + '\n' + title[cut + 1:]
+
+
+def finish_frame(master, script, config, work, cancelled, direction=None):
+    """Frame writes all end text. end_card: the closing seconds become a native Frame card
+    (title above the picture, link below, Frame's own fonts); full: the whole ad is framed.
+    The picture before the card is untouched and the ad's audio runs straight through."""
     work=Path(work).resolve(); destination=work/'final.mp4'; master=str(Path(master).resolve())
-    cta=script.get('cta','')
-    enabled=config['output']['cta'] and config['website'] and not cta.lower().startswith('none')
+    title=end_text(script, direction)
+    enabled=config['output']['cta'] and config['website'] and title and not title.lower().startswith('none')
     if not enabled:
         shutil.copy2(master,destination)
         return {'summary':'CTA skipped by project/script policy', 'master':'final.mp4',
@@ -107,24 +135,58 @@ def finish_frame(master, script, config, work, cancelled):
     python=tools['frame_python']
     if not tools['frame_root'] or not (root/'app/src/goosnav_frame').is_dir() or not Path(python).is_file():
         raise ContractError('CTA requested: configure tools.frame_root and tools.frame_python')
-    o=config['output']; scale=min(o['width'],o['height'])/1080
-    settings={'canvas':{'preset':'custom','width':o['width'],'height':o['height'],'layout':'overlay'},
-              'title':{'visible':True,'text':cta,'size':max(8,round(56*scale)), 'top':round(35*scale),
-                       'outline':max(1,round(2*scale)), 'outline_color':'#ffffff'},
-              'link':{'visible':True,'text':config['website'].removeprefix('https://').removeprefix('http://'),
-                      'size':max(8,round(38*scale)),'bottom':round(40*scale)},
-              'media':{'keep_audio':True}, 'export':{'format':'mp4','fps':o['fps']}, 'retro':{'enabled':False}}
+    o=config['output']
+    probe=json.loads(run([tools['ffprobe'],'-v','error','-show_entries','format=duration','-of','json',master]).stdout)
+    duration=float(probe['format']['duration'])
+    if o['frame']=='full':
+        start=0.0
+    else:
+        card=(direction or {}).get('end_card') or {}
+        seconds=min(card.get('seconds') or o['end_card_seconds'], duration/2)
+        start=round((duration-seconds)*o['fps'])/o['fps']  # cut on a frame boundary
+    # Only content goes to Frame; its layout, fonts, sizes and link style are Frame's own,
+    # scaled from its 1080-wide defaults to this canvas.
+    settings={'canvas':{'preset':'custom','width':o['width'],'height':o['height'],'layout':'stacked',
+                        'background':'#ffffff'},
+              'title':{'visible':True,'text':balance(title)},
+              'link':{'visible':True,'text':link_text(config['website'])},
+              'media':{'fit':'contain','trim_start':start,'keep_audio':False},
+              'export':{'format':'mp4','fps':o['fps'],'quality':'high'},'retro':{'enabled':False}}
+    framed=work/'framed.mp4'
     request=work/'frame.json';request.write_text(json.dumps({'root':str(root),'input':master,
-                         'output':str(destination),'settings':settings},indent=2))
+        'output':str(framed),'still':str(work/'end_card.png'),'still_time':min(1.0,(duration-start)/2),
+        'scale':o['width']/1080,'settings':settings},indent=2))
     runner=Path(__file__).with_name('frame_runner.py')
     r=supervise([python,str(runner),str(request)],cwd=work,prompt='',log=work/'frame.log',
                 timeout=config['limits']['production_timeout_seconds'],cancelled=cancelled)
     if r['kind'] != 'ok':
         raise ContractError(f'Frame failed ({r["kind"]}): {r["detail"][-1000:]}')
-    # Frame's core can fall back to video-only if muxing fails. Do not accept it.
+    video=('[1:v]setpts=PTS-STARTPTS[v]' if start==0 else
+           f'[0:v]trim=end={start:.6f},setpts=PTS-STARTPTS[a];[1:v]setpts=PTS-STARTPTS[b];'
+           '[a][b]concat=n=2:v=1:a=0[v]')
+    run([tools['ffmpeg'],'-v','error','-y','-i',master,'-i',str(framed),'-filter_complex',
+         f'{video};[v]fps={o["fps"]},format=yuv420p[out]','-map','[out]','-map','0:a:0',
+         '-c:v','libx264','-crf','17','-preset','medium','-c:a','copy','-t',f'{duration:.6f}',
+         '-movflags','+faststart',str(destination)],timeout=config['limits']['production_timeout_seconds'])
+    framed.unlink()
     check_video(destination,config)
-    return {'summary':'CTA applied using Frame; encoded audio/video verified', 'master':'final.mp4',
-            'files':[{'path':'final.mp4','kind':'video'},{'path':'frame.json','kind':'source'}]}
+    return {'summary':f'Frame {o["frame"].replace("_"," ")} from {start:.2f} s: "{title}" + '
+                      f'{link_text(config["website"])}; audio kept from the edit',
+            'master':'final.mp4','end_card_start':start,
+            'files':[{'path':'final.mp4','kind':'video'},{'path':'end_card.png','kind':'image'},
+                     {'path':'frame.json','kind':'source'}]}
+
+
+def check_final_mix(path, timeline, config, work):
+    """The finished video's audio must still pass the mix gates at the timeline's dialogue times."""
+    from .direction import check_mix
+    wav=Path(work)/'final-audio.wav'
+    run([config['tools']['ffmpeg'],'-v','error','-y','-i',str(path),'-vn','-ac','1','-ar','48000',
+         '-c:a','pcm_s16le',str(wav)])
+    try:
+        return check_mix(wav, timeline)
+    finally:
+        wav.unlink(missing_ok=True)
 
 
 def package(inputs, state, work):

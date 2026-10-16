@@ -60,14 +60,37 @@ error, 130 interrupted (state is saved; `resume`).
 ```text
 research -> write (3 scripts per ad) -> critique -> revise -> critique_final -> select
 then per selected ad:
-assets -> audio -> animate -> review -> edit -> frame (CTA) -> qa -> creative_qa -> package
+direct -> assets -> audio -> animate -> review -> edit -> frame (end card) -> qa -> creative_qa -> package
 ```
 
 Agent stages are separate `codex exec` / `claude -p` sessions with their own
 workspace, full local tools and a long deadline (1 h campaign, 4 h production).
-`frame`, `qa` and `package` are controller code. A review that says `revise`
-rewinds to the stage it criticises (`revise` for scripts, `audio` for an ad)
-with its findings as the repair brief, up to `limits.repairs` rounds. When the
+`frame`, `qa` and `package` are controller code.
+
+`direct` is the director: on the quality tier it writes the plan every later
+stage follows (timed beats, cast with voice and gender, timed lines, the end card
+title and picture, mix direction). The controller rejects a plan with gaps between
+beats, beats under 0.75 s, lines over 3 words/s, or a Kokoro voice whose gender
+contradicts the character. The director also runs `review` (animatic) and
+`creative_qa` (final cut).
+
+Gates that are controller code, not opinion: the audio stage must voice every
+planned line in order with its cast voice, and the mix must keep dialogue as the
+lead (each line's loud half >= -24 dBFS and >= 8 dB over the median bed; nothing
+outside dialogue more than 3 dB over the loudest line). `qa` measures the finished
+video's audio again.
+
+`frame`: Goosnav Frame writes all end text. The last `output.end_card_seconds`
+(default 2.5; the director may lengthen it) become a native Frame stacked card:
+the director's title in Frame's bold type over the closing picture, the website as
+Frame's blue underlined link, white ground, Frame's own sizes scaled to the canvas.
+Everything before it is the edit's picture, untouched; the audio runs straight
+through. `output.frame: "full"` frames the whole ad instead.
+
+A review that says `revise` rewinds to the stage it names in `restart` (scripts go
+back to `revise`; an ad to `direct`, `assets`, `audio`, `animate` or, after the
+final cut, `edit`; `audio` if unnamed), with its findings as the repair brief, up
+to `limits.repairs` rounds. When the
 rounds run out, non-blocking findings travel on as notes (`accepted_with_notes`)
 and only `blocking` findings stop for a person (`needs_review`).
 
@@ -76,9 +99,9 @@ and only `blocking` findings stop for a person (`needs_review`).
 | Role | Tier | Codex (first) | Claude (backup) |
 |---|---|---|---|
 | researcher, producer | balanced | latest workhorse | `sonnet` |
-| writer, selector | quality | frontier model, high effort | `opus` |
-| critic, checker | economy | affordable model, low effort | `haiku` |
-| critic, checker (last resort) | balanced | workhorse | `sonnet` |
+| writer, selector, director | quality | frontier model, high effort | `opus` |
+| critic | economy | affordable model, low effort | `haiku` |
+| critic (last resort) | balanced | workhorse | `sonnet` |
 
 Codex models are discovered from the account's live catalog (`codex
 app-server` metadata, no inference). Claude aliases are pinned to the concrete
@@ -88,8 +111,7 @@ model observed in the first session. Override any role in the config:
 "workers": {"writer": [{"provider": "claude", "model": "opus"}, {"provider": "codex", "model": "gpt-6-astra", "effort": "high"}]}
 ```
 
-Routes are tried in order, each with `limits.repairs + 1` attempts. Critics and
-checkers only reach the balanced routes after the cheap ones fail the output
+Routes are tried in order, each with `limits.repairs + 1` attempts. Critics only reach the balanced routes after the cheap ones fail the output
 contract (in the first live run Haiku twice reviewed well but never wrote
 `result.json`).
 

@@ -9,6 +9,12 @@ class ContractError(ValueError):
     pass
 
 
+# Where a review may send an ad back to. The reviewer picks the earliest stage that is
+# actually wrong, so a bad cut does not re-render the animation and a bad mix does not re-cast.
+RESTARTS = {'review': ('direct', 'assets', 'audio', 'animate'),
+            'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit')}
+
+
 def digest(path):
     h = hashlib.sha256()
     with Path(path).open('rb') as f:
@@ -81,6 +87,11 @@ def validate(stage, data, workspace, context):
             raise ContractError('Review cannot pass unresolved blockers')
         if data['verdict'] == 'revise' and not data['findings']:
             raise ContractError('Revision needs actionable findings')
+        if stage in RESTARTS and data['verdict'] == 'revise' and data.get('restart', 'audio') not in RESTARTS[stage]:
+            raise ContractError(f'restart must be one of {", ".join(RESTARTS[stage])}')
+    elif stage == 'direct':
+        if not isinstance(data.get('direction'), dict):
+            raise ContractError('Director needs a direction object')
     elif stage == 'select':
         selected = data.get('selected')
         if not isinstance(selected, list) or not all(isinstance(x, str) for x in selected):

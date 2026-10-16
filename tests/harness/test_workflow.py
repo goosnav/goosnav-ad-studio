@@ -9,7 +9,8 @@ from harness.workflow import Engine, build_tasks
 def test_graph_has_independent_writing_and_review_steps():
     tasks = build_tasks(2)
     assert [t['stage'] for t in tasks[:7]] == [
-        'research', 'write', 'critique', 'revise', 'critique_final', 'select', 'assets']
+        'research', 'write', 'critique', 'revise', 'critique_final', 'select', 'direct']
+    assert [t['stage'] for t in tasks if t['ad'] == 0][:3] == ['direct', 'assets', 'audio']
     assert len([t for t in tasks if t['stage'] == 'package']) == 2
 
 
@@ -171,3 +172,23 @@ def test_quota_attempts_do_not_consume_repair_budget(tmp_path):
         db.execute('DELETE FROM cooldowns')
     e.run(run['id'], max_steps=1)
     assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+
+
+def test_review_restart_rewinds_only_from_the_named_stage(tmp_path):
+    store = Store(tmp_path); state = store.create(load_config()); state['tasks'] = build_tasks(1)
+    for t in state['tasks']:
+        t['status'] = 'succeeded'
+    task = next(t for t in state['tasks'] if t['stage'] == 'creative_qa')
+    task['result'] = {'summary': 'cut drags', 'verdict': 'revise', 'files': [], 'restart': 'edit',
+                      'findings': [{'target': '4s', 'severity': 'important', 'problem': 'slow', 'fix': 'trim'}]}
+    Engine(store).review_transition(state, task)
+    status = {t['stage']: t['status'] for t in state['tasks'] if t['ad'] == 0}
+    assert status['animate'] == 'succeeded' and status['audio'] == 'succeeded'
+    assert status['edit'] == 'pending' and status['frame'] == 'pending'
+    assert 'slow' in next(t for t in state['tasks'] if t['stage'] == 'edit')['feedback']
+
+
+def test_director_and_final_reviews_use_the_director_role():
+    from harness.workflow import ROLES
+    assert ROLES['direct'] == ROLES['review'] == ROLES['creative_qa'] == 'director'
+    assert [p['model'] for p in load_config()['workers']['director']] == ['auto:quality', 'auto:quality']

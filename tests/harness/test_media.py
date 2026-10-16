@@ -40,21 +40,39 @@ def test_missing_frame_does_not_silently_skip_requested_cta(tmp_path):
         finish_frame('/missing.mp4',{'cta':'Buy the book'},c,tmp_path,cancelled=lambda:False)
 
 
-def test_frame_cta_only_appears_in_final_two_seconds(tmp_path):
-    if not __import__('pathlib').Path('harness.local.json').is_file():
+def test_frame_writes_a_native_end_card_and_keeps_the_audio(tmp_path):
+    from pathlib import Path
+    if not Path('harness.local.json').is_file():
         pytest.skip('local Frame config unavailable')
     c=load_config('harness.local.json')
-    if not __import__('pathlib').Path(c['tools']['frame_python']).is_file():
+    if not Path(c['tools']['frame_python']).is_file():
         pytest.skip('local Frame runtime unavailable')
-    c['output'].update(width=320,height=400,target_seconds=3,min_seconds=3,max_seconds=3)
+    c['output'].update(width=432,height=540,target_seconds=4,min_seconds=4,max_seconds=4)
     p=tmp_path/'input.mp4'
-    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=black:s=320x400:r=24',
-        '-f','lavfi','-i','anullsrc=r=48000:cl=stereo','-t','3','-c:v','libx264',
-        '-pix_fmt','yuv420p','-c:a','aac',str(p)],check=True)
-    finish_frame(p,{'cta':'Read the book'},c,tmp_path,lambda:False)
-    def brightness(t):
-        r=subprocess.run(['ffmpeg','-v','error','-ss',str(t),'-i',str(tmp_path/'final.mp4'),
-            '-frames:v','1','-pix_fmt','gray','-f','rawvideo','-'],capture_output=True,check=True)
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=black:s=432x540:r=24',
+        '-f','lavfi','-i','sine=frequency=300:sample_rate=48000','-t','4','-c:v','libx264',
+        '-pix_fmt','yuv420p','-c:a','aac','-ar','48000',str(p)],check=True)
+    direction={'end_card':{'seconds':1.5,'title':'Read the book','picture':'black'}}
+    result=finish_frame(p,{'cta':'ignored: the director title wins'},c,tmp_path,lambda:False,direction)
+    final=tmp_path/'final.mp4'
+    assert result['end_card_start']==2.5 and (tmp_path/'end_card.png').is_file()
+    assert json.loads((tmp_path/'frame.json').read_text())['settings']['title']['text']=='Read the book'
+    def brightness(t,crop='iw:ih:0:0'):
+        r=subprocess.run(['ffmpeg','-v','error','-ss',str(t),'-i',str(final),'-frames:v','1',
+            '-vf',f'crop={crop}','-pix_fmt','gray','-f','rawvideo','-'],capture_output=True,check=True)
         return sum(r.stdout)/len(r.stdout)
-    assert brightness(.5)<1
-    assert brightness(2)>1
+    assert brightness(1)<2                      # story untouched
+    assert brightness(3.5,'iw:20:0:0')>250      # Frame's white card above the picture
+    assert brightness(3.5,'40:40:196:250')<20   # the closing picture sits inside the card
+    report=check_video(final,c)
+    assert abs(report['duration']-4)<.1
+    pcm=subprocess.run(['ffmpeg','-v','error','-ss','3','-i',str(final),'-t','0.5','-vn','-f','s16le','-ac','1','-'],
+                       capture_output=True,check=True).stdout
+    assert max(abs(int.from_bytes(pcm[i:i+2],'little',signed=True)) for i in range(0,len(pcm),2))>1000
+
+
+def test_long_end_titles_break_into_two_big_lines():
+    from harness.media import balance
+    assert balance('Read the book') == 'Read the book'
+    assert balance('Goosnav Book Two. Keep yours.') == 'Goosnav Book Two.\nKeep yours.'
+    assert balance('The card game nobody asked for') == 'The card game\nnobody asked for'

@@ -14,9 +14,10 @@ from .workers import command, reset_delay, subscription_status, supervise
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'assets': 'producer', 'audio': 'producer',
-         'animate': 'producer', 'review': 'checker', 'edit': 'producer', 'creative_qa': 'checker'}
+         'animate': 'producer', 'review': 'director', 'edit': 'producer', 'creative_qa': 'director',
+         'direct': 'director'}
 CAMPAIGN = ['research', 'write', 'critique', 'revise', 'critique_final', 'select']
-PRODUCTION = ['assets', 'audio', 'animate', 'review', 'edit', 'frame', 'qa', 'creative_qa', 'package']
+PRODUCTION = ['direct', 'assets', 'audio', 'animate', 'review', 'edit', 'frame', 'qa', 'creative_qa', 'package']
 
 
 def build_tasks(count):
@@ -129,7 +130,7 @@ class Engine:
                 raise ValueError('Retry only failed/review/waiting tasks')
             if target['status']=='needs_review':
                 feedback=json.dumps(target['result'],indent=2)
-                start='revise' if target['ad'] is None else 'assets'
+                start='revise' if target['ad'] is None else target['result'].get('restart','direct')
                 self.rewind(state,target['ad'],start,feedback)
             else:
                 target['revision']+=1;target['status']='pending';target['result']=None
@@ -227,7 +228,7 @@ class Engine:
                         if not result_file.is_file() or result_file.stat().st_size > 2 * 1024 * 1024:
                             raise ContractError('Missing result.json or result larger than 2 MB')
                         data = validate(task['stage'], json.loads(result_file.read_text()), work, context)
-                        self.validate_media(task, data, work, c)
+                        self.validate_media(task, data, work, c, state)
                         task['result'] = promote(data, work, root/'artifacts'/task['id']/f'attempt-{number}')
                         task['status'] = 'succeeded'
                         self.store.save(state, 'task_succeeded', {'task': task['id']}); return
@@ -248,11 +249,19 @@ class Engine:
         task['feedback'] = '\n'.join(unavailable) or task['feedback']
         self.store.save(state, 'task_stopped', {'task': task['id'], 'status': task['status'], 'reason': task['feedback']})
 
-    def validate_media(self, task, data, work, config):
+    def direction(self, state, ad):
+        task = next((t for t in state['tasks'] if t['ad'] == ad and t['stage'] == 'direct'), None)
+        return task['result']['direction'] if task and task['status'] == 'succeeded' else None
+
+    def validate_media(self, task, data, work, config, state=None):
+        if task['stage'] == 'direct':
+            from .direction import check_direction
+            check_direction(data['direction'], config)
         if task['stage'] in ('audio', 'animate', 'edit'):
             from .media import check_audio, check_video
             if task['stage'] == 'audio':
-                check_audio(work/data['mix'], work/data['timeline'], config)
+                check_audio(work/data['mix'], work/data['timeline'], config,
+                            self.direction(state, task['ad']) if state else None)
             elif task['stage'] == 'animate':
                 check_video(work/data['preview'], config, preview=True)
             else:
@@ -268,7 +277,7 @@ class Engine:
             else:
                 task['result']['accepted_with_notes'] = True
             return
-        start_stage = 'revise' if task['stage'] == 'critique_final' else 'audio'
+        start_stage = 'revise' if task['stage'] == 'critique_final' else task['result'].get('restart', 'audio')
         feedback = json.dumps(task['result'], indent=2)
         self.rewind(state,task['ad'],start_stage,feedback)
         self.store.save(state, 'revision_requested', {'task': task['id']})
@@ -282,9 +291,13 @@ class Engine:
         try:
             if task['stage'] == 'frame':
                 data = finish_frame(result('edit')['master'], inputs['selected_script'], state['config'], work,
-                    cancelled=lambda: self.store.control_value(state['id']) == 'cancel')
+                    cancelled=lambda: self.store.control_value(state['id']) == 'cancel',
+                    direction=self.direction(state, ad))
             elif task['stage'] == 'qa':
+                from .media import check_final_mix
                 report = check_video(result('frame')['master'], state['config'])
+                timeline = json.loads(Path(result('audio')['timeline']).read_text())
+                report['mix'] = check_final_mix(result('frame')['master'], timeline, state['config'], work)
                 (work/'qa.json').write_text(json.dumps(report, indent=2))
                 data = {'summary': 'Encoded media passed technical checks', 'files': [{'path':'qa.json','kind':'notes'}]}
             else:

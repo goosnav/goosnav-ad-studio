@@ -28,8 +28,12 @@ by the controller. Use the repository path in `TASK.md` to locate the helper:
 Kokoro voice request:
 
 ```json
-{"provider":"kokoro","text":"I need a minute.","voice":"af_heart","speed":1.0,"seed":7,"device":"cpu"}
+{"provider":"kokoro","text":"I need a minute.","voice":"am_onyx","speed":1.0,"seed":7,"device":"cpu"}
 ```
+
+Use the voice the director cast. Kokoro IDs encode language and gender: `af_`/`bf_`
+female, `am_`/`bm_` male (American/British). The controller rejects a cast whose voice
+gender contradicts the character.
 
 Chatterbox expressive voice request (requires its own installed runtime):
 
@@ -60,11 +64,17 @@ Required timeline shape:
 ```json
 {
   "fps":24,"sample_rate":48000,"duration":10,
-  "dialogue":[{"speaker":"A","text":"I need a minute.","start_sample":48000,"end_sample":120000}],
+  "dialogue":[{"speaker":"A","voice":"am_onyx","text":"I need a minute.","start_sample":48000,"end_sample":120000}],
   "events":[{"name":"die lands","sample":240000}],
   "sound_rationale":"Dry dialogue and die impact; no music."
 }
 ```
+
+Dialogue is the lead of every mix. The controller measures the mixed WAV and rejects it
+unless, for every line, the loud half of its 50 ms frames is at least -24 dBFS and 8 dB above
+the median non-dialogue level, and no 400 ms stretch outside dialogue is more than 3 dB
+louder than the loudest line. The finished video is measured again after Frame. Effects
+that should feel big get there by contrast and timing, not by burying speech.
 
 All timings must reflect actual generated audio. Preserve text/voice/seed/model
 metadata. Write viseme or envelope alignment when applicable and state which it
@@ -92,10 +102,25 @@ through final edits; changing a voice requires updating captions and movement.
 
 Final master: requested size and fps, H.264, yuv420p, 48 kHz audio, within the
 requested duration range. Even a deliberately silent film has an explicit empty
-dialogue list, sound rationale, and an audio stream. Frame adds an overlay CTA
-after edit; leave safe space and avoid duplicate copy. `cta: "none"` is supported
-when an ad should have no CTA. CTA text should be short copy only; the configured
-website supplies the destination.
+dialogue list, sound rationale, and an audio stream.
+
+Goosnav Frame writes all end text. Never render titles, URLs, captions or end cards
+into the picture. After the edit, the controller hands the last `end_card.seconds` of
+the master to Frame, which lays it out in its stacked format: the director's title in
+Frame's bold type above the picture, the web address in Frame's blue underlined link
+below, on white. That window of the master should therefore be a clean product hero
+shot (the real product model, large and square to camera). With `output.frame: full`
+Frame frames the whole ad the same way. The ad's audio runs unchanged under the card.
+`cta: "none"` is supported when an ad should have no CTA.
+
+## The director
+
+The `direct` stage writes the plan every later stage follows: contiguous beats with
+shot sizes and timings, the cast (speaker, character, gender, voice, performance),
+timed lines (at most 3 words per second), the end card (seconds, title, picture) and
+mix direction. The controller validates it. The director also reviews the animatic and
+signs off the final cut; a `revise` names `restart` (the earliest stage actually wrong)
+so a bad cut does not re-render animation and a bad mix does not re-cast.
 
 ## Review evidence
 
