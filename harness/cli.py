@@ -34,7 +34,7 @@ def doctor(config):
                     'interpreter_exists':Path(config['tools']['frame_python']).is_file()}
     checks['audio_python']=config['audio']['python'] or 'Not configured'
     checks['missing_sources']=[v for values in [config['brand']['documents'],config['sources']['scripts'],
-                             config['sources']['assets']] for v in values if not v.startswith(('http://','https://')) and not Path(v).exists()]
+                             config['sources']['assets'],config['sources']['characters'],config['sources']['inspiration']] for v in values if not v.startswith(('http://','https://')) and not Path(v).exists()]
     from .preflight import check_dependencies
     checks['run_blockers']=check_dependencies(config) or 'none'
     return checks
