@@ -192,3 +192,24 @@ def test_director_and_final_reviews_use_the_director_role():
     from harness.workflow import ROLES
     assert ROLES['direct'] == ROLES['review'] == ROLES['creative_qa'] == 'director'
     assert [p['model'] for p in load_config()['workers']['director']] == ['auto:quality', 'auto:quality']
+
+
+def test_a_repair_that_changes_nothing_is_rejected(tmp_path):
+    from harness.contracts import ContractError
+    import pytest
+    e = Engine(Store(tmp_path))
+    (tmp_path / 'b0.png').write_bytes(b'same pixels')
+    previous = {'boards': [{'beat': 0, 'image': str(tmp_path / 'b0.png')}],
+                'files': [{'path': str(tmp_path / 'b0.png'), 'sha256': __import__('harness.contracts', fromlist=['digest']).digest(tmp_path / 'b0.png')}]}
+    task = {'stage': 'assets', 'previous': previous, 'revision': 1}
+    work = tmp_path / 'w'; work.mkdir(); (work / 'b0.png').write_bytes(b'same pixels')
+    data = {'boards': [{'beat': 0, 'image': 'b0.png'}], 'files': [{'path': 'b0.png', 'kind': 'image'}]}
+    with pytest.raises(ContractError, match='nothing changed'):
+        e.check_changed(task, data, work)
+    (work / 'b0.png').write_bytes(b'new pixels')
+    e.check_changed(task, data, work)
+    state = {'tasks': build_tasks(1)}
+    for t in state['tasks']:
+        t['result'] = {'summary': 'old'}
+    e.rewind(state, 0, 'assets', 'fix it')
+    assert next(t for t in state['tasks'] if t['id'] == 'ad-01-assets')['previous'] == {'summary': 'old'}

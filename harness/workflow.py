@@ -149,6 +149,8 @@ class Engine:
         for t in state['tasks']:
             if t['ad']==ad and t['stage']==start:affected=True
             if affected and t['ad']==ad:
+                if t['result']:
+                    t['previous']=t['result']   # the rejected version, so a repair must differ from it
                 t['status']='pending';t['result']=None;t['revision']+=1;t['feedback']=feedback
 
     def next_task(self, state):
@@ -263,6 +265,7 @@ class Engine:
         return task['result']['direction'] if task and task['status'] == 'succeeded' else None
 
     def validate_media(self, task, data, work, config, state=None):
+        self.check_changed(task, data, work)
         if task['stage'] == 'direct':
             from .direction import check_direction
             check_direction(data['direction'], config)
@@ -289,6 +292,23 @@ class Engine:
                 self.check_talking(state, task['ad'], data, work, config)
             else:
                 check_video(work/data['master'], config)
+
+    DELIVERABLES = {'assets': lambda d: [b['image'] for b in d.get('boards', []) if isinstance(b, dict)],
+                    'audio': lambda d: [d.get('mix')], 'animate': lambda d: [d.get('preview')],
+                    'edit': lambda d: [d.get('master')]}
+
+    def check_changed(self, task, data, work):
+        """After a review sent this stage back, handing in the same deliverables wastes a review round."""
+        previous = task.get('previous')
+        pick = self.DELIVERABLES.get(task['stage'])
+        if not previous or not pick or not task['revision']:
+            return
+        from .contracts import digest
+        before = sorted(digest(p) for p in pick(previous) if p and Path(p).is_file())
+        after = sorted(digest(work/p) for p in pick(data) if p and (work/p).is_file())
+        if before and before == after:
+            raise ContractError('nothing changed since the rejected version: re-render the deliverables '
+                                'with the review findings fixed')
 
     def check_boards(self, state, ad, data, config):
         """One storyboard still per directed beat (and the end-card picture), rendered from the scene."""

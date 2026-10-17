@@ -17,6 +17,10 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=64x64:rate=24',
         '-f','lavfi','-i','sine=frequency=300:sample_rate=48000','-t','1',
         '-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(video)],check=True)
+    video2=tmp_path/'fixture2.mp4'
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc=size=64x64:rate=24',
+        '-f','lavfi','-i','sine=frequency=300:sample_rate=48000','-t','1',
+        '-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(video2)],check=True)
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=300:sample_rate=48000',
         '-t','1','-c:a','pcm_s16le',str(audio)],check=True)
     c=load_config(None,{'count':2,'output':{'width':64,'height':64,'target_seconds':1,'min_seconds':1,'max_seconds':2,'cta':False,
@@ -33,7 +37,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         elif stage in ('critique','critique_final','board_review','review','creative_qa'):
             d.update(verdict='pass',findings=[])
             if stage=='review' and review_count[0]==0:
-                d.update(verdict='revise',findings=[dict(target='0.5s',severity='important',problem='test repair',fix='rebuild')])
+                d.update(verdict='revise',restart='animate',findings=[dict(target='0.5s',severity='important',problem='test repair',fix='rebuild')])
             if stage=='review':review_count[0]+=1
         elif stage=='select':d.update(selected=['0','1'],reason='distinct')
         elif stage=='direct':
@@ -50,7 +54,8 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
                 dialogue=[],events=[],sound_rationale='test tone')));file('timeline.json','timeline')
             d.update(mix='mix.wav',timeline='timeline.json')
         elif stage=='animate':
-            shutil.copy2(video,work/'preview.mp4');file('preview.mp4','video')
+            # A repair has to change the deliverable: the second take is a different render.
+            shutil.copy2(video if calls.count(work.name)==1 else video2,work/'preview.mp4');file('preview.mp4','video')
             (work/'source.py').write_text('# FFmpeg fixture; not a production ad\n');file('source.py','source')
             d.update(preview='preview.mp4',source='source.py')
         elif stage=='edit':
