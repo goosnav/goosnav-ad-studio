@@ -33,10 +33,23 @@ Measured causes, then fixes:
 | GUI start | Fixed port, no reuse | `/health`; an Ad Studio already serving the same home is reused; a busy port moves to the next free one |
 | Late dependency failures | Discovered mid-run | `harness/preflight.py` before any agent (also in `doctor` as `run_blockers`) |
 
+Characters (owner, 2026-10-16: "the entire point is to use the 3-D character assets"; low-res
+late-90s game look is wanted). The run after these fixes had built generic "OWNER/BORROWER"
+actors: nothing required the library and the brand bible's no-mascot rule pushed the director
+away from it. Now `sources.characters` lists the cast (locally PS1 guy v10 plate/beady and the
+guy, gal, expert); briefs say the ads star them; the director must set `model` per speaker; the
+scene check verifies each speaker's skeleton against that file. Lip-sync drives v10's
+`open/round/wide` mouth morphs (its jaw bone moves nothing) and the older rigs' jaw. PS1 spec
+follows the library: 360x450 native, `blender/ps1_finish.py` (15-bit Bayer dither, 3x nearest).
+
+Legs: the `characters/` guy, gal and expert bent their knees backward (IK pole angle -90, copied
+from the arms; ps1guy and creatures use +90). Fixed in goosnav-3D-assets `82ec840` (six .blend
+files and goosguy.py) with `tests/check_knees.py` in `run_checks.sh`, which fails on the old rig.
+
 Graph now: research, write, critique, [revise, critique_final], select, then per ad direct,
 assets (+boards), board_review, audio, animate, review, edit, frame, qa, creative_qa, package.
 
-Tests: 86 passing, including real-rig Blender scene checks (good / silent / blocked) and real
+Tests: 88 passing, including real-rig Blender scene checks (good / silent / blocked) and real
 FFmpeg loudness/presence/picture checks calibrated on the two earlier exports.
 
 ## Session 3: director, mix gates, Frame end card
