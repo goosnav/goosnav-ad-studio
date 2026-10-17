@@ -81,10 +81,17 @@ def classify(code, output):
 
 def reset_delay(text, now=None):
     """Seconds until a reset the CLI announced ("resets 5:40pm", "try again at 4:24 PM"), plus a minute."""
+    now = now or datetime.now()
+    dated = re.search(r'(?:resets|try again at)\s+([A-Z][a-z]{2})[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})'
+                      r'\s+(\d{1,2}):(\d{2})\s*([AP])\.?M', text, re.I)
+    if dated:   # weekly limits name the day: "try again at Oct 22nd, 2026 11:24 AM"
+        month = datetime.strptime(dated[1].title(), '%b').month
+        hour = int(dated[4]) % 12 + (12 if dated[6].upper() == 'P' else 0)
+        target = datetime(int(dated[3]), month, int(dated[2]), hour, int(dated[5]))
+        return max(60, int((target - now).total_seconds()) + 60)
     m = re.search(r'(?:resets|try again at)\s+(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m', text, re.I)
     if not m:
         return None
-    now = now or datetime.now()
     hour = int(m[1]) % 12 + (12 if m[3].lower() == 'p' else 0)
     target = now.replace(hour=hour, minute=int(m[2] or 0), second=0, microsecond=0)
     if target <= now:

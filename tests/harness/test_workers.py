@@ -71,3 +71,5 @@ def test_reset_time_becomes_cooldown():
     assert reset_delay('session limit · resets 5:40pm (America/Los_Angeles)', now) == 40 * 60 + 60
     assert reset_delay('try again at 4:24 PM.', now) == (23 * 60 + 24) * 60 + 60   # tomorrow
     assert reset_delay('usage limit, no time given', now) is None
+    weekly = 'purchase more credits or try again at Oct 22nd, 2026 11:24 AM.'
+    assert reset_delay(weekly, now) == int((datetime(2026, 10, 22, 11, 24) - now).total_seconds()) + 60
