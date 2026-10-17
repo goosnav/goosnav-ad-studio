@@ -205,7 +205,7 @@ def running_studio(host, port):
         return None
 
 
-def start(home, host='127.0.0.1', port=8788, tries=20):
+def start(home, host='0.0.0.0', port=8788, tries=20):
     """Serve in a background thread and return (server, url). server is None when this
     studio is already being served on one of the ports; url then points at it."""
     probe = '127.0.0.1' if host in ('0.0.0.0', '') else host
@@ -224,10 +224,25 @@ def start(home, host='127.0.0.1', port=8788, tries=20):
     raise OSError(f'No free port in {port}-{port + tries - 1}; pass --port')
 
 
-def serve(home, host='127.0.0.1', port=8788, browser=True):
+def lan_addresses():
+    """IPv4 addresses other computers can use (LAN first, then VPN such as Tailscale)."""
+    try:
+        found = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        found = []
+    ipv4 = [a for a in found if a.count('.') == 3 and not a.startswith(('127.', '172.17.', '172.18.'))]
+    return sorted(ipv4, key=lambda a: (not a.startswith(('192.168.', '10.')), a))
+
+
+def serve(home, host='0.0.0.0', port=8788, browser=True):
     server, url = start(home, host, port)
     print(f'Ad Studio GUI: {url}' + ('  (already running)' if not server else
           '  (Ctrl+C to stop; runs continue in the background)'), file=sys.stderr, flush=True)
+    if host in ('0.0.0.0', ''):
+        used = url.rsplit(':', 1)[1].strip('/')
+        for address in lan_addresses():
+            print(f'  from another computer: http://{address}:{used}/', file=sys.stderr, flush=True)
+        print('  (no login: share this network only with people you trust)', file=sys.stderr, flush=True)
     if browser:
         import webbrowser
         webbrowser.open(url)

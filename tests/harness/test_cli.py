@@ -56,3 +56,22 @@ def test_drive_waits_for_provider_reset_then_continues(tmp_path):
         def run(self, run_id, max_steps=None):
             return {'id': run_id, 'status': 'waiting_provider'}
     assert drive(NoCooldown(), store, run['id'], wait=True, sleep=slept.append)['status'] == 'waiting_provider'
+
+
+def test_drive_queues_behind_a_running_controller(tmp_path):
+    from harness.cli import drive
+    from harness.store import Store, Busy
+    store = Store(tmp_path); run = store.create({'count': 1}); attempts = []; slept = []
+    class Fake:
+        def run(self, run_id, max_steps=None):
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise Busy('another controller')
+            return {'id': run_id, 'status': 'complete'}
+    assert drive(Fake(), store, run['id'], sleep=slept.append)['status'] == 'complete'
+    assert len(attempts) == 3 and slept
+    store.control(run['id'], 'cancel')
+    class AlwaysBusy:
+        def run(self, run_id, max_steps=None):
+            raise Busy('another controller')
+    assert drive(AlwaysBusy(), store, run['id'], sleep=slept.append)['status'] == 'cancelled'

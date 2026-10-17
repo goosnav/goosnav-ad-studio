@@ -11,7 +11,7 @@ import time
 
 from .config import load_config
 from .models import resolve_workers
-from .store import Store
+from .store import Busy, Store
 from .workflow import Engine, build_tasks
 from .workers import subscription_status
 
@@ -42,8 +42,18 @@ def doctor(config):
 
 def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
     """Run; while every provider is cooling down, sleep to the earliest reset and continue."""
+    queued=False
     while True:
-        result=engine.run(run_id,max_steps=max_steps)
+        try:
+            result=engine.run(run_id,max_steps=max_steps)
+        except Busy:
+            # Another ad is being made: wait our turn instead of failing (pause/cancel still apply).
+            if store.control_value(run_id)=='cancel':
+                state=store.get(run_id);state['status']='cancelled';store.save(state,'cancelled_in_queue');return state
+            if not queued:
+                print('Another run is in progress; this one is queued and starts when it finishes.',file=sys.stderr,flush=True)
+                queued=True
+            sleep(30);continue
         delay=min([c for c in (store.cooldown(p) for p in ('codex','claude')) if c] or [0])
         if not wait or result.get('status')!='waiting_provider' or not delay:
             return result
@@ -75,7 +85,8 @@ def main(argv=None):
     for name in ('doctor','models'):
         q=sub.add_parser(name);q.add_argument('--config',default=default_config())
     q=sub.add_parser('gui',help='Local browser page for runs, config and controls')
-    q.add_argument('--host',default='127.0.0.1',help='0.0.0.0 to reach it from the LAN');q.add_argument('--port',type=int,default=8788)
+    q.add_argument('--host',default='0.0.0.0',help='default: every interface (reachable on the LAN); 127.0.0.1 = this computer only')
+    q.add_argument('--port',type=int,default=8788)
     q.add_argument('--no-browser',action='store_true')
     a=p.parse_args(argv)
     try:

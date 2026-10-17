@@ -1,0 +1,34 @@
+GOOSNAV AD STUDIO - QUICK COMMANDS
+Run these from this folder (cd ~/Desktop/code/goosnav-ad-studio).
+
+MAKE AN AD
+  ./ad "the guy keeps losing Book Two to increasingly official people"
+        One 10-second ad from your description. It runs in the background,
+        so you can close the terminal.
+
+  ./ad "..." -n 3              three ads from the same description
+  ./ad "..." -s 15             15 seconds long instead of 10
+  ./ad "..." -n 3 -s 15        both
+  ./ad                         no description: the agents pick the idea
+
+  Starting another ad while one is running queues it; it starts when the first finishes.
+  Finished videos land in business/studio/output/harness/<run>/ad-01.mp4 (and ad-01.zip).
+
+CHECK ON IT (RUN_ID is optional; leave it out to mean the latest run)
+  ./ad watch [RUN_ID]          one progress line a minute until it finishes
+  ./ad status [RUN_ID]         one line now (and why, if it stopped)
+  ./ad list                    recent runs
+  ./ad pause [RUN_ID]          stop after the current step
+  ./ad resume [RUN_ID]         carry on (after a pause, a stop, or a fix)
+  ./ad cancel [RUN_ID]         stop now
+
+OTHER
+  ./ad gui                     browser page: open http://192.168.1.193:8788/ from any
+                               computer on the network (this one: http://127.0.0.1:8788/)
+  ./ad gui --local             browser page for this computer only
+  ./ad doctor                  check tools, logins, Frame, voices and sources
+
+ONE-TIME NETWORK SETUP (only if other computers cannot open the GUI)
+  sudo ufw allow from 192.168.1.0/24 to any port 8788:8807 proto tcp
+
+The full command set is "python3 -m harness --help"; dev/OPERATIONS.md explains everything.

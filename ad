@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Quick ad commands. See CLI.txt.
+
+    ./ad "what the ad should be"      start one 10-second ad in the background
+    ./ad "..." -n 3 -s 15             three ads, 15 seconds each
+    ./ad                              no description: the agents pick the idea
+    ./ad watch | status | list | pause | resume | cancel | gui | doctor   [RUN_ID]
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+REPO = Path(__file__).resolve().parent
+HOME = Path(os.environ.get('STUDIO_HARNESS_HOME', Path.home() / '.local/share/goosnav-ad-studio'))
+COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'gui', 'doctor')
+DONE = ('complete', 'partial', 'failed', 'needs_review', 'cancelled', 'interrupted', 'paused')
+
+
+def harness(*args, capture=True):
+    r = subprocess.run([sys.executable, '-m', 'harness', '--home', str(HOME), *args], cwd=REPO,
+                       capture_output=capture, text=True)
+    return json.loads(r.stdout) if capture and r.stdout.strip().startswith(('{', '[')) else r
+
+
+def latest():
+    runs = harness('list')
+    if not runs:
+        sys.exit('No runs yet. Start one with: ./ad "what the ad should be"')
+    return runs[0]['id']
+
+
+def summary(run_id):
+    s = harness('status', run_id)
+    done = sum(t['stage'] == 'package' and t['status'] == 'succeeded' for t in s['tasks'])
+    current = next((t for t in s['tasks'] if t['status'] in ('running', 'waiting_provider', 'failed', 'needs_review')), None)
+    where = f" | {current['id']} {current['status']}" if current else ''
+    print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
+    if s['status'] in DONE:
+        folder = s['config']['output'].get('folder')
+        if done and folder:
+            print(f'Videos: {Path(folder) / run_id}')
+        if s['status'] in ('failed', 'needs_review') and current:
+            print(f"Why: {(current['feedback'] or '')[:600]}\nThen: ./ad resume {run_id}   (or retry: "
+                  f"python3 -m harness retry {run_id} --task {current['id']})")
+    return s['status']
+
+
+def main():
+    if len(sys.argv) > 1 and sys.argv[1] in COMMANDS:
+        command, rest = sys.argv[1], sys.argv[2:]
+        if command == 'gui':
+            os.execv(str(REPO / 'Start Ad Studio.sh'), [str(REPO / 'Start Ad Studio.sh'), *rest])
+        if command == 'doctor':
+            return harness('doctor', capture=False).returncode
+        if command == 'list':
+            for r in harness('list')[:15]:
+                print(time.strftime('%m-%d %H:%M', time.localtime(r['created'])), r['id'], r['status'])
+            return 0
+        run_id = rest[0] if rest else latest()
+        if command == 'status':
+            summary(run_id); return 0
+        if command == 'watch':
+            while summary(run_id) not in DONE:
+                time.sleep(60)
+            return 0
+        if command == 'resume':
+            start('resume', run_id); return 0
+        harness(command, run_id); print(f'{command} requested for {run_id}'); return 0
+    p = argparse.ArgumentParser(prog='./ad', description='Make animated ads. See CLI.txt.')
+    p.add_argument('concept', nargs='*', help='what the ad should be (quotes optional)')
+    p.add_argument('-n', '--count', type=int, help='number of ads (default 1)')
+    p.add_argument('-s', '--seconds', type=int, help='length of each ad (default 10)')
+    a = p.parse_args()
+    args = ['make']
+    if a.concept:
+        args += ['--concept', ' '.join(a.concept)]
+    if a.count is not None:
+        args += ['--count', str(a.count)]
+    if a.seconds is not None:
+        args += ['--seconds', str(a.seconds)]
+    start(*args)
+    return 0
+
+
+def start(*args):
+    """Detached controller: it keeps going after this terminal closes."""
+    logs = HOME / 'gui-logs'; logs.mkdir(parents=True, exist_ok=True)
+    log = logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}.log'
+    with log.open('w') as out:
+        subprocess.Popen([sys.executable, '-m', 'harness', '--home', str(HOME), *args], cwd=REPO, stdout=out,
+                         stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(60):
+        time.sleep(0.5)
+        text = log.read_text()
+        if 'Run ' in text or args[0] == 'resume':
+            break
+        if '"error"' in text:
+            sys.exit(text.strip())
+    if args[0] != 'resume' and 'Run ' not in text:
+        sys.exit(f'The run did not start; see {log}:\n{text[-1500:]}')
+    run_id = args[1] if args[0] == 'resume' else text.split('Run ', 1)[1].split()[0]
+    time.sleep(1.5)
+    if '"error"' in log.read_text():
+        sys.exit(log.read_text().strip())
+    queued = 'queued' in log.read_text()
+    print(f'{"Queued" if queued else "Started"} {run_id} in the background (log: {log}).\n'
+          f'  ./ad watch      follow it        ./ad status     one line now\n'
+          f'  ./ad pause      stop after the current step\n'
+          f'  or open the GUI: ./ad gui')
+
+
+if __name__ == '__main__':
+    sys.exit(main())

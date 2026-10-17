@@ -6,6 +6,14 @@ design is in [HARNESS_SPEC.md](HARNESS_SPEC.md); what is proven is in
 
 ## Make ads
 
+The everyday command is `./ad "description"` (one 10 s ad, detached; `-n` ads, `-s` seconds);
+`CLI.txt` lists its variations. It wraps `python3 -m harness make` below. A run started
+while another is in progress queues behind it. The GUI (`./ad gui`) listens on every
+interface by default and prints its LAN address; `--local` limits it to this computer.
+There is no login, so expose it only on trusted networks. If other computers cannot
+connect, the host firewall is blocking the port (`sudo ufw allow from <lan>/24 to any
+port 8788:8807 proto tcp`).
+
 ```sh
 cd ~/Desktop/code/goosnav-ad-studio
 python3 -m harness doctor                       # tools, CLI logins, Frame, sources

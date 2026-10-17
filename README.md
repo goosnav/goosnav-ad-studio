@@ -2,6 +2,8 @@
 
 ## Hands-off ad engine
 
+Quick start: `./ad "what the ad should be"` (see [`CLI.txt`](CLI.txt) for the few variations).
+
 ```sh
 cp harness.example.json harness.local.json   # website, products, brand docs, script banks, asset folders
 python3 -m harness doctor                    # checks tools, codex/claude logins, Frame, sources
