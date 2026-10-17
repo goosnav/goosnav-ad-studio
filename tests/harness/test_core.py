@@ -100,3 +100,34 @@ def test_writer_brief_states_target_length():
     c = load_config(None, {'output': {'target_seconds': 12}})
     text = brief(build_tasks(1)[1], c, {}, [])
     assert 'TARGET LENGTH: 12 seconds' in text and '10-16' in text
+
+
+def test_promote_maps_declared_paths_inside_lists_and_boards(tmp_path):
+    from harness.contracts import promote
+    work = tmp_path / 'w'; (work / 'boards').mkdir(parents=True)
+    for name in ('a.py', 'b.py', 'boards/0.png'):
+        (work / name).write_text('x')
+    data = {'summary': 's', 'files': [{'path': p, 'kind': 'source'} for p in ('a.py', 'b.py', 'boards/0.png')],
+            'source': ['a.py', 'b.py'], 'boards': [{'beat': 0, 'image': 'boards/0.png'}]}
+    out = promote(data, work, tmp_path / 'accepted')
+    assert out['source'] == [str(tmp_path / 'accepted' / 'a.py'), str(tmp_path / 'accepted' / 'b.py')]
+    assert out['boards'][0] == {'beat': 0, 'image': str(tmp_path / 'accepted' / 'boards/0.png')}
+
+
+def test_unexpected_result_shapes_become_repairs_not_run_failures(tmp_path):
+    from harness.workflow import Engine
+    store = Store(tmp_path); c = load_config(); c['limits']['repairs'] = 0
+    run = store.create(c); calls = []
+    def worker(profile, work, *a, **k):
+        calls.append(1)
+        (work / 'result.json').write_text(json.dumps({'summary': 's', 'files': [], 'brand_brief': 'b',
+            'creative_directions': 'c', 'references': [{'url': 'u', 'observation': 'o', 'application': 'a'}]}))
+        return {'kind': 'ok'}
+    e = Engine(store, execute=worker, resolve=lambda w: {'workers': {r: [{'provider': 'claude', 'model': 'm'}] for r in w}},
+               auth=lambda _: True)
+    def boom(*a, **k): raise TypeError("unhashable type: 'list'")
+    e.validate_media = boom
+    state = e.run(run['id'], max_steps=1)
+    research = state['tasks'][0]
+    assert state['status'] != 'failed' or 'TypeError' not in state.get('error', '')
+    assert research['attempts'][-1]['kind'] == 'invalid' and 'unhashable' in research['feedback']

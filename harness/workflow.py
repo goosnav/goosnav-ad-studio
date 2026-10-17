@@ -239,8 +239,10 @@ class Engine:
                         task['result'] = promote(data, work, root/'artifacts'/task['id']/f'attempt-{number}')
                         task['status'] = 'succeeded'
                         self.store.save(state, 'task_succeeded', {'task': task['id']}); return
-                    except (ValueError, OSError) as e:
-                        attempt['kind'] = 'invalid'; attempt['detail'] = str(e)
+                    except Exception as e:
+                        # Whatever the worker handed in, a bad result is a repair note, never a dead run.
+                        attempt['kind'] = 'invalid'
+                        attempt['detail'] = str(e) if isinstance(e, ValueError) else f'{type(e).__name__}: {e}'
                 task['feedback'] = f'Previous {provider} attempt: {attempt["kind"]}. {attempt.get("detail", "")[-4000:]}'
                 self.store.save(state, 'attempt_failed', {'task': task['id'], 'kind': attempt['kind']})
                 if attempt['kind'] == 'cancelled':

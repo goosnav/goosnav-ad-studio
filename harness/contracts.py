@@ -135,9 +135,18 @@ def promote(data, workspace, destination):
         target.chmod(0o444)
         mapping[f['path']] = str(target)
         f.update(path=str(target), sha256=digest(target), bytes=target.stat().st_size)
-    for key in ('mix', 'timeline', 'preview', 'source', 'master', 'dialogue_stem', 'mouths', 'scene'):
-        if key in accepted:
-            accepted[key] = mapping[accepted[key]]
+    def remap(value):
+        # Any declared relative path, wherever it appears (scene, source lists, board images...).
+        if isinstance(value, str):
+            return mapping.get(value, value)
+        if isinstance(value, list):
+            return [remap(v) for v in value]
+        if isinstance(value, dict):
+            return {k: remap(v) for k, v in value.items()}
+        return value
+    for key in list(accepted):
+        if key not in ('summary', 'files'):
+            accepted[key] = remap(accepted[key])
     (destination / 'accepted.json').write_text(json.dumps(accepted, indent=2))
     return accepted
 
