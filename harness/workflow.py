@@ -375,7 +375,9 @@ class Engine:
             return
         if task['stage'] not in ('critique_final', 'board_review', 'review', 'creative_qa') or task['result']['verdict'] == 'pass':
             return
-        if task['revision'] >= state['config']['limits']['repairs']:
+        limits = state['config']['limits']
+        rounds = limits.get('board_repairs', 4) if task['stage'] == 'board_review' else limits['repairs']
+        if task['revision'] >= rounds:
             # Out of repair rounds: only blockers need a human. Other notes travel downstream.
             if any(f['severity'] == 'blocking' for f in task['result']['findings']):
                 task['status'] = 'needs_review'

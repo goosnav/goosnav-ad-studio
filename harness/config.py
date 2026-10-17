@@ -34,7 +34,7 @@ DEFAULTS = {
                 # The director plans pacing, casting and the end card, then reviews the cuts.
                 'director': profiles('quality')},
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
-               'repairs': 2, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
+               'repairs': 2, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},
@@ -95,7 +95,7 @@ def load_config(path=None, overrides=None):
         if 'url' in product:
             product['url'] = website(product['url'])
     for key, value in c['limits'].items():
-        if type(value) is not int or not (0 if key == 'repairs' else 1) <= value <= 86400:
+        if type(value) is not int or not (0 if key in ('repairs', 'board_repairs') else 1) <= value <= 86400:
             raise ConfigError(f'limits.{key} is out of range')
     o = c['output']
     for key in ('width', 'height', 'fps', 'target_seconds', 'min_seconds', 'max_seconds'):

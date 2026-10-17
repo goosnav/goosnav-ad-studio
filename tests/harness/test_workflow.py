@@ -213,3 +213,19 @@ def test_a_repair_that_changes_nothing_is_rejected(tmp_path):
         t['result'] = {'summary': 'old'}
     e.rewind(state, 0, 'assets', 'fix it')
     assert next(t for t in state['tasks'] if t['id'] == 'ad-01-assets')['previous'] == {'summary': 'old'}
+
+
+def test_storyboard_gets_more_repair_rounds_than_animation(tmp_path):
+    e = Engine(Store(tmp_path))
+    def exhausted(stage, revision):
+        state = {'config': load_config(), 'tasks': build_tasks(1)}
+        task = next(t for t in state['tasks'] if t['stage'] == stage)
+        task.update(status='succeeded', revision=revision, result={'summary': 's', 'verdict': 'revise', 'restart': 'assets',
+            'files': [], 'findings': [{'target': 'b', 'severity': 'blocking', 'problem': 'p', 'fix': 'f'}]})
+        state['id'] = 'x'
+        e.store.save = lambda *a, **k: None
+        e.review_transition(state, task)
+        return task['status']
+    assert exhausted('review', 2) == 'needs_review'          # limits.repairs (2)
+    assert exhausted('board_review', 2) == 'pending'         # rewound: boards are cheap to redo
+    assert exhausted('board_review', 4) == 'needs_review'    # limits.board_repairs (4)
