@@ -18,7 +18,7 @@ def profiles(tier):
 DEFAULTS = {
     'website': '', 'products': [], 'concept': '', 'count': 1,
     'brand': {'name': '', 'direction': '', 'documents': []},
-    'sources': {'assets': [], 'scripts': [], 'inspiration': []},
+    'sources': {'assets': [], 'scripts': [], 'inspiration': [], 'characters': []},
     # min/max 0 = derive an accepted range around the target (80-130 %).
     'output': {'width': 1080, 'height': 1350, 'fps': 24, 'target_seconds': 10,
                'min_seconds': 0, 'max_seconds': 0, 'cta': True, 'folder': '',
@@ -137,7 +137,7 @@ def load_config(path=None, overrides=None):
         p = Path(value).expanduser()
         return str((base / p).resolve()) if value else ''
     for group, key in [('brand', 'documents'), ('sources', 'assets'), ('sources', 'scripts'),
-                       ('sources', 'inspiration'), ('audio', 'music')]:
+                       ('sources', 'inspiration'), ('sources', 'characters'), ('audio', 'music')]:
         values = c[group][key]
         if not isinstance(values, list):
             raise ConfigError(f'{group}.{key} must be a list')

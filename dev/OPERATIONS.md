@@ -152,6 +152,7 @@ before saving. Unknown keys are errors.
 | `sources.scripts` | Example or ready-made scripts for writers to learn from or use. |
 | `sources.inspiration` | Theory, style bibles, reference notes or URLs. |
 | `sources.assets` | Read-only folders of 3D assets, photos, footage. |
+| `sources.characters` | Rigged character `.blend` files that star in every ad. When set, the director must cast each speaker from this list (`model`) and the scene check verifies the speaker's skeleton matches that file. |
 | `output` | `target_seconds` (default 10; writers time scripts to it), `min/max_seconds` (0 = 80-130 % of target), `width/height/fps` (1080x1350 at 24), `cta`, `folder`. |
 | `audio` | `python` (the local model venv), `voice_provider`, `voice`, `music`, `allow_piper_fallback`. |
 | `tools` | `blender/ffmpeg/ffprobe` commands, `frame_root`, `frame_python`. |

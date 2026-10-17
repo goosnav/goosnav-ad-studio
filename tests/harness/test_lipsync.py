@@ -68,8 +68,12 @@ bpy.ops.wm.save_as_mainfile(filepath=args["out"])
 '''
 
 
+V10 = GUY.parents[1] / 'ps1guy' / 'ps1guy.blend'
+
+
 @pytest.mark.skipif(not GUY.is_file() or not __import__('shutil').which('blender'), reason='needs Blender and the 3D library')
-def test_scene_check_on_the_real_rig(tmp_path):
+@pytest.mark.parametrize('rig', [GUY, V10], ids=['jaw-bone rig', 'v10 mouth-morph rig'])
+def test_scene_check_on_the_real_rig(tmp_path, rig):
     import json, subprocess
     from pathlib import Path
     from harness.media import check_scene
@@ -80,17 +84,22 @@ def test_scene_check_on_the_real_rig(tmp_path):
     build = tmp_path / 'build.py'; build.write_text(BUILD.format(blender=str(repo / 'blender')))
     def scene(name, blocked=False, keyed=True):
         out = tmp_path / f'{name}.blend'
-        subprocess.run(['blender', '-b', str(GUY), '--python-exit-code', '1', '--python', str(build), '--',
+        subprocess.run(['blender', '-b', str(rig), '--python-exit-code', '1', '--python', str(build), '--',
                         json.dumps({'out': str(out), 'blocked': blocked, 'mouths': str(mouths) if keyed else ''})],
                        check=True, capture_output=True)
         return out
     plan = [{'speaker': 'A', 'text': 'For who?', 'start': 0.5, 'end': 1.5}]
     good = check_scene(scene('good'), {'A': 'guy'}, plan, 24)
     assert good['lines'][0]['mouth_open'] > 0.3 and good['lines'][0]['face_visible'] > 0.9
-    with pytest.raises(ContractError, match='jaw is open on only'):
+    with pytest.raises(ContractError, match='mouth is open on only'):
         check_scene(scene('silent', keyed=False), {'A': 'guy'}, plan, 24)
     with pytest.raises(ContractError, match='face is visible'):
         check_scene(scene('blocked', blocked=True), {'A': 'guy'}, plan, 24)
+    good_scene = tmp_path / 'good.blend'
+    assert check_scene(good_scene, {'A': 'guy'}, plan, 24, models={'A': str(rig)})
+    other = V10 if rig == GUY else GUY
+    with pytest.raises(ContractError, match='not the library character'):
+        check_scene(good_scene, {'A': 'guy'}, plan, 24, models={'A': str(other)})
 
 
 def test_audio_stage_requires_a_stem_and_ships_mouth_curves(tmp_path):

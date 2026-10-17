@@ -4,7 +4,8 @@
 
 request: {"fps": 24, "rigs": {"GUY": "guy"}, "lines": [{"speaker", "text", "start", "end", "offscreen"}]}
 For every frame of every line it evaluates the active camera (markers included):
-- mouth: the speaker's jaw bone is open on a share of the line's frames, and shut between lines;
+- mouth: the speaker's mouth (open/round/wide morphs on v10 rigs, else the jaw bone) is open on
+  a share of the line's frames, and shut between lines;
 - face: the head is inside the frame, big enough to read, and the camera ray to it hits the
   character itself (its skinned meshes or parts parented to its head/jaw/neck), not a prop.
 """
@@ -27,6 +28,20 @@ def character_parts(arm):
         elif obj.parent == arm and (obj.parent_type != 'BONE' or obj.parent_bone in FACE_BONES):
             parts.add(obj.name)
     return parts
+
+
+def mouth_meshes(arm):
+    return [o for o in bpy.data.objects if o.type == 'MESH' and o.data.shape_keys
+            and any(m.type == 'ARMATURE' and m.object == arm for m in o.modifiers)
+            and 'open' in o.data.shape_keys.key_blocks]
+
+
+def mouth_open(arm, meshes):
+    """What actually moves the face: mouth morph weight (v10 rigs) or jaw rotation (jaw rigs)."""
+    if meshes:
+        return max(sum(m.data.shape_keys.key_blocks[k].value for k in ('open', 'round', 'wide')
+                       if k in m.data.shape_keys.key_blocks) for m in meshes) > 0.25
+    return abs(math.degrees(arm.pose.bones['jaw'].matrix_basis.to_euler().x)) > OPEN_DEG
 
 
 def face_state(scene, arm, parts, depsgraph):
@@ -55,7 +70,16 @@ def main():
     if missing:
         report['problems'].append(f'no rig with head/jaw bones for {missing}; check result rigs names')
         json.dump(report, open(args[1], 'w'), indent=2); return
+    for speaker, model in (request.get('models') or {}).items():
+        # The speaker must BE the library character: same skeleton as the model file's armature.
+        with bpy.data.libraries.load(model, link=False) as (source, target):
+            target.armatures = list(source.armatures)
+        skeletons = [{b.name for b in a.bones} for a in target.armatures if a]
+        if not any({b.name for b in rigs[speaker].data.bones} == bones for bones in skeletons):
+            report['problems'].append(f'{speaker} is not the library character {model}: its armature does not '
+                                      'match; append the character from that file instead of building one')
     parts = {s: character_parts(arm) for s, arm in rigs.items()}
+    mouths = {s: mouth_meshes(arm) for s, arm in rigs.items()}
     talking = {s: set() for s in rigs}
     for line in request['lines']:
         frames = range(scene.frame_start + int(line['start'] * fps), scene.frame_start + math.ceil(line['end'] * fps))
@@ -67,7 +91,7 @@ def main():
         for f in frames:
             scene.frame_set(f)
             depsgraph = bpy.context.evaluated_depsgraph_get()
-            if abs(math.degrees(arm.pose.bones['jaw'].matrix_basis.to_euler().x)) > OPEN_DEG:
+            if mouth_open(arm, mouths[line['speaker']]):
                 opened += 1
             inside, size, clear = face_state(scene, arm, parts[line['speaker']], depsgraph)
             if inside and clear and size > 0.035:
@@ -78,7 +102,7 @@ def main():
                  'face_visible': round(seen / n, 2), 'face_size': round(max(sizes, default=0), 3)}
         report['lines'].append(entry)
         if entry['mouth_open'] < 0.3:
-            report['problems'].append(f'"{line["text"]}": {line["speaker"]}\'s jaw is open on only '
+            report['problems'].append(f'"{line["text"]}": {line["speaker"]}\'s mouth is open on only '
                                       f'{entry["mouth_open"]:.0%} of the line; key mouths.json with blender/lipsync.py')
         if not line.get('offscreen') and entry['face_visible'] < 0.3:
             report['problems'].append(f'"{line["text"]}": {line["speaker"]}\'s face is visible, unblocked and '
@@ -91,7 +115,7 @@ def main():
         opened = 0
         for f in quiet[::2]:
             scene.frame_set(f)
-            opened += abs(math.degrees(arm.pose.bones['jaw'].matrix_basis.to_euler().x)) > OPEN_DEG
+            opened += mouth_open(arm, mouths[speaker])
         share = opened / max(1, len(quiet[::2]))
         report['idle'][speaker] = round(share, 2)
         if share > 0.1:

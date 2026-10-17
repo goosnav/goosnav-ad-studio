@@ -109,3 +109,14 @@ def test_timeline_must_use_the_cast_voice_in_order():
     t['dialogue'][1]['voice'] = 'af_heart'
     with pytest.raises(ContractError, match='cast as am_onyx'):
         check_cast(t, PLAN)
+
+
+def test_cast_must_come_from_the_character_library(tmp_path):
+    guy = tmp_path / 'guy.blend'; guy.write_bytes(b'BLENDER')
+    c = load_config(None, {'sources': {'characters': [str(guy)]}})
+    with pytest.raises(ContractError, match='library character'):
+        check_direction(plan(), c)                                   # no model named
+    p = plan(**{'cast.0.model': str(guy), 'cast.1.model': str(tmp_path / 'home-made.blend')})
+    with pytest.raises(ContractError, match='library character'):
+        check_direction(p, c)
+    assert check_direction(plan(**{'cast.0.model': str(guy), 'cast.1.model': str(guy)}), c)

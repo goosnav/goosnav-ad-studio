@@ -205,7 +205,7 @@ is generated from your end_card title; a wording fix there means restart direct.
 }
 
 
-LOOK_PIXEL = {'ps1': 5}  # native render = delivery size / 5, nearest-neighbour upscale
+LOOK_PIXEL = {'ps1': 3}  # native render = delivery size / 3 (360x450), as the PS1 characters are built for
 
 LOOKS = {'ps1': {
  'all': '''LOOK: crunchy late-1990s/early-2000s console game (PlayStation 1 era). Not polished, not
@@ -223,16 +223,39 @@ HQ models if no PS1 variant exists, and then degrade them (decimate, tiny neares
  'audio': '''Sound can be of the era too: short sampled-sounding effects, a little crunch (lower
 sample-rate or bit-depth effects), simple sequenced/chip-style music if music is used. Voices
 stay clear and intelligible; the mix gates still apply.''',
- 'animate': '''Render the PS1 way: native resolution {native}, no anti-aliasing (Eevee filter size
-minimal, no TAA smoothing), Closest texture interpolation, flat or vertex-style lighting, no
-soft shadows/AO/bloom/motion blur/depth of field, distance fog, and body animation stepped on
-twos (about 12 fps held; mouths still follow the dialogue every frame). Upscale exactly {pixel}x
-with nearest-neighbour to the delivery size. Previews may stay native size.''',
- 'edit': '''Keep the PS1 render crunchy: nearest-neighbour {pixel}x upscale from {native}, hard cuts
-or a plain fade to black, no smoothing, sharpening, grading, scanlines or film effects.''',
+ 'animate': '''Render the PS1 way, as the library's PS1 characters are built for: native resolution
+{native} with 1 render sample and no filtering (Eevee filter size minimal, no TAA smoothing),
+Closest texture interpolation, flat or vertex-style lighting, no soft shadows/AO/bloom/motion
+blur/depth of field, distance fog, and body animation on twos (mouths still follow the dialogue
+every frame). Finish the frames with blender/ps1_finish.py (15-bit Bayer dither and exact {pixel}x
+nearest upscale to the delivery size). Low resolution is the look; it is not a defect.''',
+ 'edit': '''Keep the PS1 render crunchy: {native} frames through blender/ps1_finish.py ({pixel}x nearest),
+hard cuts or a plain fade to black, no smoothing, sharpening, grading, scanlines or film effects.''',
  'review': 'Reject clean modern-looking frames, smooth shading, anti-aliased edges or tiny unreadable detail.',
  'creative_qa': 'Reject clean modern-looking frames, smooth shading, anti-aliased edges or tiny unreadable detail.',
 }}
+
+
+CAST = {
+ 'write': '''CAST: these ads star the rigged characters in sources.characters (read the README next to
+each file for who they are, how they look and which motion clips they have: walk, run, speech,
+gesture, jump, crouch, turn...). Write for those people and what their bodies and faces can do.
+Every person on screen is one of them; never invent new human actors.''',
+ 'direct': '''CAST: every person is a library character. Set each cast entry's model to the character's
+.blend from sources.characters (the controller rejects anything else). Two people may share a
+model when the file has variants or a second copy reads as a different person in the staging.''',
+ 'assets': '''CAST: append each character from its sources.characters .blend (with its rig, morphs and
+clips); never model, rebuild or substitute people. The controller checks the speakers' skeletons
+against the library files.''',
+ 'animate': '''CAST: animate the appended library characters. Use their own clips (NLA tracks such as
+walk, run, gesture, crouch, turn) where they fit, then refine. Mouths: lipsync.apply keys the
+mouth morphs on v10 rigs and the jaw on older rigs.''',
+}
+
+
+def cast_brief(stage, config):
+    library = config['sources'].get('characters') or []
+    return ('\n\n' + CAST[stage] + '\nCharacters: ' + ', '.join(library)) if library and stage in CAST else ''
 
 
 def look_brief(stage, output):
@@ -260,6 +283,7 @@ def brief(task, config, inputs, sources, repair='', previous_runs=''):
               f"(accepted {o['min_seconds']}-{o['max_seconds']}).{card} Scripts are timed to land on it; "
               'audio, animation and edit keep to it. Critics flag scripts that cannot fit it.')
     return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] + length + look_brief(task['stage'], o) +
+            cast_brief(task['stage'], config) +
             '\n\nPROJECT\n' + json.dumps({'stage': task['stage'], 'ad': task['ad'],
              'config': config, 'source_index': sources, 'accepted_inputs': inputs,
              'tool_guide': str(guide), 'repo_read_only': str(REPO), 'previous_runs': previous_runs}, indent=2) +

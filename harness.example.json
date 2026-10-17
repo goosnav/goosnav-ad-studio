@@ -4,7 +4,7 @@
   "concept": "",
   "output": {"target_seconds": 10, "folder": "", "look": "clean"},
   "brand": {"name": "", "direction": "", "documents": []},
-  "sources": {"assets": [], "scripts": [], "inspiration": []},
+  "sources": {"assets": [], "scripts": [], "inspiration": [], "characters": []},
   "tools": {"frame_root": "", "frame_python": ""},
   "audio": {"python": "", "music": []}
 }

@@ -338,7 +338,8 @@ class Engine:
                   'end': l['end_sample'] / rate, 'offscreen': bool((planned[i] if i < len(planned) else {}).get('offscreen'))}
                  for i, l in enumerate(timeline['dialogue'])]
         from .media import check_scene
-        data['talking'] = check_scene(work/data['scene'], data['rigs'], lines, config['output']['fps'])
+        models = {c['speaker']: c['model'] for c in (self.direction(state, ad) or {}).get('cast', []) if c.get('model')}
+        data['talking'] = check_scene(work/data['scene'], data['rigs'], lines, config['output']['fps'], models)
 
     def review_transition(self, state, task):
         if task['stage'] == 'critique' and task['result']['verdict'] == 'pass':

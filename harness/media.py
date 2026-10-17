@@ -101,12 +101,13 @@ def check_audio(path, timeline, config, direction=None):
         raise ContractError(f'Invalid audio/timeline: {e}') from e
 
 
-def check_scene(blend, rigs, lines, fps, timeout=900):
-    """Run harness/scene_check.py in Blender on the saved scene; raise with the problems."""
+def check_scene(blend, rigs, lines, fps, models=None, timeout=900):
+    """Run harness/scene_check.py in Blender on the saved scene; raise with the problems.
+    models: {speaker: library character .blend} the speaker's armature must match."""
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         request, report = Path(tmp) / 'request.json', Path(tmp) / 'report.json'
-        request.write_text(json.dumps({'fps': fps, 'rigs': rigs, 'lines': lines}))
+        request.write_text(json.dumps({'fps': fps, 'rigs': rigs, 'lines': lines, 'models': models or {}}))
         script = Path(__file__).with_name('scene_check.py')
         r = run(['blender', '-b', str(blend), '--python-exit-code', '1', '--python', str(script),
                  '--', str(request), str(report)], timeout=timeout)
@@ -114,7 +115,7 @@ def check_scene(blend, rigs, lines, fps, timeout=900):
             raise ContractError(f'Scene check produced no report: {r.stdout[-800:]}')
         result = json.loads(report.read_text())
     if result['problems']:
-        raise ContractError('Speakers do not visibly talk: ' + '; '.join(result['problems']))
+        raise ContractError('Scene check: ' + '; '.join(result['problems']))
     return result
 
 

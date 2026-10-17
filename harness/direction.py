@@ -105,6 +105,10 @@ def check_direction(direction, config):
                 raise ContractError(f'{where}.voice {voice!r} is not a Kokoro voice ID (af_heart, am_onyx, ...)')
             if c['gender'] != 'neutral' and heard != c['gender']:
                 raise ContractError(f'{where}: {c["character"]} is {c["gender"]} but {voice} is a {heard} voice')
+        library = config['sources']['characters']
+        if library and c.get('model') not in library:
+            raise ContractError(f'{where}: {speaker} must be played by a library character; set model to one of '
+                                + ', '.join(library))
         if speaker in voices:
             raise ContractError(f'Speaker {speaker} is cast twice')
         voices[speaker] = voice
