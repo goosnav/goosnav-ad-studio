@@ -10,6 +10,7 @@ import sys
 import time
 
 from .config import load_config
+from .delivery import upload_run
 from .models import resolve_workers
 from .store import Busy, Store
 from .workflow import Engine, build_tasks
@@ -37,6 +38,8 @@ def doctor(config):
                              config['sources']['assets'],config['sources']['characters'],config['sources']['inspiration']] for v in values if not v.startswith(('http://','https://')) and not Path(v).exists()]
     from .preflight import check_dependencies
     checks['run_blockers']=check_dependencies(config) or 'none'
+    checks['drive']={'destination':config['delivery']['drive'] or 'disabled (local-only)',
+                     'rclone':shutil.which('rclone') or 'MISSING (only needed if Drive is enabled)'}
     return checks
 
 
@@ -81,6 +84,8 @@ def main(argv=None):
     for name in ('status','events','pause','cancel'):
         q=sub.add_parser(name);q.add_argument('id')
     q=sub.add_parser('retry');q.add_argument('id');q.add_argument('--task',required=True)
+    q=sub.add_parser('upload',help='Upload packaged ads to configured Drive (or retry a failed upload)')
+    q.add_argument('id')
     sub.add_parser('list')
     for name in ('doctor','models'):
         q=sub.add_parser(name);q.add_argument('--config',default=default_config())
@@ -123,12 +128,25 @@ def main(argv=None):
                     except Busy:   # queue behind the active controller, like make/resume
                         time.sleep(30)
                 result=drive(Engine(store),store,a.id)
+            elif a.cmd=='upload':
+                result=upload_run(store,store.get(a.id))
             elif a.cmd in ('pause','cancel'):
                 store.control(a.id,a.cmd);result={'id':a.id,'requested':a.cmd}
             elif a.cmd=='status':result=store.get(a.id)
             elif a.cmd=='events':result=store.events(a.id)
             else:result=[{'id':r['id'],'status':r['status'],'created':r['created']} for r in store.list()]
+            # Delivery is a post-render side effect. A Drive outage must never
+            # turn a successfully rendered ad into a failed render.
+            if (a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial')
+                    and result['config']['delivery']['drive']):
+                result=upload_run(store,result)
+                if result['delivery']['status']=='failed':
+                    print('Drive delivery failed (local videos remain safe): '
+                          + result['delivery']['error'] + '\nRetry: ./ad upload ' + result['id'],
+                          file=sys.stderr,flush=True)
         print(json.dumps(result,indent=2))
+        if a.cmd=='upload' and result['delivery']['status']!='uploaded':
+            return 1
         if isinstance(result,dict) and result.get('status') in ('failed','partial','needs_review','waiting_provider','cancelled','interrupted'):
             return 1
         return 0
