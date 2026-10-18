@@ -19,6 +19,18 @@ or `claude -p` session using your existing subscriptions, with the other CLI as
 backup. Strong models write, cheap models critique. Operations: [`dev/OPERATIONS.md`](dev/OPERATIONS.md).
 Status and next steps: [`dev/STATE.md`](dev/STATE.md).
 
+### Optional automatic Google Drive delivery
+
+Configure `output.folder` (a local absolute path) and `delivery.drive` (an
+rclone destination such as `agent-exchange:deliverables/ad-studio`) in
+`harness.local.json`, then authorize that remote with `rclone config` on the
+render machine. `./ad "prompt"` now uploads packaged MP4/ZIP files to
+`<delivery.drive>/<RUN_ID>/` after rendering, verifies their names via rclone,
+and records the delivery status. Upload errors never delete local renders or
+change a successful render status. Check `./ad status`; retry without
+re-rendering via `./ad upload [RUN_ID]`. Leave `delivery.drive` blank to disable
+Drive delivery entirely. See [`CLI.txt`](CLI.txt).
+
 ## Film toolkit
 
 The code and the repeatable process behind Goosnav's animated ads. Each ad is a Blender scene with narration, synthesized sound, type, and a white end card with the addresses, rendered for 4:5 portrait (or any other format).
