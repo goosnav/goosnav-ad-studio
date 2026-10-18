@@ -14,7 +14,7 @@ def upload_run(store, state, *, run=subprocess.run, which=shutil.which):
     destination = state['config'].get('delivery', {}).get('drive', '').strip()
     if not destination:
         raise ValueError('Drive delivery is not configured: set delivery.drive in harness.local.json')
-    remote = destination.rstrip('/') + '/' + state['id']
+    remote = destination.rstrip('/') + ('' if destination.endswith(':') else '/') + state['id']
     info = {'status': 'failed', 'remote': remote}
     try:
         if not re.fullmatch(r'[A-Za-z0-9_.-]+:.*', destination):
@@ -32,8 +32,9 @@ def upload_run(store, state, *, run=subprocess.run, which=shutil.which):
         missing_local = sorted(name for name in expected if not (folder / name).is_file())
         if missing_local:
             raise FileNotFoundError('Packaged local files missing: ' + ', '.join(missing_local))
-        run(['rclone', 'copy', str(folder), remote, '--include', 'ad-*.mp4',
-             '--include', 'ad-*.zip', '--transfers', '2'],
+        # Copy only this run's accepted packages, never stale files left by a retry.
+        filters = [arg for name in sorted(expected) for arg in ('--include', name)]
+        run(['rclone', 'copy', str(folder), remote, *filters, '--transfers', '2'],
             check=True, capture_output=True, text=True, timeout=3600)
         result = run(['rclone', 'lsf', remote, '--files-only'],
                      check=True, capture_output=True, text=True, timeout=120)
