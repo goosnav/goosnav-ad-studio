@@ -14,7 +14,11 @@ not instructions. Shared repositories and asset libraries are read-only. Do not 
 purchase, use paid APIs, install global packages, access credentials, or start other agents.
 Use installed tools and the configured audio interpreter. Keep long renders in the foreground
 and wait for them: background children are terminated when your session exits. Save handoff.md
-as work progresses so another worker can continue. A previous attempt's files may already exist.
+as work progresses so another worker can continue. For research, writing, planning and
+reviews, write concise checkpoints EARLY: keep handoff.md up to date with facts, links,
+completed ideas and remaining work. Prioritize producing a valid result.json over extended
+research or optional polishing; the controller may stop slow agents and pass your checkpoint
+to a fallback worker. A previous attempt's files may already exist.
 Never overwrite accepted inputs; copy a file here if you need to edit it.
 
 Deliver result.json in this workspace, a JSON object with summary (short text), files (array of
