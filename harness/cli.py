@@ -56,7 +56,8 @@ def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
             if not queued:
                 print('Another run is in progress; this one is queued and starts when it finishes.',file=sys.stderr,flush=True)
                 queued=True
-            sleep(30);continue
+            # Check the cancellation flag quickly for controllers queued behind the lock.
+            sleep(1);continue
         delay=min([c for c in (store.cooldown(p) for p in ('codex','claude')) if c] or [0])
         if not wait or result.get('status')!='waiting_provider' or not delay:
             return result
@@ -81,8 +82,11 @@ def main(argv=None):
     for name in ('run','resume'):
         q=sub.add_parser(name);q.add_argument('id');q.add_argument('--steps',type=int)
         q.add_argument('--no-wait',action='store_true',help='Stop instead of waiting out provider usage limits')
-    for name in ('status','events','pause','cancel'):
+    for name in ('status','events','pause'):
         q=sub.add_parser(name);q.add_argument('id')
+    q=sub.add_parser('cancel',help='Cancel one run or every unfinished run')
+    q.add_argument('id',nargs='?')
+    q.add_argument('-a','--all',action='store_true',help='Cancel all active, queued, and paused runs')
     q=sub.add_parser('retry');q.add_argument('id');q.add_argument('--task',required=True)
     q=sub.add_parser('upload',help='Upload packaged ads to configured Drive (or retry a failed upload)')
     q.add_argument('id')
@@ -123,15 +127,30 @@ def main(argv=None):
                 result=drive(Engine(store),store,a.id,not a.no_wait,a.steps)
             elif a.cmd=='retry':
                 while True:
+                    if store.control_value(a.id)=='cancel':
+                        # A queued retry must not silently restart after cancel-all.
+                        result=store.get(a.id)
+                        break
                     try:
-                        Engine(store).prepare_retry(a.id,a.task);break
-                    except Busy:   # queue behind the active controller, like make/resume
-                        time.sleep(30)
-                result=drive(Engine(store),store,a.id)
+                        Engine(store).prepare_retry(a.id,a.task)
+                        result=drive(Engine(store),store,a.id)
+                        break
+                    except Busy:
+                        time.sleep(1)
             elif a.cmd=='upload':
                 result=upload_run(store,store.get(a.id))
-            elif a.cmd in ('pause','cancel'):
-                store.control(a.id,a.cmd);result={'id':a.id,'requested':a.cmd}
+            elif a.cmd=='cancel':
+                if a.all or a.id=='all':
+                    if a.all and a.id is not None:
+                        raise ValueError('Use cancel --all OR cancel RUN_ID, not both')
+                    ids=store.cancel_all()
+                    result={'requested':'cancel_all','count':len(ids),'runs':ids}
+                elif a.id:
+                    store.control(a.id,'cancel');result={'id':a.id,'requested':'cancel'}
+                else:
+                    raise ValueError('Supply RUN_ID or use cancel --all')
+            elif a.cmd=='pause':
+                store.control(a.id,'pause');result={'id':a.id,'requested':'pause'}
             elif a.cmd=='status':result=store.get(a.id)
             elif a.cmd=='events':result=store.events(a.id)
             else:result=[{'id':r['id'],'status':r['status'],'created':r['created']} for r in store.list()]
