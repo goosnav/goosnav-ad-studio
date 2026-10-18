@@ -90,6 +90,20 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # You can also upload a prior local-only run by setting the delivery.drive
   # of that run using the saved run config, or by running rclone copy manually.
 
+PROVIDER FAILOVER / WAITING_PROVIDER
+  # Claude's subscription can be exhausted while Codex is available.
+  # The harness now keeps Codex eligible if app-server model discovery fails:
+  # Codex CLI selects its own default model rather than being skipped.
+  # Resuming refreshes stale unavailable Codex routes from existing run state.
+  # A retired Codex model triggers one automatic retry using the CLI default.
+  # The scheduler still honors real per-provider quota cooldowns.
+  ./ad status                  shows specific provider skip/failure reasons
+  ./ad doctor                  checks local CLI tools and login diagnostics
+  python3 -m harness models    check model routing in current configuration
+  ./ad resume RUN_ID           retry a previously blocked run after git pull
+  # Existing tasks/artifacts are preserved; successful stages are not repeated.
+  # Note: manual workers profiles with ONLY Claude cannot fall back to Codex.
+
 AGENT STALLS / TIMEOUTS
   # Defaults for NEW runs: lightweight research/write/critique/select 10 min,
   # direction/reviews 15 min, idle with no log/checkpoint changes 5 min.
