@@ -77,7 +77,9 @@ def classify(code, output):
         'context': ['context window', 'context_length', 'context limit', 'max_tokens', 'max_turns'],
         'auth': ['authentication', 'unauthorized', 'not logged in', 'login required',
                  'token_expired', 'log in again', 'invalid_api_key', 'invalid login', 'login expired'],
-        'model': ['model not found', 'model_not_found', 'not supported', 'model is unavailable'],
+        'model': ['model not found', 'model_not_found', 'unknown model', 'invalid model',
+                  'unsupported model', 'not supported', 'model is unavailable',
+                  'model is not available'],
         'permission': ['permission denied', 'permission_denied', 'tool denied'],
     }.items():
         if any(w in s for w in words):
