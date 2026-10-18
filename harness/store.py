@@ -79,6 +79,28 @@ class Store:
             db.execute('UPDATE runs SET control=? WHERE id=?', (action, run_id))
             self._event(db, run_id, action + '_requested', {})
 
+    def cancel_all(self):
+        """Cancel every unfinished run in this harness home, in one transaction.
+
+        The control flag is authoritative for running workers and queued controllers.
+        Snapshot statuses are updated for immediate visibility; an active controller
+        will save its final cancelled status as soon as it observes the flag.
+        """
+        terminal = {'complete', 'partial', 'failed', 'needs_review', 'cancelled', 'interrupted'}
+        cancelled = []
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            for run_id, raw in db.execute('SELECT id, state FROM runs ORDER BY id DESC').fetchall():
+                state = json.loads(raw)
+                if state['status'] in terminal:
+                    continue
+                state['status'] = 'cancelled'
+                db.execute('UPDATE runs SET control=?, state=? WHERE id=?',
+                           ('cancel', json.dumps(state), run_id))
+                self._event(db, run_id, 'cancel_requested', {'all': True})
+                cancelled.append(run_id)
+        return cancelled
+
     def control_value(self, run_id):
         with self.connect() as db:
             return db.execute('SELECT control FROM runs WHERE id=?', (run_id,)).fetchone()[0]
