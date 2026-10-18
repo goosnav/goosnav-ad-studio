@@ -30,6 +30,8 @@ def test_error_classification():
     assert classify(1, 'context window exceeded') == 'context'
     assert classify(1, 'authentication failed') == 'auth'
     assert classify(1, 'permission denied') == 'permission'
+    assert classify(1, 'Unknown model: model-x') == 'model'
+    assert classify(1, 'The model is not available') == 'model'
     assert classify(0, 'hello') == 'ok'
     assert classify(0, '{"type":"result","is_error":true,"result":"rate limit exceeded"}') == 'quota'
     assert classify(1, '{"type":"error","error":{"code":"token_expired","message":"Please log in again"}}') == 'auth'
