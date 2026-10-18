@@ -138,7 +138,7 @@ def main(argv=None):
             # Delivery is a post-render side effect. A Drive outage must never
             # turn a successfully rendered ad into a failed render.
             if (a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial')
-                    and result['config']['delivery']['drive']):
+                    and result['config'].get('delivery', {}).get('drive')):
                 result=upload_run(store,result)
                 if result['delivery']['status']=='failed':
                     print('Drive delivery failed (local videos remain safe): '
