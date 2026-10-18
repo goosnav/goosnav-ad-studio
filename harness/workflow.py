@@ -236,9 +236,15 @@ class Engine:
                     attempt['pid'] = pid; attempt['identity'] = process_identity(pid)
                     self.store.save(state, 'worker_started', {'task': task['id'], 'pid': pid})
                 timeout, idle = agent_deadline(c, task['stage'])
-                outcome = self.execute({**profile, 'log_mb': c['limits']['log_mb'],
-                                        'idle_timeout': idle}, work, prompt, log,
-                    cancelled=lambda: self.store.control_value(state['id']) == 'cancel', timeout=timeout, started=started)
+                try:
+                    outcome = self.execute({**profile, 'log_mb': c['limits']['log_mb'],
+                                            'idle_timeout': idle}, work, prompt, log,
+                        cancelled=lambda: self.store.control_value(state['id']) == 'cancel',
+                        timeout=timeout, started=started)
+                except Exception as exc:
+                    # Unexpected provider/CLI failures are an attempt failure,
+                    # not a crash of the entire state machine.
+                    outcome = {'kind': 'dependency', 'detail': f'{type(exc).__name__}: {exc}'}
                 attempt.update(outcome, ended=time.time()); attempt.pop('pid', None); attempt.pop('identity', None)
                 # Claude aliases move over time. Pin the concrete observed model for the rest of this run.
                 observed=outcome.get('observed_models',[])
@@ -250,6 +256,8 @@ class Engine:
                                 if route['provider']=='claude' and route['model']==alias:
                                     route['model']=observed[0];route['resolved_alias']=alias
                 self.verify_history(state)
+                if outcome['kind'] == 'ok' and not result_file.is_file():
+                    outcome = {**outcome, 'kind': 'invalid', 'detail': 'Missing result.json'}
                 # If a deadline hit after a worker wrote a COMPLETE valid result,
                 # salvage it rather than discarding good work. Partial text isn't
                 # accepted: the same contract/media checks still apply.
