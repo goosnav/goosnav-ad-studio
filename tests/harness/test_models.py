@@ -18,3 +18,39 @@ def test_no_silent_quality_or_cost_downgrade():
         choose_model([{'model': 'mystery', 'description': 'Unknown model'}], 'economy')
     with pytest.raises(ModelError):
         choose_model([{'model': 'old', 'description': 'Older frontier model'}], 'quality')
+
+
+def test_codex_catalog_failure_uses_cli_default_instead_of_disabling_provider(monkeypatch, tmp_path):
+    import harness.models as models
+    from harness.config import profiles
+    from harness.workers import CODEX_CLI_DEFAULT, command
+
+    def fail_catalog():
+        raise ModelError('model/list failed during temporary outage')
+
+    monkeypatch.setattr(models, 'codex_catalog', fail_catalog)
+    monkeypatch.setattr(models.shutil, 'which', lambda _: '/usr/bin/agent-cli')
+    resolved = models.resolve_workers({'researcher': profiles('balanced')})
+    codex = resolved['workers']['researcher'][0]
+    assert codex['provider'] == 'codex'
+    assert codex['model'] == CODEX_CLI_DEFAULT
+    assert 'unavailable' not in codex
+    assert 'model/list failed' in codex['resolution']
+    argv = command(codex, tmp_path)
+    assert argv[0:2] == ['codex', 'exec']
+    assert '-m' not in argv  # let the CLI select its own supported model
+    assert '--json' in argv
+    assert resolved['workers']['researcher'][1]['model'] == 'sonnet'
+
+
+def test_unknown_codex_catalog_descriptions_fall_back_to_cli_default(monkeypatch):
+    import harness.models as models
+    from harness.config import profiles
+    from harness.workers import CODEX_CLI_DEFAULT
+    monkeypatch.setattr(models, 'codex_catalog',
+                        lambda: [{'model': 'working-model', 'description': 'Undocumented'}])
+    monkeypatch.setattr(models.shutil, 'which', lambda _: '/usr/bin/agent-cli')
+    resolved = models.resolve_workers({'researcher': profiles('balanced')})
+    codex = resolved['workers']['researcher'][0]
+    assert codex['model'] == CODEX_CLI_DEFAULT
+    assert 'unavailable' not in codex
