@@ -19,7 +19,7 @@ import time
 REPO = Path(__file__).resolve().parent
 HOME = Path(os.environ.get('STUDIO_HARNESS_HOME', Path.home() / '.local/share/goosnav-ad-studio'))
 COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'gui', 'doctor')
-DONE = ('complete', 'partial', 'failed', 'needs_review', 'cancelled', 'interrupted', 'paused')
+DONE = ('complete', 'partial', 'failed', 'needs_review', 'waiting_provider', 'cancelled', 'interrupted', 'paused')
 
 
 def harness(*args, capture=True):
@@ -55,6 +55,9 @@ def summary(run_id):
             print(f'Drive: {d["remote"]}')
         elif d['status'] == 'failed':
             print(f'Drive delivery failed: {d.get("error", "unknown error")[:240]}\nRetry: ./ad upload {run_id}')
+    if current and current['status'] == 'waiting_provider':
+        print(f'  Provider blockers: {current.get("feedback", "No provider accepted this task")[:1200]}')
+        print(f'  After fixing providers: ./ad resume {run_id}')
     if s['status'] in DONE:
         folder = s['config']['output'].get('folder')
         if done and folder:
