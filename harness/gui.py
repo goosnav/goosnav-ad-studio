@@ -171,6 +171,12 @@ class Handler(BaseHTTPRequestHandler):
             last = t['attempts'][-1] if t['attempts'] else {}
             who = f'{last.get("provider", "")} {last.get("model", "")}'.strip() or ('controller' if t['stage'] in ('frame', 'qa', 'package') else '')
             note = (t['result'] or {}).get('summary', '') if t['status'] == 'succeeded' else t['feedback']
+            if t['status'] == 'running' and last:
+                elapsed = max(0, int(time.time() - last.get('started', time.time())))
+                log = Path(last.get('log', ''))
+                activity = (f'last log update {int(time.time() - log.stat().st_mtime)}s ago'
+                            if log.is_file() else 'no worker output yet')
+                note = f'Running {elapsed//60}m {elapsed%60}s; {activity}. ' + note
             retry = (f'<form method="post" action="/run/{quote(run_id)}/retry"><input type="hidden" name="task" value="{esc(t["id"])}">'
                      '<button>Retry</button></form>') if t['status'] in ('failed', 'needs_review', 'waiting_provider') else ''
             rows += (f'<tr><td>{esc(t["id"])}</td><td class="{esc(t["status"])}">{esc(t["status"])}</td><td>{len(t["attempts"])}</td>'
