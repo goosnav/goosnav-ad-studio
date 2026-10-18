@@ -49,7 +49,9 @@ python3 -m harness list
 python3 -m harness status RUN_ID           # full JSON state: tasks, attempts, models, feedback
 python3 -m harness events RUN_ID
 python3 -m harness pause RUN_ID            # stops after the current task
-python3 -m harness cancel RUN_ID           # kills the current worker's process group
+python3 -m harness cancel RUN_ID           # stop one worker/run
+python3 -m harness cancel --all            # cancel every unfinished run in this harness home
+# Short forms: ./ad cancel all    or    ./ad cancel -a
 python3 -m harness resume RUN_ID           # continue paused, cancelled, interrupted or waiting runs
 python3 -m harness retry RUN_ID --task ad-01-animate
 python3 -m harness models                  # what each role resolves to right now
@@ -60,6 +62,15 @@ worker's most recent log output. An unchanging status alone does not prove a
 hang. To apply updated timeouts to an already-running old controller, cancel
 its active worker, pull, then resume the run (completed tasks and checkpoints
 are retained): `./ad cancel RUN_ID`, `git pull`, `./ad resume RUN_ID`.
+
+Bulk cancellation atomically sets every unfinished run's control flag to
+`cancel` and updates its status. Workers launched by the harness observe this
+flag, and their managed subprocess groups are terminated by the supervisor.
+Queued and provider-cooldown controllers check for cancellation every second
+(previously every 30 seconds). Completed runs, outputs and the SQLite event
+history are not deleted. Only runs under the chosen harness home are affected;
+other Python/Blender processes are not killed. Controller-side work that does
+not poll cancellation may need to finish its current operation first.
 
 Only one controller runs per harness home (file lock). `status`, `pause` and
 `cancel` work while it runs. The GUI uses the same commands, so a run started
