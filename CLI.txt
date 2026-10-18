@@ -34,7 +34,14 @@ STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   ./ad list                    recent runs / IDs
   ./ad pause [RUN_ID]          pause after current stage
   ./ad resume [RUN_ID]         continue
-  ./ad cancel [RUN_ID]         cancel now
+  ./ad cancel [RUN_ID]         cancel one run (latest if omitted)
+  ./ad cancel all              CANCEL ALL unfinished runs (active, queued, paused)
+  ./ad cancel -a               same as cancel all
+  python3 -m harness cancel --all  equivalent full CLI command
+  # All means runs in this Ad Studio's STUDIO_HARNESS_HOME only.
+  # Stops running agents via their existing cancellation checks, within seconds.
+  # Queued jobs exit promptly instead of waiting a 30-second queue interval.
+  # No unrelated processes are killed; no finished MP4s or state are deleted.
   ./ad upload [RUN_ID]         retry Drive upload of packaged MP4s/ZIPs; no re-render
   ./ad doctor                  check dependencies
   # Status shows the current model, elapsed time and seconds since CLI output.
@@ -51,6 +58,7 @@ REMOTE COMMAND VIA TAILSCALE (FROM LAPTOP/PHONE SSH CLIENT)
   tailscale ssh USER@RENDER-PC 'cd /path/to/goosnav-ad-studio && ./ad "A 10-second Goosklerf ad with the PS1 characters"'
   # This starts a DETACHED job; disconnecting will not cancel it.
   tailscale ssh USER@RENDER-PC 'cd /path/to/goosnav-ad-studio && ./ad status'
+  tailscale ssh USER@RENDER-PC 'cd /path/to/goosnav-ad-studio && ./ad cancel all'
 
 OPTIONAL GUI
   ./ad gui --local              safe default: localhost only (127.0.0.1:8788)
