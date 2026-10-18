@@ -79,8 +79,9 @@ def resolve_workers(workers):
     if any(p['provider'] == 'codex' and p['model'].startswith('auto:') for ps in workers.values() for p in ps):
         try:
             catalog = codex_catalog()
-        except (OSError, ValueError, ModelError) as e:
-            discovery_error = str(e)
+        except (OSError, ValueError, ModelError, KeyError, TypeError, IndexError) as e:
+            # A CLI-protocol response-shape change should not strand every Codex route.
+            discovery_error = f'{type(e).__name__}: {e}'
     for role, profiles in resolved.items():
         for p in profiles:
             p['selector'] = p['model']
