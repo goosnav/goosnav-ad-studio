@@ -126,17 +126,18 @@ def main(argv=None):
                         store.control(a.id,'run')
                 result=drive(Engine(store),store,a.id,not a.no_wait,a.steps)
             elif a.cmd=='retry':
+                cancelled=False
                 while True:
                     if store.control_value(a.id)=='cancel':
                         # A queued retry must not silently restart after cancel-all.
-                        result=store.get(a.id)
+                        cancelled=True
                         break
                     try:
                         Engine(store).prepare_retry(a.id,a.task)
-                        result=drive(Engine(store),store,a.id)
                         break
                     except Busy:
                         time.sleep(1)
+                result=store.get(a.id) if cancelled else drive(Engine(store),store,a.id)
             elif a.cmd=='upload':
                 result=upload_run(store,store.get(a.id))
             elif a.cmd=='cancel':
