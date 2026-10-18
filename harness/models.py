@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 
-from .workers import worker_env, terminate_group
+from .workers import CODEX_CLI_DEFAULT, worker_env, terminate_group
 
 
 class ModelError(RuntimeError):
@@ -96,7 +96,11 @@ def resolve_workers(workers):
                 p['resolution'] = 'CLI-maintained role alias; actual model recorded from session events'
             else:
                 if discovery_error:
-                    p['unavailable'] = discovery_error; continue
+                    # Metadata is advisory. Codex may be logged in and usable even if
+                    # app-server model/list fails, so let the CLI pick a default model.
+                    p['model'] = CODEX_CLI_DEFAULT
+                    p['resolution'] = 'Codex CLI default (catalog unavailable: ' + discovery_error + ')'
+                    continue
                 try:
                     chosen = choose_model(catalog, tier)
                     p['model'] = chosen['model']
@@ -107,6 +111,7 @@ def resolve_workers(workers):
                     p['effort'] = wanted
                     p['resolution'] = chosen.get('description', '')
                 except ModelError as e:
-                    p['unavailable'] = str(e)
+                    p['model'] = CODEX_CLI_DEFAULT
+                    p['resolution'] = 'Codex CLI default (model tier unresolved: ' + str(e) + ')'
     return {'checked_at': time.time(), 'workers': resolved, 'catalog': catalog or [],
             'discovery_error': discovery_error}
