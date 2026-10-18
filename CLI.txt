@@ -21,6 +21,8 @@ CHECK ON IT (RUN_ID is optional; leave it out to mean the latest run)
   ./ad pause [RUN_ID]          stop after the current step
   ./ad resume [RUN_ID]         carry on (after a pause, a stop, or a fix)
   ./ad cancel [RUN_ID]         stop now
+  python3 -m harness retry RUN_ID --task ad-01-animate
+                               redo one step (and everything after it); ./ad status names the step
 
 OTHER
   ./ad gui                     browser page: open http://192.168.1.193:8788/ from any

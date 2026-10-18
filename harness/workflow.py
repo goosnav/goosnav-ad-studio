@@ -133,9 +133,12 @@ class Engine:
             state=self.store.get(run_id)
             target=next((t for t in state['tasks'] if t['id']==task_id),None)
             if target is None:raise ValueError('Unknown task ID')
-            if target['status'] not in ('failed','needs_review','waiting_provider'):
-                raise ValueError('Retry only failed/review/waiting tasks')
-            if target['status']=='needs_review':
+            if target['status'] not in ('failed','needs_review','waiting_provider','succeeded'):
+                raise ValueError('Retry failed, review, waiting or finished tasks')
+            if target['status']=='succeeded':
+                # Redo from here: this stage and everything after it for the same ad.
+                self.rewind(state,target['ad'],target['stage'],f'Operator asked to redo {target["stage"]} and later stages.')
+            elif target['status']=='needs_review':
                 feedback=json.dumps(target['result'],indent=2)
                 start='revise' if target['ad'] is None else target['result'].get('restart','direct')
                 self.rewind(state,target['ad'],start,feedback)

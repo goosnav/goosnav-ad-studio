@@ -240,3 +240,15 @@ def test_upstream_rewinds_do_not_use_up_a_review_budget(tmp_path):
                   'findings': [{'target': 't', 'severity': 'blocking', 'problem': 'p', 'fix': 'f'}]})
     e.review_transition(state, review)
     assert review['status'] == 'pending' and review['rounds'] == 1   # its first verdict gets a repair
+
+
+def test_retry_on_a_finished_stage_redoes_it_and_everything_after(tmp_path):
+    store = Store(tmp_path); r = store.create(load_config()); r['tasks'] = build_tasks(1)
+    for t in r['tasks']:
+        t.update(status='succeeded', result={'summary': 'done', 'files': []})
+    qa = next(t for t in r['tasks'] if t['stage'] == 'qa'); qa.update(status='failed', result=None)
+    store.save(r, 'fixture')
+    Engine(store).prepare_retry(r['id'], 'ad-01-frame')
+    after = {t['stage']: t['status'] for t in store.get(r['id'])['tasks'] if t['ad'] == 0}
+    assert after['edit'] == 'succeeded'
+    assert all(after[s] == 'pending' for s in ('frame', 'qa', 'creative_qa', 'package'))

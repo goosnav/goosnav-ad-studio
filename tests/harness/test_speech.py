@@ -67,3 +67,15 @@ def test_voice_polish_lifts_presence(tmp_path):
     before = presence_db(dull, 0, 2)
     polish(dull, tmp_path / 'bright.wav')
     assert presence_db(tmp_path / 'bright.wav', 0, 2) > before + 3
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='requires FFmpeg')
+def test_peaky_mix_still_reaches_target_loudness(tmp_path):
+    # Quiet tone with loud clicks: linear gain alone would hit the true-peak ceiling first.
+    peaky = tmp_path / 'peaky.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=64x64:rate=24', '-f', 'lavfi',
+                    '-i', 'aevalsrc=0.02*sin(2*PI*300*t)+0.9*lt(mod(t\,1)\,0.004):s=48000', '-t', '4',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', str(peaky)], check=True)
+    normalize_loudness(peaky, load_config())
+    m = loudness(peaky)
+    assert abs(m['integrated'] + 14) < 1.5 and m['true_peak'] <= -1.0

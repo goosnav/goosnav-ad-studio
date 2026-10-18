@@ -110,19 +110,23 @@ def loudness(media):
     return {'integrated': float(i[1]), 'true_peak': float(p[1]) if p[1] != '-inf' else -120.0}
 
 
-def normalize_loudness(media, config):
-    """Two-pass EBU R128 normalisation in place; the picture is copied untouched."""
+def normalize_loudness(media, config, passes=3):
+    """Set integrated loudness in place: measured gain, then a peak limiter under the true-peak
+    ceiling, re-measured until within 0.75 LU. (Two-pass loudnorm undershoots badly on 10 s ads
+    with sharp effects: -19.9 LUFS for a -14 target.) The picture is copied untouched."""
     target = config['output']['loudness']
     media = Path(media)
-    spec = f'loudnorm=I={target}:TP={TRUE_PEAK}:LRA=11'
-    first = subprocess.run(['ffmpeg', '-nostats', '-i', str(media), '-af', spec + ':print_format=json', '-f', 'null', '-'],
-                           capture_output=True, text=True, timeout=600)
-    m = json.loads(first.stderr[first.stderr.rfind('{'):first.stderr.rfind('}') + 1])
-    second = (f'{spec}:measured_I={m["input_i"]}:measured_TP={m["input_tp"]}:measured_LRA={m["input_lra"]}'
-              f':measured_thresh={m["input_thresh"]}:offset={m["target_offset"]}:linear=true')
-    out = media.with_suffix('.loudnorm' + media.suffix)
-    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(media), '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
-                    '-af', second + ',aresample=48000', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
-                    '-movflags', '+faststart', str(out)], check=True, timeout=600)
-    out.replace(media)
-    return loudness(media)
+    ceiling = 10 ** ((TRUE_PEAK - 1.0) / 20)   # sample-peak limit 1 dB under the true-peak ceiling
+    level = loudness(media)
+    for _ in range(passes):
+        if abs(level['integrated'] - target) <= 0.75 and level['true_peak'] <= TRUE_PEAK + 0.3:
+            break
+        gain = target - level['integrated']
+        out = media.with_suffix('.loudnorm' + media.suffix)
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(media), '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
+                        '-af', f'volume={gain:.2f}dB,alimiter=limit={ceiling:.4f}:attack=1:release=50:level=0,'
+                        'aresample=48000', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart',
+                        str(out)], check=True, timeout=600)
+        out.replace(media)
+        level = loudness(media)
+    return level
