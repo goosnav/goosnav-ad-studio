@@ -257,7 +257,8 @@ class Engine:
                                     route['model']=observed[0];route['resolved_alias']=alias
                 self.verify_history(state)
                 if outcome['kind'] == 'ok' and not result_file.is_file():
-                    outcome = {**outcome, 'kind': 'invalid', 'detail': 'Missing result.json'}
+                    attempt['kind'] = 'invalid'
+                    attempt['detail'] = 'Missing result.json'
                 # If a deadline hit after a worker wrote a COMPLETE valid result,
                 # salvage it rather than discarding good work. Partial text isn't
                 # accepted: the same contract/media checks still apply.
