@@ -30,7 +30,11 @@ def mouth_meshes(arm):
 def apply(mouths_path, rigs, max_deg=MAX_DEG, bone='jaw'):
     """Morph rigs get 'round' for small openings and 'open' for larger ones (weights sum <= 1);
     jaw rigs get the jaw bone rotated by -X. Constant interpolation: a mouth chart snaps."""
-    mouths = json.load(open(mouths_path))
+    if isinstance(mouths_path, dict):
+        mouths = mouths_path
+    else:
+        with open(mouths_path) as f:
+            mouths = json.load(f)
     scene = bpy.context.scene
     if round(scene.render.fps / scene.render.fps_base) != mouths['fps']:
         raise ValueError(f'scene fps differs from the mouth curves ({mouths["fps"]})')

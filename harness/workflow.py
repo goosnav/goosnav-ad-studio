@@ -14,7 +14,7 @@ from .workers import CODEX_CLI_DEFAULT, command, reset_delay, subscription_statu
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'assets': 'producer', 'audio': 'producer',
-         'animate': 'producer', 'review': 'director', 'edit': 'producer', 'creative_qa': 'director',
+         'animate': 'animator', 'review': 'director', 'edit': 'producer', 'creative_qa': 'director',
          'direct': 'director', 'board_review': 'director'}
 CAMPAIGN = ['research', 'write', 'critique', 'revise', 'critique_final', 'select']
 PRODUCTION = ['direct', 'assets', 'board_review', 'audio', 'animate', 'review', 'edit', 'frame', 'qa', 'creative_qa', 'package']
@@ -227,7 +227,10 @@ class Engine:
         context = {'count': c['count']}
         if task['stage'] == 'select':
             context['candidate_ids'] = [s['id'] for t in state['tasks'] if t['stage'] == 'revise' for s in t['result']['scripts']]
-        routes = state['models']['workers'][ROLES[task['stage']]]
+        workers = state['models']['workers']
+        role = ROLES[task['stage']]
+        # Saved runs from before the dedicated animator role keep their routes.
+        routes = workers.get('animator', workers['producer']) if role == 'animator' else workers[role]
         unavailable = []
         for route, profile in enumerate(routes):
             provider = profile['provider']

@@ -143,6 +143,19 @@ and only `blocking` findings stop for a person (`needs_review`).
 | critic | economy | affordable model, low effort | `haiku` |
 | critic (last resort) | balanced | workhorse | `sonnet` |
 
+Animation has its own `workers.animator` routes: **Claude `opus` first**, then
+Codex `auto:quality` (the discovered frontier model). Existing timeout/quota
+fallback applies immediately; assets, audio and edit keep the producer routes.
+Saved runs created before this role retain their original producer routing.
+
+New scripts default to spoken scenes with one or two planted characters. The
+animator uses `blender/performance.py` to reuse library idle motion, add small
+timed nods/blinks and apply the measured mouth curves. Existing named walk and
+gesture clips are optional. Static props remain intact; unsupported actions such
+as opening an unrigged book are simplified before animation. No new stages or
+changes to the retry/review state machine are involved. See the reproducible
+[speaking example](WORKER_GUIDE.md#talking-characters-and-reusable-motion).
+
 Codex models are normally discovered from the account's live catalog
 (`codex app-server` metadata, no inference). If that catalog is unreachable
 or does not describe an appropriate model, the Codex route now **remains

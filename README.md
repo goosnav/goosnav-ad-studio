@@ -16,7 +16,12 @@ writing contest with an adversarial critic and a selector, then per ad: assets,
 local neural audio, Blender animation, review, edit, a Goosnav Frame CTA, technical
 QA, creative QA and packaging. Each creative step is a long, tool-using `codex exec`
 or `claude -p` session using your existing subscriptions, with the other CLI as
-backup. Strong models write, cheap models critique. Operations: [`dev/OPERATIONS.md`](dev/OPERATIONS.md).
+backup. Strong models write, cheap models critique. Animation starts with Claude
+Opus, with Codex as fallback. Scripts default to simple spoken scenes; a shared
+Blender helper reuses idle/gesture clips and drives mouths from the measured
+dialogue, rather than rebuilding body animation for each ad. Static products stay
+intact. Worker example: [`dev/WORKER_GUIDE.md`](dev/WORKER_GUIDE.md#talking-characters-and-reusable-motion).
+Operations: [`dev/OPERATIONS.md`](dev/OPERATIONS.md).
 Status and next steps: [`dev/STATE.md`](dev/STATE.md).
 
 ### Optional automatic Google Drive delivery

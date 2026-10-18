@@ -14,6 +14,47 @@ def test_graph_has_independent_writing_and_review_steps():
     assert len([t for t in tasks if t['stage'] == 'package']) == 2
 
 
+def test_animator_starts_with_opus_and_falls_back_to_codex_on_timeout(tmp_path):
+    from harness.workflow import ROLES
+    config = load_config()
+    assert ROLES['animate'] == 'animator'
+    assert config['workers']['animator'] == [
+        {'provider': 'claude', 'model': 'opus'},
+        {'provider': 'codex', 'model': 'auto:quality'}]
+    store = Store(tmp_path)
+    state = store.create(config)
+    task = build_tasks(1)[0]
+    task.update(id='test-animate', stage='animate')
+    state.update(tasks=[task], models={'workers': config['workers']}, sources={})
+    calls = []
+    def worker(profile, work, *args, **kwargs):
+        calls.append(profile['provider'])
+        if profile['provider'] == 'claude':
+            (work / 'handoff.md').write_text('Reuse the accepted idle and measured speech.')
+            return {'kind': 'timeout', 'detail': 'test timeout'}
+        if len(calls) > 1:
+            assert (work / 'handoff.md').is_file()
+        (work / 'preview.mp4').write_bytes(b'fixture')
+        (work / 'scene.py').write_text('# fixture')
+        (work / 'result.json').write_text(json.dumps({
+            'summary': 'routing fixture', 'preview': 'preview.mp4', 'source': 'scene.py',
+            'files': [{'path': 'preview.mp4', 'kind': 'video'}, {'path': 'scene.py', 'kind': 'source'}]}))
+        return {'kind': 'ok'}
+    engine = Engine(store, execute=worker, auth=lambda _: True)
+    engine.validate_media = lambda *args: None  # this test checks routing, not a render
+    engine.agent_task(state, task, store.path(state['id']))
+    assert calls == ['claude', 'codex']
+    assert task['status'] == 'succeeded'
+    # A saved pre-upgrade run has no animator entry and keeps its old routing.
+    old_workers = dict(config['workers']); old_workers.pop('animator')
+    legacy = store.create(config)
+    old_task = build_tasks(1)[0]; old_task.update(id='legacy-animate', stage='animate')
+    legacy.update(tasks=[old_task], models={'workers': old_workers}, sources={})
+    calls.clear()
+    engine.agent_task(legacy, old_task, store.path(legacy['id']))
+    assert calls == ['codex'] and old_task['status'] == 'succeeded'
+
+
 def fake_models(workers):
     return {'workers': {role: [{'provider': 'codex', 'model': 'test-quality'},
                              {'provider': 'claude', 'model': 'test-backup'}] for role in workers}}

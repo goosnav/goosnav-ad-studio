@@ -33,6 +33,8 @@ DEFAULTS = {
                 # Cheap reviewers first; a stronger route only after they fail the contract.
                 'critic': profiles('economy') + profiles('balanced'), 'selector': profiles('quality'),
                 'producer': profiles('balanced'),
+                'animator': [{'provider': 'claude', 'model': 'opus'},
+                             {'provider': 'codex', 'model': 'auto:quality'}],
                 # The director plans pacing, casting and the end card, then reviews the cuts.
                 'director': profiles('quality')},
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,

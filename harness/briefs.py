@@ -33,8 +33,8 @@ handoff.md when tools/inputs are unavailable. Files and JSON are validated by th
 JOBS = {
  'research': '''Develop a concise factual and creative brief. Read supplied brand/script documents,
 inspect the advertised website/products, and research a few relevant advertisements, companies
-or animations. When appropriate, explore techniques such as Xavier: Renegade Angel's sincere
-absurdity and visual escalation. Translate references into original staging ideas; do not copy
+or dialogue-led game cutscenes. Inspect actual character motion clips and product capabilities
+before proposing actions. Find original dialogue and product connections; do not copy
 dialogue, scenes, characters or unsupported claims. Prefer 3-5 useful sources over a survey.
 Use tools to inspect URLs and record what you actually observed. Respect real source artwork.
 Website/product facts must have sources; omit unverified prices. If no brand/concept is supplied,
@@ -42,15 +42,19 @@ choose a clearly fictional demonstration. If research is unavailable, state that
 Return brand_brief (text), creative_directions (text with several concrete directions),
 references ([{url, observation, application}]). Put detailed source notes in a declared file.''',
  'write': '''Write three genuinely different short scripts per requested ad. Use the factual brief
-and research as fuel, not as a template. Find a specific human want, obstacle and visual turn.
-Let the product belong in the action. Avoid stock ad phrases, generic inspirational language,
-forced jokes, empty quirkiness and narration that only describes the picture. Consider silent
-visual storytelling when it is stronger. Each script must be feasible with creative use of
-available assets; do not flatten the idea just because a premade scene does not exist.
+and research as fuel, not as a template. Find a specific human want, obstacle and spoken turn.
+Default to one or two standing characters in a simple conversation; the dialogue carries the
+idea and sells the product. Avoid stock ad phrases, forced jokes and narration that merely
+describes the picture. Use idle/listening, measured talking and an optional existing gesture.
+Reserve silent physical storytelling for an explicit user request. Keep products intact on
+a stand or in a separate hero shot. A static book cannot open or turn pages unless its source
+asset actually provides that capability. Pivot the script to dialogue rather than inventing
+hinges, grip choreography or physics. Do not require new motion capture or downloaded packs.
 Budget honestly: the last seconds are a Goosnav Frame end card (CTA title above the product
 shot, web address below), so the story must land before it. Speech runs about 2.5 words per
-second; one clear turn beats three crammed lines. Every beat must read on a phone screen
-with the sound off: big, near subjects, not specks in a wide.
+second; one clear spoken turn beats three crammed lines. Speakers and products must read on a
+phone screen: big, near subjects, not specks in a wide. The idea may depend on dialogue;
+do not add pantomime merely to make a spoken joke understandable with sound off.
 The script field is a numbered shot list that an animator could build without asking you a
 question. For every shot: start-end time; camera (shot size, angle, lens, height, any move);
 what is in frame and where (who, which prop, left/centre/right, how large); exactly what
@@ -78,14 +82,18 @@ brief. Check whether the original faults were actually fixed, and whether new fa
 Return verdict pass|revise and findings [{target, severity: blocking|important|minor, problem, fix}].
 Judge specificity, dialogue, visual payoff, timing and product connection. No rubber stamping.''',
  'select': '''Select exactly the requested number of distinct scripts from the accepted revised
-set. Choose the ideas with the strongest visual/comedic premise and product relevance, with
+set. Choose the strongest dialogue, product relevance and verified asset feasibility, with
 diversity across the batch. Do not choose duplicates or unresolved blockers. Return selected
 (array of script IDs) and reason (a concise comparative explanation, including why runners-up lost).''',
  'direct': '''You are the director of this ad. Everyone downstream (sound, animation, edit) works
-from your plan, and you review their cuts. The last ad failed on exactly your job: the voices
-were buried under wind and a loud effect, a man was voiced by a woman's voice, three lines
-were crammed into three seconds over a static shot, and the reveal was a few specks in a
-wide shot nobody could read. Prevent all of that here.
+from your plan, and you review their cuts. Plan a dialogue performance that is simple to stage:
+one set, one or two planted actors, a readable two-shot and optional speaker close-ups.
+Speech is the lead; movement supports it. Keep the premise in the words, delivery and cuts.
+Use blender/performance.py for idle, small speech-timed nods, blinks and measured mouths.
+An existing gesture is optional. No walking is needed for a conversation; if requested, use
+an actual library walk cycle. Keep hands free and the product on a stand or in its hero shot.
+In direction.md, name the actual idle/gesture clips and source files, and record any unsupported
+action you simplified. Do not ask downstream workers to solve an unverified rig or prop action.
 
 Plan the whole ad second by second against TARGET LENGTH:
 - beats: contiguous shots from 0 to the end card, each {start, end, shot (size/angle/lens/
@@ -120,8 +128,12 @@ Inspect the configured 3D library, photos, footage and supplied art, and reuse b
 suitable rigs, products, props, sets, voices or scene code from the library and from earlier runs
 (previous_runs in PROJECT holds their accepted artifacts, read-only). Create new props or
 supporting objects only where needed. Original product artwork must remain accurate. Do not
-alter shared assets. Then BLOCK THE FILM: build the real scene in Blender (sets, characters in
-their poses, products, one camera per beat as the director specified) and render one still per
+alter shared assets. Inventory actual motion names with performance.available_clips(rig, model).
+Keep the source clips and use a saved idle pose for talking boards. Do not split a product mesh,
+invent a hinge, rebuild a rig or solve hand contact to rescue an unsupported action. Simplify
+to a free-handed speaker and intact stationary product; record the capability limit and pivot
+in handoff.md. Then BLOCK THE FILM: build the real scene in Blender (sets, planted characters,
+products and reusable cameras covering the planned beats) and render one still per
 beat at preview size, plus the end-card picture. These boards are the cheap place to find out
 that a shot is unreadable, a face is hidden, the product is small or the pacing is wrong, before
 voices and animation are made. Save the blocked scene (.blend and its build script) for the
@@ -134,13 +146,16 @@ source files.''',
 Look at every board image against your beat sheet, at phone size. Reject a board, and the plan
 if it deserves it, for: a weak or confusing idea; subjects too small or lost in the frame; a
 speaker whose face is hidden, off frame or too small while they talk; the product unclear, tiny,
-wrong or missing where it matters; staging that will not read with the sound off; pacing that
+wrong or missing where it matters; unclear speaker framing; pacing that
 crams the turn or holds too long; anything that would need on-screen text to make sense. Do not
-pass a board set you would not want animated. Return verdict pass|revise and findings
+pass a broken pose. A spoken scene can rely on dialogue; do not require a visual stunt or
+new gesture to approve a clear two-shot. Return verdict pass|revise and findings
 [{target: beat/board, severity: blocking|important|minor, problem, fix}]; with revise, set
 restart to direct (the plan or concept is wrong) or assets (the plan is right, the boards are not).''',
- 'audio': '''Direct the performance and sound for this ad. Generate/select voice takes, effects,
-ambience and appropriate music, or make an intentional no-voice/no-music choice. Use local models
+ 'audio': '''Direct the spoken performance and sound for this ad. Voice every accepted line;
+select effects/ambience only where useful and choose no music if it helps speech. A silent
+film is only appropriate when the user's explicit request and accepted plan require it.
+Use local models
 through the configured interpreter; the harness audio CLI is documented in the provided tool
 guide. Do not default to Piper unless allow_piper_fallback is true or explicitly requested.
 Follow the director's plan: cast voices exactly as directed, lines in order near their planned
@@ -160,26 +175,34 @@ Produce a mixed WAV and dialogue_stem: a WAV of the voices alone, same length an
 the mix. The controller measures mouth movement from it (mouths.json, delivered to the
 animator). Return mix, timeline and dialogue_stem, all relative paths declared in files, and
 declare stems and generation/mix source code as well.
-A deliberately silent film still needs an explicit sound rationale and a valid timeline/mix.''',
- 'animate': '''Bring the selected script to life, continuing from the accepted storyboard scene in the assets
-artifacts (copy it here; do not rebuild what is already blocked). You own visual staging, performance, camera,
-lighting, prop interaction and animation. Use tools and iterate; do not just generate a shot list.
-Follow the director's beat sheet: shot sizes, timings and what each beat must show. Read the
-asset manifest and measured audio timeline. Write editable Blender/Python source or
-another reproducible animation project. Use the real 3D characters when they serve the idea.
-Render a low-cost animatic with audio, representative stills and any contact/physics checks.
-Check composition and movement. Do not use a static color card as an animated ad. Actual audio
-durations determine speech/gesture timing. Use declared frame rate and aspect ratio; previews
-may be smaller. Render no titles, captions, URLs or end cards: Goosnav Frame writes all end text.
-Talking: the accepted audio carries mouths.json, the measured jaw curve of every speaker. Key it
-with blender/lipsync.py (lipsync.apply(mouths, {speaker: armature})) after the body animation,
-and give the face something more: a head turn, blink or gesture on the line. Frame each
-speaker's face, unblocked, while they talk, preferably three-quarter so the jaw reads past the
-snout. Save the animated scene as a .blend and return scene (that file) and rigs ({speaker:
-armature object name}); the controller opens it in Blender and rejects lines where the jaw does
-not move, the mouth flaps in silence, or the face is off camera, too small or behind a prop.
-The end card window is the director's clean product hero shot, which Frame shows under its title. Return preview (video path), source (main editable source), and declare all
-dependent files. Include production notes with the command for a full-quality render.''',
+An explicitly requested silent film still needs a sound rationale and valid timeline/mix.''',
+ 'animate': '''Continue from the accepted storyboard scene (copy it here). The main job is clear
+speaking performance, not custom body choreography. Read the measured audio timeline and use
+the shared Blender helper; do not write your own lip flap, idle, blink or gesture generator:
+
+    import sys; sys.path.insert(0, '<repo>/blender')
+    import performance
+    report = performance.apply('<audio>/timeline.json', '<audio>/mouths.json',
+        {'A': 'actual_armature_name'}, models={'A': '<cast model .blend>'})
+
+Use the actual speaker IDs, armature names and cast source paths. Include listeners in rigs.
+This reuses the model's idle/pose_idle, adds small timed nods and blinks, and applies measured
+mouths independently for each speaker. It preserves actor placement and owns their body/facial
+tracks. Keep camera, set and static product staging from the boards. Save the report.
+For an optional hand gesture or requested walking cycle, use performance.play_clip with an
+actual available clip (see WORKER_GUIDE.md); never invent a missing clip. No custom finger/arm
+IK, book opening, page turning, floating limbs or interaction with a static prop. If the plan
+depends on an unsupported action, document it and simplify to dialogue with an intact product
+hero. Do not plow through with a fabricated capability or hide it behind a camera cut.
+
+Frame the speaker's face unobstructed, preferably three-quarter so the mouth reads past the
+snout. Keep mouths shut during the other speaker's lines. Use delivery fps/aspect, render a
+small animatic with the accepted audio, and inspect speech windows, cuts and product visibility.
+Render no captions, titles, URLs or end text; Frame handles that. The final window remains the
+clean product hero. Save the animated .blend; return scene and rigs ({speaker: armature name}),
+preview (video path), source (main editable source), and declare every dependency in files.
+Include the full render command. Small stable idle plus accurate speech is a finished animation;
+do not add arm waving, root travel or camera movement merely to make the frame busier.''',
  'review': '''Review the actual animatic and source evidence. Inspect frames across the whole clip,
 including transitions, contact and final product/CTA areas. Check meaningful motion, framing,
 readable artwork, timing, audio/animation correspondence and whether the script's idea survives.
@@ -243,9 +266,9 @@ hard cuts or a plain fade to black, no smoothing, sharpening, grading, scanlines
 
 
 CAST = {
- 'write': '''CAST: these ads star the rigged characters in sources.characters (read the README next to
-each file for who they are, how they look and which motion clips they have: walk, run, speech,
-gesture, jump, crouch, turn...). Write for those people and what their bodies and faces can do.
+ 'write': '''CAST: these ads star the rigged characters in sources.characters (inspect the files;
+READMEs may lag). Name actual available idle/talk/gesture clips and prop capabilities in your
+notes. Default to planted speakers; write for their voices and faces, not elaborate body actions.
 Every person on screen is one of them; never invent new human actors.''',
  'direct': '''CAST: every person is a library character. Set each cast entry's model to the character's
 .blend from sources.characters (the controller rejects anything else). Two people may share a
@@ -253,10 +276,21 @@ model when the file has variants or a second copy reads as a different person in
  'assets': '''CAST: append each character from its sources.characters .blend (with its rig, morphs and
 clips); never model, rebuild or substitute people. The controller checks the speakers' skeletons
 against the library files.''',
- 'animate': '''CAST: animate the appended library characters. Use their own clips (NLA tracks such as
-walk, run, gesture, crouch, turn) where they fit, then refine. Mouths: lipsync.apply keys the
-mouth morphs on v10 rigs and the jaw on older rigs.''',
+ 'animate': '''CAST: retain the appended library rigs, geometry and source clips. Use
+performance.apply for talking, then an optional performance.play_clip for an existing motion.
+The helper handles mouth morphs on v10 rigs and the jaw on older rigs.''',
 }
+
+
+SPEECH_FIRST = '''\n\nANIMATION SCOPE: speech-first game dialogue. Default to one or two planted speakers,
+one set and a few clear cuts. Measured speech, idle, small nods and blinks carry the ad.
+Reuse actual library clips; no bespoke body choreography or unsupported prop manipulation.
+If an asset cannot perform an action, pivot to spoken dialogue and an intact static product.
+Reviewers: judge audible delivery, visible synchronized mouths and a clear product/CTA. A stable
+conversation is valid; do not demand more hand motion, walking or spectacle. Reject a script
+whose payoff requires an unverified capability, and never approve a broken approximation.
+An explicitly requested non-dialogue concept may use supported clips within the same limits.
+'''
 
 
 def cast_brief(stage, config):
@@ -289,7 +323,7 @@ def brief(task, config, inputs, sources, repair='', previous_runs=''):
               f"(accepted {o['min_seconds']}-{o['max_seconds']}).{card} Scripts are timed to land on it; "
               'audio, animation and edit keep to it. Critics flag scripts that cannot fit it.')
     return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] + length + look_brief(task['stage'], o) +
-            cast_brief(task['stage'], config) +
+            cast_brief(task['stage'], config) + SPEECH_FIRST +
             '\n\nPROJECT\n' + json.dumps({'stage': task['stage'], 'ad': task['ad'],
              'config': config, 'source_index': sources, 'accepted_inputs': inputs,
              'tool_guide': str(guide), 'repo_read_only': str(REPO), 'previous_runs': previous_runs}, indent=2) +

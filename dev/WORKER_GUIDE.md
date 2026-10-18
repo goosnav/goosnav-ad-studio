@@ -16,6 +16,21 @@ kind. The controller copies these into an accepted artifact directory and checks
 hashes before reuse. Downstream workers get those accepted paths. Use JSON
 numbers for measurements, not estimates presented as measurements.
 
+## Animation scope
+
+The default ad is a short spoken scene: one or two planted characters, one set,
+a two-shot and perhaps a close-up, then an intact product hero. Put the premise
+in the dialogue and delivery. Most body motion should come from an existing idle
+or gesture clip. Walking is optional and uses an existing cycle. Do not plan
+silent physical spectacle unless the owner explicitly requests it.
+
+Inspect the actual asset before promising an interaction. A static book stays
+closed; no new hinge, mesh splitting, page rig or custom hand IK to rescue a
+script. Keep hands free and put the product on a stand or in a separate shot.
+If an action is unsupported, document the limit and simplify the action to a
+spoken exchange. Reviewers should accept a well-delivered standing conversation;
+more arm motion or camera travel is not a quality requirement.
+
 ## Local audio
 
 Run the audio helper with `config.audio.python`. No model packages are imported
@@ -80,17 +95,56 @@ All timings must reflect actual generated audio. Preserve text/voice/seed/model
 metadata. Write viseme or envelope alignment when applicable and state which it
 is. No guessed phoneme timestamps labeled as measured alignment.
 
-## Talking characters
+## Talking characters and reusable motion
 
-The accepted audio artifacts include `mouths.json`: per speaker, one jaw openness value
-(0..1) per frame, measured from the dialogue stem. Key it after the body animation:
+The library already contains motion assets. v10/astronaut rigs have NLA clips
+such as `idle`, `walk`, `speech` and `gesture`; older rigs have saved actions such
+as `pose_idle` and `pose_talk`. Names and capabilities come from the actual file,
+not assumptions based on a README. Use the shared helper instead of rebuilding
+the character, writing a new motion generator or hand-keying a conversation.
+
+The accepted audio supplies the measured timeline and `mouths.json` (per-speaker
+openness per frame). This is the normal complete speaking setup, run after
+appending the actors and arranging the cameras/product:
 
 ```python
 import sys; sys.path.insert(0, '<repo>/blender')
-import lipsync
-lipsync.apply('<audio artifacts>/mouths.json', {'GUY': 'guy', 'FRIEND': 'gal'})
+import performance
+rigs = {'GUY': 'guy', 'FRIEND': 'gal'}  # actual speaker IDs and armature names
+models = {'GUY': '<cast source>/goosnav_guy_ps1.blend',
+          'FRIEND': '<cast source>/goosnav_gal_ps1.blend'}
+report = performance.apply('<audio artifacts>/timeline.json',
+                           '<audio artifacts>/mouths.json', rigs, models=models)
 bpy.ops.wm.save_as_mainfile(filepath='scene.blend')
 ```
+
+`apply` copies each source idle/pose_idle, loops it over the measured duration,
+adds restrained speech-timed head nods and staggered blinks, then applies the
+measured mouth curves. Actors stay in place. The helper owns animation tracks on
+these characters, removes imported mouth demos and stale hand IK, and never edits
+the source files or the scene's cameras/product. Include silent listeners in
+`rigs`. v10 uses mouth morphs; older rigs use the jaw. Keep the saved report.
+Run this after positioning the actors, before any optional library gesture. It
+replaces old character animation tracks, so it is not a layer over custom hand
+contact. A planted pose is intentional. If a freeze check fails, inspect the idle
+and mouth setup instead of adding arbitrary waving or camera travel.
+
+For an optional motion that serves the line, reuse an existing body clip:
+
+```python
+print(performance.available_clips('guy', models['GUY']))
+# Frame numbers, end exclusive. Only do this if the shot actually needs it.
+performance.play_clip('guy', 'gesture', 25, 73, model=models['GUY'])
+# An in-place walk cycle is also supported; travel/contact is not invented.
+performance.play_clip('guy', 'walk', 73, 121, model=models['GUY'], loop=True)
+```
+
+Missing motions raise a clear error listing available names. Choose an existing
+motion or simplify the shot. `play_clip` strips the source demo jaw/object tracks,
+so the measured mouths and actor placement remain authoritative. It copies the
+body action; it does not rewrite the source clip. Walking/gestures are optional,
+not something every ad needs. `lipsync.apply` remains available for a specifically
+authorized custom body animation, called after that body's keys are complete.
 
 The controller runs `harness/scene_check.py` on the saved `scene` with your `rigs` map. For
 every line it needs the speaker's jaw open on at least 30 % of the line's frames, shut while
@@ -112,9 +166,9 @@ repository; do not write there. Adapt a scene runner to write into your workspac
 Read `PLAYBOOK.md` for rendering/contact lessons. Run-owned script decisions and
 current input instructions take precedence over historical creative rules.
 
-Use the configured 3D library's current rig and coordinate conventions. Do not
-copy its specialized five-ad campaign unchanged. Make your own staging and
-timing. Render sparse stills and an animatic first. Keep accepted audio timing
+Use the configured 3D library's current rig and coordinate conventions. Reuse
+motion clips and speaking helpers while writing original dialogue and staging.
+Render sparse stills and an animatic first. Keep accepted audio timing
 through final edits; changing a voice requires updating captions and movement.
 
 Final master: requested size and fps, H.264, yuv420p, 48 kHz audio, within the
@@ -129,8 +183,9 @@ below, on white. That window of the master should therefore be a clean product h
 shot (the real product model, large and square to camera). With `output.frame: full`
 Frame frames the whole ad the same way. The ad's audio runs unchanged under the card.
 `cta: "none"` is supported when an ad should have no CTA. With `output.look: ps1`,
-Frame also crunches the whole picture and types the end text out in pixel type, and
-your brief carries the PS1 rendering rules (native 1/5 resolution, nearest 5x upscale).
+render at native 1/3 resolution and run `blender/ps1_finish.py` once for the library
+dither and nearest 3x upscale. Frame uses clean typography and leaves the finished
+picture alone. No scanlines, jitter or typewriter effects.
 
 ## The director
 
