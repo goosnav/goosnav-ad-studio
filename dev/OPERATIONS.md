@@ -55,6 +55,12 @@ python3 -m harness retry RUN_ID --task ad-01-animate
 python3 -m harness models                  # what each role resolves to right now
 ```
 
+`./ad status` also displays the current model, elapsed time and the age of the
+worker's most recent log output. An unchanging status alone does not prove a
+hang. To apply updated timeouts to an already-running old controller, cancel
+its active worker, pull, then resume the run (completed tasks and checkpoints
+are retained): `./ad cancel RUN_ID`, `git pull`, `./ad resume RUN_ID`.
+
 Only one controller runs per harness home (file lock). `status`, `pause` and
 `cancel` work while it runs. The GUI uses the same commands, so a run started
 in the browser can be paused from a terminal and vice versa.
@@ -73,7 +79,10 @@ direct -> assets (+storyboard) -> board_review -> audio -> animate -> review -> 
 ```
 
 Agent stages are separate `codex exec` / `claude -p` sessions with their own
-workspace, full local tools and a long deadline (1 h campaign, 4 h production).
+workspace and full local tools. Lightweight campaign stages get 10 minutes per
+attempt (with a 5-minute no-activity timeout); direction/reviews get 15 minutes;
+asset building, audio, animation and final editing keep a 4-hour budget and
+have no automatic idle cutoff (rendering can legitimately be quiet).
 `frame`, `qa` and `package` are controller code. `revise` and `critique_final` are
 skipped when the first critique passes. `board_review` is the director looking at one
 still per beat, rendered from the blocked scene, before voices or animation exist.
@@ -133,11 +142,17 @@ model observed in the first session. Override any role in the config:
 
 Routes are tried in order, each with `limits.repairs + 1` attempts. Critics only reach the balanced routes after the cheap ones fail the output
 contract (in the first live run Haiku twice reviewed well but never wrote
-`result.json`).
+`result.json`). A timeout, silent stall or oversized log **immediately switches
+routes** instead of retrying that same model. Research now has economy routes
+after balanced and writing has balanced routes after quality. A fully valid
+`result.json` is salvaged even if its worker timed out; otherwise `handoff.md`
+notes and files remain available to the next worker. There is no reliable
+CLI-specific 'answer now' command; these safeguards are the equivalent without
+risking an incomplete result entering production.
 
 A quota/usage-limit error puts that provider on cooldown
 (`limits.provider_cooldown_seconds`, default 1 h) and the same role moves to
-the other CLI. Writers never downgrade to a cheaper tier. Both CLIs report when their limit resets ("resets 5:40pm", "try again at
+the other CLI. Writers may downgrade to the balanced tier if quality routes stall or fail. Both CLIs report when their limit resets ("resets 5:40pm", "try again at
 4:24 PM"); that time becomes the cooldown. Quota failures do not use up a task's
 repair budget. If every route is cooling down, `make`/`resume`/`retry` sleep until
 the earliest reset and continue (`--no-wait` stops at `waiting_provider` instead).
@@ -164,7 +179,7 @@ before saving. Unknown keys are errors.
 | `output` | `target_seconds` (default 10; writers time scripts to it), `min/max_seconds` (0 = 80-130 % of target), `width/height/fps` (1080x1350 at 24), `cta`, `folder`. |
 | `audio` | `python` (the local model venv), `voice_provider`, `voice`, `music`, `allow_piper_fallback`. |
 | `tools` | `blender/ffmpeg/ffprobe` commands, `frame_root`, `frame_python`. |
-| `workers`, `limits` | Role routing (above); timeouts, repair rounds, cooldown, log cap. |
+| `workers`, `limits` | Role routing; `quick_timeout_seconds` (600), `review_timeout_seconds` (900), `idle_timeout_seconds` (300), production timeout (14400), repair rounds, cooldown and log cap. |
 
 ## Local audio environment
 
