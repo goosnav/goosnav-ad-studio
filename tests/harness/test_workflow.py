@@ -8,8 +8,8 @@ from harness.workflow import Engine, build_tasks
 
 def test_graph_has_independent_writing_and_review_steps():
     tasks = build_tasks(2)
-    assert [t['stage'] for t in tasks[:7]] == [
-        'research', 'write', 'critique', 'revise', 'critique_final', 'select', 'direct']
+    assert [t['stage'] for t in tasks[:8]] == [
+        'research', 'write', 'critique', 'revise', 'critique_final', 'select', 'script_sense', 'direct']
     assert [t['stage'] for t in tasks if t['ad'] == 0][:4] == ['direct', 'assets', 'board_review', 'audio']
     assert len([t for t in tasks if t['stage'] == 'package']) == 2
 

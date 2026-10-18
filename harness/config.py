@@ -36,7 +36,8 @@ DEFAULTS = {
                 'animator': [{'provider': 'claude', 'model': 'opus'},
                              {'provider': 'codex', 'model': 'auto:quality'}],
                 # The director plans pacing, casting and the end card, then reviews the cuts.
-                'director': profiles('quality')},
+                'director': profiles('quality'),
+                'editor': profiles('quality') + profiles('balanced')},
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
                'idle_timeout_seconds': 300,

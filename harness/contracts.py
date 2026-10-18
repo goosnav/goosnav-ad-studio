@@ -13,7 +13,8 @@ class ContractError(ValueError):
 # actually wrong, so a bad cut does not re-render the animation and a bad mix does not re-cast.
 RESTARTS = {'board_review': ('direct', 'assets'),
             'review': ('direct', 'assets', 'audio', 'animate'),
-            'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit')}
+            'edit_review': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit'),
+            'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit')}
 
 
 def digest(path):
@@ -74,7 +75,8 @@ def validate(stage, data, workspace, context):
             ids.append(script['id'])
         if len(set(ids)) != len(ids):
             raise ContractError('Script IDs must be unique')
-    elif stage in ('critique', 'critique_final', 'board_review', 'review', 'creative_qa'):
+    elif stage in ('critique', 'critique_final', 'script_sense', 'board_review',
+                  'review', 'edit_review', 'creative_qa'):
         if data.get('verdict') not in ('pass', 'revise'):
             raise ContractError('Review verdict must be pass or revise')
         if not isinstance(data.get('findings'), list):
@@ -86,8 +88,20 @@ def validate(stage, data, workspace, context):
                 raise ContractError('Unknown finding severity')
         if data['verdict'] == 'pass' and any(f['severity'] == 'blocking' for f in data['findings']):
             raise ContractError('Review cannot pass unresolved blockers')
+        if stage in ('script_sense', 'edit_review') and data['verdict'] == 'pass' and any(
+                f['severity'] == 'important' for f in data['findings']):
+            raise ContractError('Story and edit reviews cannot pass unresolved important problems')
         if data['verdict'] == 'revise' and not data['findings']:
             raise ContractError('Revision needs actionable findings')
+        if stage == 'script_sense':
+            logic = data.get('logic')
+            chosen = context.get('selected_ids', [])
+            if not isinstance(logic, list) or len(logic) != len(chosen) or \
+                    {x.get('script_id') for x in logic if isinstance(x, dict)} != set(chosen):
+                raise ContractError('script_sense must justify the story logic of every selected script')
+            for entry in logic:
+                for field in ('script_id', 'setup', 'cause', 'reaction', 'payoff', 'product_connection'):
+                    text(entry, field)
         if stage in RESTARTS and data['verdict'] == 'revise' and data.get('restart', RESTARTS[stage][-1]) not in RESTARTS[stage]:
             raise ContractError(f'restart must be one of {", ".join(RESTARTS[stage])}')
     elif stage == 'direct':
@@ -112,8 +126,12 @@ def validate(stage, data, workspace, context):
                 raise ContractError('Replace draft proxies before production')
         if not paths:
             raise ContractError('Asset stage needs a manifest/source artifact')
+    elif stage == 'edit_plan':
+        if not isinstance(data.get('plan'), dict):
+            raise ContractError('edit_plan must return a structured cut plan')
     elif stage in ('audio', 'animate', 'edit'):
-        required = {'audio': ['mix', 'timeline'], 'animate': ['preview', 'source'], 'edit': ['master']}[stage]
+        required = {'audio': ['mix', 'timeline'], 'animate': ['preview', 'source'],
+                    'edit': ['master', 'timeline']}[stage]
         for key in required:
             if data.get(key) not in paths:
                 raise ContractError(f'{key} must name a declared file')

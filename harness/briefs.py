@@ -44,9 +44,9 @@ references ([{url, observation, application}]). Put detailed source notes in a d
  'write': '''Write three genuinely different short scripts per requested ad. Use the factual brief
 and research as fuel, not as a template. Find a specific human want, obstacle and spoken turn.
 Default to one or two standing characters in a simple conversation; the dialogue carries the
-idea and sells the product. Avoid stock ad phrases, forced jokes and narration that merely
+idea; the end card can sell the product. Avoid stock ad phrases, forced jokes and narration that merely
 describes the picture. Use idle/listening, measured talking and an optional existing gesture.
-Reserve silent physical storytelling for an explicit user request. Keep products intact on
+If dialogue is unjustified, choose an intelligible visual premise instead of forced speech. Keep products intact on
 a stand or in a separate hero shot. A static book cannot open or turn pages unless its source
 asset actually provides that capability. Pivot the script to dialogue rather than inventing
 hinges, grip choreography or physics. Do not require new motion capture or downloaded packs.
@@ -81,6 +81,8 @@ scripts: [{id, title, premise, script, visual_direction, product, cta}].''',
 brief. Check whether the original faults were actually fixed, and whether new faults appeared.
 Return verdict pass|revise and findings [{target, severity: blocking|important|minor, problem, fix}].
 Judge specificity, dialogue, visual payoff, timing and product connection. No rubber stamping.''',
+ 'script_sense': '''Independent adversarial STORY EDITOR. Do not trust the writer, selector or initial critic. Inspect each SELECTED script's exact dialogue and action. Trace the chain of events: why this situation exists, why each line is said, what changes, why the next line responds, and how the payoff leads to the actual product. Return logic: [{script_id, setup, cause, reaction, payoff, product_connection}] for every chosen script ID, plus verdict pass|revise and findings [{target, severity, problem, fix}]. Each logic field must explain a real event/quote, not a generic reassurance. Reject disconnected slogans, pointlessly cutesy banter, non sequiturs, abstract pretentious dialogue, arbitrary props, sales lines said without a motive, and punchlines with no setup. A stranger must be able to explain what happened and why in one sentence. Static characters are fine. If no selected script works, REJECT all of them and send the writing contest back. Technical feasibility does not excuse meaningless writing.''',
+
  'select': '''Select exactly the requested number of distinct scripts from the accepted revised
 set. Choose the strongest dialogue, product relevance and verified asset feasibility, with
 diversity across the batch. Do not choose duplicates or unresolved blockers. Return selected
@@ -107,7 +109,7 @@ Plan the whole ad second by second against TARGET LENGTH:
   voice. Prefer the voices measured clear on a phone: am_michael, bm_lewis, am_adam, am_fenrir,
   bf_emma, af_heart, af_nicole (am_onyx and af_bella are muffled). The controller rejects a mismatch. Speakers on screen should sound distinct.
 - lines: [{speaker, text, start, end, delivery, offscreen?}] in order, at most 3 words per
-  second, with air between lines. delivery says how it is spoken (volume, pace, emotion,
+  second, with air between lines; gaps over 1.25s require intentional_silences: [{start,end,purpose,visible_event}]. delivery says how it is spoken (volume, pace, emotion,
   pauses) and becomes the voice direction. The speaker's face must be in a beat's faces while
   they talk, unobstructed and large enough to see the mouth move; the controller rejects a
   line nobody can be seen saying unless offscreen gives the reason and the visible source. Generate scratch takes with the cast voices through the audio helper and time the
@@ -175,7 +177,7 @@ Produce a mixed WAV and dialogue_stem: a WAV of the voices alone, same length an
 the mix. The controller measures mouth movement from it (mouths.json, delivered to the
 animator). Return mix, timeline and dialogue_stem, all relative paths declared in files, and
 declare stems and generation/mix source code as well.
-An explicitly requested silent film still needs a sound rationale and valid timeline/mix.''',
+A coherent wordless film still needs a sound rationale and valid timeline/mix.''',
  'animate': '''Continue from the accepted storyboard scene (copy it here). The main job is clear
 speaking performance, not custom body choreography. Read the measured audio timeline and use
 the shared Blender helper; do not write your own lip flap, idle, blink or gesture generator:
@@ -213,14 +215,19 @@ pacing right? Return verdict pass|revise and findings [{target: timestamp/artifa
 severity: blocking|important|minor, problem, fix}]. With revise, set restart to the earliest
 stage that is actually wrong: direct (the plan), assets, audio or animate. Require repairs
 only where they matter.''',
+ 'edit_plan': '''You are the autonomous PICTURE AND SOUND EDITOR. Inspect the ACTUAL preview video WITH AUDIO, the dialogue timeline, and the story. The director's timing is rough assembly and has no immunity from cuts. Cut dead time, awkward holds, meaningless shots and unnecessary lines. Favor natural responses, decisive reaction timing, clean cuts and a payoff that lands. Static characters are allowed; useless pauses are not. Do not hide a nonsensical script with sound/music. Return plan: {segments: [{start, end, reason}], removed_lines: [{index, reason}], sound_plan: 'specific mix/effects/music choices and rationale'}. Segments are source in/out times in chronological order, can omit entire shots, and must retain complete spoken lines or justify removing complete lines. Never cut mid-word. Keep the entire FINAL source end-card hero window unchanged and last,
+ as a separate segment starting precisely at card_start even if no story cut is needed. Keep edited total within delivery time range. Good cuts have a purpose, not a minimum count. Provide real timecoded observations when available.''',
+
  'edit': '''Finish the accepted animation: run the full render, edit shots and pauses, align the
 mixed audio, and produce captions when there is dialogue. You may fix implementation issues,
-but keep the selected concept/script and the director's beat timings. Output a playable H.264
+but execute the accepted editorial EDL and trim director timings that do not serve the story. Output a playable H.264
 yuv420p MP4 with audio at the requested size/fps/duration, using declared real assets. Do not
 burn in captions, titles, URLs or end cards (captions go in sidecar files): Goosnav Frame turns
 the end card window into the card with the title and web address. Keep the accepted mix's
 levels; if you rebalance, dialogue stays the lead. Return master (relative video path) and
 declare editable sources, any captions, and render/edit commands. Decode/inspect the result.''',
+ 'edit_review': '''Independently watch the finished EDITED video with its audio. Reject bad dialogue, non sequiturs, an irrelevant prop/set, dead pauses, late cuts, poor sound, lost speech, lip-sync errors and arbitrary product CTA, even when technical checks pass. Static talking shots are permitted. Report verdict pass|revise and timecoded findings [{target, severity, problem, fix}]. If revise, choose restart: direct|assets|audio|animate|edit_plan|edit based on the earliest actual cause. A bad story requires upstream repair; do not tell the editor to solve it with fancy transitions. Do not claim inspection unless you actually used audiovisual tools.''',
+
  'creative_qa': '''Perform the last independent check of the actual finished video, including the
 Frame end card. You are the director signing off the cut. Inspect the final artifact, not only
 an earlier preview. Compare against your plan, the selected script, product facts, technical
@@ -231,6 +238,25 @@ earliest stage that is actually wrong (direct, assets, audio, animate or edit). 
 is generated from your end_card title; a wording fix there means restart direct.''',
 }
 
+
+
+JOBS['edit'] += '''
+ YOU ARE THE DEDICATED EDITOR, NOT A RENDER BOT. Render full-quality original
+ animation, then conform the accepted edit_plan.plan EDL using the shared helper:
+ Export PYTHONPATH using the actual absolute PROJECT.repo_read_only directory.
+ Then run python3 -m harness.editing --video source-render.mp4 --audio source-mix.wav
+ --plan edit-plan.json --timeline source-timeline.json --config run-config.json
+ --direction direction.json --output master.mp4 --output-timeline edited-timeline.json
+ JSON arguments are copies of accepted project inputs; retain source originals.
+ This command cuts image and audio together and creates a retimed measured
+ transcript. Return both master and timeline (declared files), along with editable
+ source and real edit/render commands. Final QA uses the edited timeline, never
+ the old speech timestamps. If adding effects, room tone or optional quiet
+ licensed music, mix at original source timebase before conforming with the
+ EDL; speech remains clear and forward. No extra sound solely to fill space.
+ Inspect the finished video with sound. Frame will add the clean final card;
+ do not burn in titles, captions, URLs or overlays.
+'''
 
 LOOK_PIXEL = {'ps1': 3}  # native render = delivery size / 3 (360x450), as the PS1 characters are built for
 
@@ -282,7 +308,7 @@ The helper handles mouth morphs on v10 rigs and the jaw on older rigs.''',
 }
 
 
-SPEECH_FIRST = '''\n\nANIMATION SCOPE: speech-first game dialogue. Default to one or two planted speakers,
+SPEECH_FIRST = '''\n\nANIMATION SCOPE: speech-first game dialogue. Established Goosnav character models are canon. Static staging is not a defect; nonsense writing and poor timing are. Default to one or two planted speakers,
 one set and a few clear cuts. Measured speech, idle, small nods and blinks carry the ad.
 Reuse actual library clips; no bespoke body choreography or unsupported prop manipulation.
 If an asset cannot perform an action, pivot to spoken dialogue and an intact static product.
@@ -308,6 +334,8 @@ def look_brief(stage, output):
     return '\n\n' + '\n'.join(parts).format(native=native, pixel=pixel)
 
 
+EDITORIAL_STANDARD = "\nSTORY / EDITING QUALITY RULES\nEvery comedy beat requires a concrete setup, cause, reaction and payoff. Irrational\npremises are fine; arbitrary responses are not. Dialogue must follow from the\nprevious line or visible action. Avoid affected, clever-sounding AI language.\nDo not shoehorn product titles into dialogue. A static conversation may be good;\nanimating nothing is not automatically bad. Purposeful silence must earn its\nseconds via an action or reaction; explain gaps over 1.25 s in the director plan.\nThe editor has authority to cut nonessential time and sound, preserving picture,\ndialogue, effects and mouth movements on one timebase. Favor meaningful sound\neffects and clear voices; music is optional. Keep Goosnav characters intact.\n"
+
 TARGETED = '''TARGETED REPAIR. Your previous files are still in this workspace and the earlier accepted
 work is in accepted_inputs. Fix exactly the findings below and anything they force; keep every
 other decision, take, shot and file. Do not start over or re-render more than the fix needs.
@@ -323,7 +351,7 @@ def brief(task, config, inputs, sources, repair='', previous_runs=''):
               f"(accepted {o['min_seconds']}-{o['max_seconds']}).{card} Scripts are timed to land on it; "
               'audio, animation and edit keep to it. Critics flag scripts that cannot fit it.')
     return (COMMON + '\nYOUR JOB\n' + JOBS[task['stage']] + length + look_brief(task['stage'], o) +
-            cast_brief(task['stage'], config) + SPEECH_FIRST +
+            cast_brief(task['stage'], config) + SPEECH_FIRST + EDITORIAL_STANDARD +
             '\n\nPROJECT\n' + json.dumps({'stage': task['stage'], 'ad': task['ad'],
              'config': config, 'source_index': sources, 'accepted_inputs': inputs,
              'tool_guide': str(guide), 'repo_read_only': str(REPO), 'previous_runs': previous_runs}, indent=2) +

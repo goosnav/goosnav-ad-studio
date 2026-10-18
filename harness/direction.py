@@ -15,6 +15,7 @@ GENDERS = ('male', 'female', 'neutral')
 MAX_WORDS_PER_SECOND = 3.0   # spoken English is ~2.5 w/s; above 3 an ad feels gabbled
 MIN_BEAT_SECONDS = 0.75      # a shot shorter than this rarely reads on a phone
 START_TOLERANCE = 0.75       # measured takes may land this far from the planned start
+MAX_UNEXPLAINED_GAP = 1.25  # do not let unmotivated conversational pauses pass direction
 
 # Mix gates, measured on the mixed WAV in dBFS. Calibrated on the RETURN SLOT failure
 # (speech -27, wind bed -19.6, chute -9.7): every one of these rejects that mix.
@@ -116,6 +117,18 @@ def check_direction(direction, config):
     if not isinstance(lines, list):
         raise ContractError('direction.lines must be a list (empty for a film without dialogue)')
     previous = 0.0
+    last_end = None
+    silences = direction.get('intentional_silences', [])
+    if not isinstance(silences, list):
+        raise ContractError('intentional_silences must be an array')
+    for pause in silences:
+        if not isinstance(pause, dict):
+            raise ContractError('intentional_silences entries must be objects')
+        a, b = _num(pause, 'start', 'intentional_silences'), _num(pause, 'end', 'intentional_silences')
+        if not (0 <= a < b <= story_end):
+            raise ContractError('intentional_silences must lie within the story')
+        _text(pause, 'purpose', 'intentional_silences')
+        _text(pause, 'visible_event', 'intentional_silences')
     for i, line in enumerate(lines):
         where = f'lines[{i}]'
         if not isinstance(line, dict):
@@ -135,6 +148,14 @@ def check_direction(direction, config):
             raise ContractError(f'{where} timing is outside the ad')
         if start < previous - 1e-6:
             raise ContractError(f'{where} starts before the previous line; lines are listed in order')
+        if last_end is not None and start < last_end - .03:
+            raise ContractError(f'{where}: dialogue lines overlap; recut the performance')
+        if last_end is not None and start - last_end > MAX_UNEXPLAINED_GAP:
+            justified = any(p['start'] <= last_end + .08 and p['end'] >= start - .08 for p in silences)
+            if not justified:
+                raise ContractError(f'{where}: unexplained {start - last_end:.2f}s dialogue pause; '
+                                    'trim it or identify a visible action and reason')
+        last_end = end
         rate = words(text) / (end - start)
         if rate > MAX_WORDS_PER_SECOND:
             raise ContractError(f'{where} needs {rate:.1f} words/s; give it more time or cut words '

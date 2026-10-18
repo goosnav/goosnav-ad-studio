@@ -168,8 +168,12 @@ current input instructions take precedence over historical creative rules.
 
 Use the configured 3D library's current rig and coordinate conventions. Reuse
 motion clips and speaking helpers while writing original dialogue and staging.
-Render sparse stills and an animatic first. Keep accepted audio timing
-through final edits; changing a voice requires updating captions and movement.
+Render sparse stills and an animatic first. The dedicated editor may trim
+the approved source with an explicit edit-plan EDL. Cut picture and audio together,
+using harness.editing to rebase speech timestamps for final QA; never pass a stale
+audio timeline after shortening footage. Changing a voice requires updating
+captions and mouth movement. Established Goosnav characters and static staging
+are valid; dialogue coherence and pacing, not constant movement, are the gates.
 
 Final master: requested size and fps, H.264, yuv420p, 48 kHz audio, within the
 requested duration range. Even a deliberately silent film has an explicit empty
@@ -214,7 +218,7 @@ your repair brief, with the numbers.
 | assets | one board image per beat plus `end_card` |
 | audio | lines at least -24 dBFS and 8 dB over the bed; no effect 3 dB over speech; each planned line voiced in order by its cast voice; `dialogue_stem` present; every line's 2-5 kHz presence at least -13 dB; a local Whisper hears 80 % of the planned words and half of every line |
 | animate | the animatic has no freeze of 1.9 s or more, no black gap, no washed-out stretch (luma range under 30 for 1 s); in the saved `scene`, each speaker's jaw is open on 30 % of their line and shut in silence, and their face is on camera, at least 3.5 % of the frame, and unblocked for 30 % of the line |
-| edit | H.264/yuv420p, 48 kHz audio, delivery size, fps and duration |
+| edit_plan | Chronological source-time EDL, explicit dialogue deletions, rationale for cuts and sound |\n| edit | H.264/yuv420p, 48 kHz audio, delivery size, fps and duration; output timeline recalculated from the approved EDL, with every retained spoken line kept whole |\n| edit_review | Independent narrative and pacing review of the actual audiovisual master |
 | frame/qa | the final is normalised to -14 LUFS / -1.5 dBTP; the mix gates and the Whisper check pass again on the finished video; the story picture passes the freeze/black/contrast checks; the Frame end card is present (differs from the edit, dark type on a light ground) |
 
 Voice takes from `harness/audio.py` are polished by default (`VOICE_CHAIN`: high-pass, mud

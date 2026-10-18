@@ -12,15 +12,17 @@ python3 -m harness make --count 3            # or add --concept "..."; omit both
 ```
 
 A deterministic state machine (`harness/`) runs research, a three-scripts-per-ad
-writing contest with an adversarial critic and a selector, then per ad: assets,
-local neural audio, Blender animation, review, edit, a Goosnav Frame CTA, technical
-QA, creative QA and packaging. Each creative step is a long, tool-using `codex exec`
+writing contest with an adversarial critic, a selector and a final story-sense gate,
+then per ad: assets, local neural audio, Blender animation, director review, a separate
+video-editor cut plan, edit/conform with synchronized audio, independent cut review,
+Goosnav Frame CTA, technical QA, creative QA and packaging. Each creative step is a long, tool-using `codex exec`
 or `claude -p` session using your existing subscriptions, with the other CLI as
 backup. Strong models write, cheap models critique. Animation starts with Claude
 Opus, with Codex as fallback. Scripts default to simple spoken scenes; a shared
 Blender helper reuses idle/gesture clips and drives mouths from the measured
-dialogue, rather than rebuilding body animation for each ad. Static products stay
-intact. Worker example: [`dev/WORKER_GUIDE.md`](dev/WORKER_GUIDE.md#talking-characters-and-reusable-motion).
+dialogue, rather than rebuilding body animation for each ad. Static characters and products
+are acceptable when the dialogue and timing work. The editor can trim dead air and
+produces a new speech timeline for final QA. Static products stay intact. Worker example: [`dev/WORKER_GUIDE.md`](dev/WORKER_GUIDE.md#talking-characters-and-reusable-motion).
 Operations: [`dev/OPERATIONS.md`](dev/OPERATIONS.md).
 Status and next steps: [`dev/STATE.md`](dev/STATE.md).
 

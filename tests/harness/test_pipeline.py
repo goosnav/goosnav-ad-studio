@@ -34,8 +34,13 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         if stage=='research':d.update(brand_brief='fictional',creative_directions='object comedy',references=[])
         elif stage in ('write','revise'):
             d['scripts']=[dict(id=str(i),title='fixture',premise='test',script='test',visual_direction='motion',product='demo',cta='none') for i in range(6)]
-        elif stage in ('critique','critique_final','board_review','review','creative_qa'):
+        elif stage in ('critique','critique_final','script_sense','board_review','review','edit_review','creative_qa'):
             d.update(verdict='pass',findings=[])
+            if stage=='script_sense':
+                d['logic']=[dict(script_id=str(i),setup='A clear opening is shown',
+                    cause='Someone acts because of the opening', reaction='Someone responds to the action',
+                    payoff='The action has a specific consequence',
+                    product_connection='The object ties to the punchline') for i in (0,1)]
             if stage=='review' and review_count[0]==0:
                 d.update(verdict='revise',restart='animate',findings=[dict(target='0.5s',severity='important',problem='test repair',fix='rebuild')])
             if stage=='review':review_count[0]+=1
@@ -58,8 +63,14 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
             shutil.copy2(video if calls.count(work.name)==1 else video2,work/'preview.mp4');file('preview.mp4','video')
             (work/'source.py').write_text('# FFmpeg fixture; not a production ad\n');file('source.py','source')
             d.update(preview='preview.mp4',source='source.py')
+        elif stage=='edit_plan':
+            d['plan']=dict(segments=[dict(start=0,end=1,reason='one meaningful shot')],
+                           removed_lines=[],sound_plan='source dialogue and tone retained')
         elif stage=='edit':
             shutil.copy2(video,work/'master.mp4');file('master.mp4','video');d['master']='master.mp4'
+            (work/'edited-timeline.json').write_text(json.dumps(dict(fps=24,sample_rate=48000,duration=1,
+                dialogue=[],events=[],sound_rationale='test tone')))
+            file('edited-timeline.json','timeline');d['timeline']='edited-timeline.json'
         else:raise AssertionError(stage)
         (work/'result.json').write_text(json.dumps(d));return {'kind':'ok'}
     def resolve(workers):return {'workers':{role:[{'provider':'codex','model':'fixture'}] for role in workers}}

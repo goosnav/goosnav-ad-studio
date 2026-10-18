@@ -13,11 +13,14 @@ from .sources import snapshot
 from .workers import CODEX_CLI_DEFAULT, command, reset_delay, subscription_status, supervise
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
-         'critique_final': 'critic', 'select': 'selector', 'assets': 'producer', 'audio': 'producer',
-         'animate': 'animator', 'review': 'director', 'edit': 'producer', 'creative_qa': 'director',
+         'critique_final': 'critic', 'select': 'selector', 'script_sense': 'director',
+          'assets': 'producer', 'audio': 'producer',
+         'animate': 'animator', 'review': 'director', 'edit_plan': 'editor',
+          'edit': 'editor', 'edit_review': 'director', 'creative_qa': 'director',
          'direct': 'director', 'board_review': 'director'}
-CAMPAIGN = ['research', 'write', 'critique', 'revise', 'critique_final', 'select']
-PRODUCTION = ['direct', 'assets', 'board_review', 'audio', 'animate', 'review', 'edit', 'frame', 'qa', 'creative_qa', 'package']
+CAMPAIGN = ['research', 'write', 'critique', 'revise', 'critique_final', 'select', 'script_sense']
+PRODUCTION = ['direct', 'assets', 'board_review', 'audio', 'animate', 'review',
+              'edit_plan', 'edit', 'edit_review', 'frame', 'qa', 'creative_qa', 'package']
 # Long operations render or build assets; planning/review should never consume a render-length budget.
 HEAVY_STAGES = {'assets', 'audio', 'animate', 'edit'}
 
@@ -225,12 +228,14 @@ class Engine:
     def agent_task(self, state, task, root):
         c = state['config']; work = root/'workspaces'/task['id']; work.mkdir(parents=True, exist_ok=True)
         context = {'count': c['count']}
+        if task['stage'] == 'script_sense':
+            context['selected_ids'] = next(t['result']['selected'] for t in state['tasks'] if t['stage'] == 'select')
         if task['stage'] == 'select':
             context['candidate_ids'] = [s['id'] for t in state['tasks'] if t['stage'] == 'revise' for s in t['result']['scripts']]
         workers = state['models']['workers']
         role = ROLES[task['stage']]
         # Saved runs from before the dedicated animator role keep their routes.
-        routes = workers.get('animator', workers['producer']) if role == 'animator' else workers[role]
+        routes = workers.get(role, workers['producer']) if role in ('animator', 'editor') else workers[role]
         unavailable = []
         for route, profile in enumerate(routes):
             provider = profile['provider']
@@ -355,6 +360,11 @@ class Engine:
         if task['stage'] == 'direct':
             from .direction import check_direction
             check_direction(data['direction'], config)
+        if task['stage'] == 'edit_plan':
+            from .editing import validate_plan
+            prior = {t['stage']: t['result'] for t in state['tasks'] if t['ad'] == task['ad'] and t['status'] == 'succeeded'}
+            timeline = json.loads(Path(prior['audio']['timeline']).read_text())
+            validate_plan(data['plan'], timeline, config, prior['direct']['direction'])
         if task['stage'] == 'assets':
             self.check_boards(state, task['ad'], data, config)
         if task['stage'] in ('audio', 'animate', 'edit'):
@@ -377,7 +387,12 @@ class Engine:
                 data['picture'] = check_picture(work/data['preview'], config, story_end)
                 self.check_talking(state, task['ad'], data, work, config)
             else:
-                check_video(work/data['master'], config)
+                media = check_video(work/data['master'], config)
+                from .editing import validate_conformance
+                prior = {t['stage']: t['result'] for t in state['tasks'] if t['ad'] == task['ad'] and t['status'] == 'succeeded'}
+                source = json.loads(Path(prior['audio']['timeline']).read_text())
+                validate_conformance(work/data['timeline'], prior['edit_plan']['plan'], source,
+                                     config, prior['direct']['direction'], media['duration'])
 
     DELIVERABLES = {'assets': lambda d: [b['image'] for b in d.get('boards', []) if isinstance(b, dict)],
                     'audio': lambda d: [d.get('mix')], 'animate': lambda d: [d.get('preview')],
@@ -459,20 +474,24 @@ class Engine:
                                        feedback=f'Skipped: the first critique passed; reusing {source}.')
             self.store.save(state, 'revision_skipped', {'task': task['id']})
             return
-        if task['stage'] not in ('critique_final', 'board_review', 'review', 'creative_qa') or task['result']['verdict'] == 'pass':
+        if task['stage'] not in ('critique_final', 'script_sense', 'board_review', 'review',
+                                 'edit_review', 'creative_qa') or task['result']['verdict'] == 'pass':
             return
         limits = state['config']['limits']
         budget = limits.get('board_repairs', 4) if task['stage'] == 'board_review' else limits['repairs']
         # Count this review's own requests; upstream rewinds also bump revision and must not spend them.
         if task.get('rounds', 0) >= budget:
             # Out of repair rounds: only blockers need a human. Other notes travel downstream.
-            if any(f['severity'] == 'blocking' for f in task['result']['findings']):
+            if any(f['severity'] == 'blocking' or
+                   (task['stage'] in ('script_sense', 'edit_review') and f['severity'] == 'important')
+                   for f in task['result']['findings']):
                 task['status'] = 'needs_review'
             else:
                 task['result']['accepted_with_notes'] = True
             return
-        default = {'critique_final': 'revise', 'board_review': 'assets'}.get(task['stage'], 'audio')
-        start_stage = 'revise' if task['stage'] == 'critique_final' else task['result'].get('restart', default)
+        default = {'critique_final': 'revise', 'script_sense': 'write',
+                   'board_review': 'assets', 'edit_review': 'edit_plan'}.get(task['stage'], 'audio')
+        start_stage = default if task['stage'] in ('critique_final', 'script_sense') else task['result'].get('restart', default)
         feedback = json.dumps(task['result'], indent=2)
         rounds = task.get('rounds', 0) + 1
         self.rewind(state,task['ad'],start_stage,feedback)
@@ -493,7 +512,7 @@ class Engine:
             elif task['stage'] == 'qa':
                 from .media import check_final_mix
                 report = check_video(result('frame')['master'], state['config'])
-                timeline = json.loads(Path(result('audio')['timeline']).read_text())
+                timeline = json.loads(Path(result('edit')['timeline']).read_text())
                 report['mix'] = check_final_mix(result('frame')['master'], timeline, state['config'], work)
                 from .speech import check_speech, loudness, TRUE_PEAK
                 report['speech'] = check_speech(result('frame')['master'], timeline, state['config'])
