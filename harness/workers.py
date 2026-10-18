@@ -144,7 +144,8 @@ def session_metadata(path):
     return {'observed_models':sorted(models),'session_id':session_id,'usage':usage,'terminal_errors':errors}
 
 
-def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, started=None):
+def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, started=None,
+              idle_timeout=None):
     start = time.monotonic()
     log = Path(log); log.parent.mkdir(parents=True, exist_ok=True)
     kind = None
@@ -158,19 +159,39 @@ def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, star
             if started:
                 started(proc.pid)
             try:
+                last_progress = time.monotonic()
+                # Streaming output is activity. An agent can also make progress by
+                # updating its handoff or final result while the CLI is quiet.
+                watched = [log, Path(cwd) / 'handoff.md', Path(cwd) / 'result.json']
+                stamps = {}
                 while proc.poll() is None:
                     if cancelled():
                         kind = 'cancelled'; break
-                    if time.monotonic() - start > timeout:
+                    now = time.monotonic()
+                    if now - start > timeout:
                         kind = 'timeout'; break
                     if log.stat().st_size > max_log_mb * 1024 * 1024:
                         kind = 'log_limit'; break
+                    if idle_timeout:
+                        current = {}
+                        for p in watched:
+                            try:
+                                stat = p.stat()
+                                current[str(p)] = (stat.st_size, stat.st_mtime_ns)
+                            except FileNotFoundError:
+                                current[str(p)] = None
+                        if current != stamps:
+                            last_progress = now; stamps = current
+                        elif now - last_progress > idle_timeout:
+                            kind = 'idle_timeout'; break
                     time.sleep(.1)
             finally:
                 terminate_group(proc)
         output = tail(log)
         metadata=session_metadata(log)
         error_text='\n'.join(metadata['terminal_errors']) or output
+        if kind in ('timeout', 'idle_timeout'):
+            error_text = f'{kind}: worker exceeded {timeout}s total or {idle_timeout}s without observable progress. ' + error_text
         return {'kind': kind or classify(proc.returncode, error_text), 'code': proc.returncode,
                 'elapsed': round(time.monotonic() - start, 2), 'detail': error_text[-4000:], **metadata}
     except OSError as e:
