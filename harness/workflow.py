@@ -16,11 +16,12 @@ ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'rev
          'critique_final': 'critic', 'select': 'selector', 'script_sense': 'director',
           'assets': 'producer', 'audio': 'producer',
          'animate': 'animator', 'review': 'director', 'edit_plan': 'editor',
-          'edit': 'editor', 'edit_review': 'director', 'creative_qa': 'director',
+          'edit': 'editor', 'edit_review': 'director', 'creative_qa': 'reviewer',
          'direct': 'director', 'board_review': 'director'}
-CAMPAIGN = ['research', 'write', 'critique', 'revise', 'critique_final', 'select', 'script_sense']
-PRODUCTION = ['direct', 'assets', 'board_review', 'audio', 'animate', 'review',
-              'edit_plan', 'edit', 'edit_review', 'frame', 'qa', 'creative_qa', 'package']
+CAMPAIGN = ['research', 'write', 'select']
+# Reviews are consolidated: one story/selection check and one review of the completed ad.
+# Frame and media QA remain deterministic, not additional model calls.
+PRODUCTION = ['direct', 'assets', 'audio', 'animate', 'edit', 'frame', 'qa', 'creative_qa', 'package']
 # Long operations render or build assets; planning/review should never consume a render-length budget.
 HEAVY_STAGES = {'assets', 'audio', 'animate', 'edit'}
 
@@ -29,6 +30,10 @@ def agent_deadline(config, stage):
     limits = config['limits']
     if stage in HEAVY_STAGES:
         return limits['production_timeout_seconds'], None
+    ceilings = {'research': 180, 'select': 240, 'creative_qa': 300, 'direct': 600}
+    if stage in ceilings:
+        total = min(ceilings[stage], limits.get('quick_timeout_seconds', 600))
+        return total, min(total, limits.get('idle_timeout_seconds', 300))
     if stage in CAMPAIGN:
         total = min(limits['timeout_seconds'], limits.get('quick_timeout_seconds', 600))
     else:
@@ -181,7 +186,11 @@ class Engine:
                 self.rewind(state,target['ad'],target['stage'],f'Operator asked to redo {target["stage"]} and later stages.')
             elif target['status']=='needs_review':
                 feedback=json.dumps(target['result'],indent=2)
-                start='revise' if target['ad'] is None else target['result'].get('restart','direct')
+                if target['ad'] is None:
+                    start = 'write' if target['stage'] == 'select' and any(
+                        t['stage'] == 'write' for t in state['tasks']) else 'revise'
+                else:
+                    start = target['result'].get('restart', 'direct')
                 self.rewind(state,target['ad'],start,feedback)
             else:
                 target['revision']+=1;target['status']='pending';target['result']=None
@@ -221,7 +230,8 @@ class Engine:
                   and (t['ad'] is None or t['ad'] == task['ad'])}
         if task['ad'] is not None:
             selection = next(t['result'] for t in state['tasks'] if t['stage'] == 'select')
-            scripts = next(t['result']['scripts'] for t in state['tasks'] if t['stage'] == 'revise')
+            scripts = next(t['result']['scripts'] for t in reversed(state['tasks'])
+                           if t['stage'] in ('revise', 'write') and t['status'] == 'succeeded')
             inputs['selected_script'] = next(s for s in scripts if s['id'] == selection['selected'][task['ad']])
         return inputs
 
@@ -231,11 +241,13 @@ class Engine:
         if task['stage'] == 'script_sense':
             context['selected_ids'] = next(t['result']['selected'] for t in state['tasks'] if t['stage'] == 'select')
         if task['stage'] == 'select':
-            context['candidate_ids'] = [s['id'] for t in state['tasks'] if t['stage'] == 'revise' for s in t['result']['scripts']]
+            context['candidate_ids'] = [s['id'] for t in state['tasks'] if t['stage'] in ('write', 'revise')
+                                        and t['status'] == 'succeeded' for s in t['result']['scripts']]
         workers = state['models']['workers']
         role = ROLES[task['stage']]
         # Saved runs from before the dedicated animator role keep their routes.
-        routes = workers.get(role, workers['producer']) if role in ('animator', 'editor') else workers[role]
+        routes = (workers.get(role, workers['director']) if role == 'reviewer' else
+                  workers.get(role, workers['producer']) if role in ('animator', 'editor') else workers[role])
         unavailable = []
         for route, profile in enumerate(routes):
             provider = profile['provider']
@@ -259,7 +271,10 @@ class Engine:
             used = sum(a.get('route', first if a['provider'] == provider else -1) == route
                        and a['revision'] == task['revision']
                        and a.get('kind') not in ('cancelled', 'quota', 'model', None) for a in task['attempts'])
-            remaining = max(0, c['limits']['repairs'] + 1 - used)
+            # Cheap tasks never retry the same expensive session repeatedly. They may
+            # fall back to the next configured provider once.
+            attempt_cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES else 1)
+            remaining = max(0, attempt_cap - used)
             while remaining > 0:
                 remaining -= 1
                 if self.store.control_value(state['id']) == 'cancel':
@@ -271,7 +286,8 @@ class Engine:
                 result_file = work/'result.json'
                 if result_file.exists():
                     result_file.rename(work/f'result.previous-{number}.json')
-                prompt = brief(task, c, self.inputs(state, task), state['sources'], task['feedback'], str(self.store.root/'runs'))
+                prompt = brief(task, c, self.inputs(state, task), state['sources'], task['feedback'])
+                attempt['prompt_chars'] = len(prompt)
                 (work/'TASK.md').write_text(prompt)
                 log = root/'logs'/f'{task["id"]}-{number}.jsonl'
                 attempt['log'] = str(log)
@@ -391,7 +407,8 @@ class Engine:
                 from .editing import validate_conformance
                 prior = {t['stage']: t['result'] for t in state['tasks'] if t['ad'] == task['ad'] and t['status'] == 'succeeded'}
                 source = json.loads(Path(prior['audio']['timeline']).read_text())
-                validate_conformance(work/data['timeline'], prior['edit_plan']['plan'], source,
+                plan = (prior['edit_plan']['plan'] if 'edit_plan' in prior else data['plan'])
+                validate_conformance(work/data['timeline'], plan, source,
                                      config, prior['direct']['direction'], media['duration'])
 
     DELIVERABLES = {'assets': lambda d: [b['image'] for b in d.get('boards', []) if isinstance(b, dict)],
@@ -474,7 +491,7 @@ class Engine:
                                        feedback=f'Skipped: the first critique passed; reusing {source}.')
             self.store.save(state, 'revision_skipped', {'task': task['id']})
             return
-        if task['stage'] not in ('critique_final', 'script_sense', 'board_review', 'review',
+        if task['stage'] not in ('select', 'critique_final', 'script_sense', 'board_review', 'review',
                                  'edit_review', 'creative_qa') or task['result']['verdict'] == 'pass':
             return
         limits = state['config']['limits']
@@ -482,17 +499,21 @@ class Engine:
         # Count this review's own requests; upstream rewinds also bump revision and must not spend them.
         if task.get('rounds', 0) >= budget:
             # Out of repair rounds: only blockers need a human. Other notes travel downstream.
-            if any(f['severity'] == 'blocking' or
+            if task['stage'] == 'select' or any(f['severity'] == 'blocking' or
                    (task['stage'] in ('script_sense', 'edit_review') and f['severity'] == 'important')
                    for f in task['result']['findings']):
                 task['status'] = 'needs_review'
             else:
                 task['result']['accepted_with_notes'] = True
             return
-        default = {'critique_final': 'revise', 'script_sense': 'write',
+        default = {'select': 'write', 'critique_final': 'revise', 'script_sense': 'write',
                    'board_review': 'assets', 'edit_review': 'edit_plan'}.get(task['stage'], 'audio')
-        start_stage = default if task['stage'] in ('critique_final', 'script_sense') else task['result'].get('restart', default)
-        feedback = json.dumps(task['result'], indent=2)
+        start_stage = default if task['stage'] in ('select', 'critique_final', 'script_sense') else task['result'].get('restart', default)
+        # Old persisted reviews may refer to removed stages; avoid a dead-end rewind.
+        if task['ad'] is not None and not any(t['ad'] == task['ad'] and t['stage'] == start_stage
+                                                   for t in state['tasks']):
+            start_stage = 'edit'
+        feedback = json.dumps(task['result'], separators=(',', ':'))
         rounds = task.get('rounds', 0) + 1
         self.rewind(state,task['ad'],start_stage,feedback)
         task['rounds'] = rounds

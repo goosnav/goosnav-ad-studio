@@ -11,11 +11,11 @@ python3 -m harness make --count 3            # or add --concept "..."; omit both
 ./"Start Ad Studio.sh"                       # the same from a browser page: runs, videos, config, pause/resume
 ```
 
-A deterministic state machine (`harness/`) runs research, a three-scripts-per-ad
-writing contest with an adversarial critic, a selector and a final story-sense gate,
-then per ad: assets, local neural audio, Blender animation, director review, a separate
-video-editor cut plan, edit/conform with synchronized audio, independent cut review,
-Goosnav Frame CTA, technical QA, creative QA and packaging. Each creative step is a long, tool-using `codex exec`
+A deterministic state machine (`harness/`) uses bounded factual research, TWO scripts
+per requested ad, and ONE selection/story-coherence review. Per ad: director,
+assets, local neural audio, heavy Blender animation, ONE video editor that plans and
+performs the conform, Goosnav Frame CTA, deterministic technical QA, a short final
+creative review and packaging. Redundant model-based review stages are removed. Each creative step is a long, tool-using `codex exec`
 or `claude -p` session using your existing subscriptions, with the other CLI as
 backup. Strong models write, cheap models critique. Animation starts with Claude
 Opus, with Codex as fallback. Scripts default to simple spoken scenes; a shared

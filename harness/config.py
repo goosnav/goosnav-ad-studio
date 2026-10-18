@@ -28,20 +28,19 @@ DEFAULTS = {
                # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
                'look': 'clean', 'loudness': -14},
     # Faster/cheaper routes are a last resort for hung research or writing sessions.
-    'workers': {'researcher': profiles('balanced') + profiles('economy'),
-                'writer': profiles('quality') + profiles('balanced'),
-                # Cheap reviewers first; a stronger route only after they fail the contract.
-                'critic': profiles('economy') + profiles('balanced'), 'selector': profiles('quality'),
+    'workers': {'researcher': profiles('economy'),
+                'writer': profiles('balanced'),
+                'critic': profiles('economy'), 'selector': profiles('balanced'),
                 'producer': profiles('balanced'),
                 'animator': [{'provider': 'claude', 'model': 'opus'},
                              {'provider': 'codex', 'model': 'auto:quality'}],
-                # The director plans pacing, casting and the end card, then reviews the cuts.
-                'director': profiles('quality'),
-                'editor': profiles('quality') + profiles('balanced')},
+                'director': profiles('balanced'),
+                'editor': profiles('balanced'),
+                'reviewer': profiles('economy')},
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
                'idle_timeout_seconds': 300,
-               'repairs': 2, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
+               'repairs': 1, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},

@@ -66,8 +66,8 @@ def validate(stage, data, workspace, context):
                 text(r, key)
     elif stage in ('write', 'revise'):
         scripts = data.get('scripts')
-        if not isinstance(scripts, list) or len(scripts) < context.get('count', 1) * 3:
-            raise ContractError('Need three distinct candidate scripts per requested ad')
+        if not isinstance(scripts, list) or len(scripts) < context.get('count', 1) * 2:
+            raise ContractError('Need two distinct candidate scripts per requested ad')
         ids = []
         for script in scripts:
             for key in ('id', 'title', 'premise', 'script', 'visual_direction', 'product', 'cta'):
@@ -108,13 +108,38 @@ def validate(stage, data, workspace, context):
         if not isinstance(data.get('direction'), dict):
             raise ContractError('Director needs a direction object')
     elif stage == 'select':
+        # The selection pass also replaces two extra LLM story-review agents.
+        if data.get('verdict') not in ('pass', 'revise'):
+            raise ContractError('Selection requires a verdict')
+        if not isinstance(data.get('findings'), list):
+            raise ContractError('Selection requires findings (can be empty)')
+        for finding in data['findings']:
+            for key in ('target', 'problem', 'fix', 'severity'):
+                text(finding, key)
+            if finding['severity'] not in ('blocking', 'important', 'minor'):
+                raise ContractError('Invalid selection finding severity')
         selected = data.get('selected')
         if not isinstance(selected, list) or not all(isinstance(x, str) for x in selected):
             raise ContractError('selected must be a list of script IDs')
-        if len(selected) != context['count'] or len(set(selected)) != len(selected):
+        if data['verdict'] == 'revise':
+            if not data['findings']:
+                raise ContractError('Rejected scripts require actionable findings')
+            if selected:
+                raise ContractError('Rejected selection must not authorize production')
+        elif len(selected) != context['count'] or len(set(selected)) != len(selected):
             raise ContractError('Select exactly count distinct scripts')
         if not set(selected) <= set(context['candidate_ids']):
             raise ContractError('Selection refers to an unknown script')
+        if data['verdict'] == 'pass' and any(f['severity'] in ('blocking', 'important') for f in data['findings']):
+            raise ContractError('Selection cannot pass unresolved important problems')
+        if data['verdict'] == 'pass':
+            logic = data.get('logic')
+            if not isinstance(logic, list) or len(logic) != len(selected) or \
+                    {entry.get('script_id') for entry in logic if isinstance(entry, dict)} != set(selected):
+                raise ContractError('Selection must substantiate the story logic of each chosen script')
+            for entry in logic:
+                for field in ('script_id', 'setup', 'cause', 'reaction', 'payoff', 'product_connection'):
+                    text(entry, field)
         text(data, 'reason')
     elif stage == 'assets':
         if not isinstance(data.get('assets'), list) or not data['assets']:
@@ -129,6 +154,12 @@ def validate(stage, data, workspace, context):
     elif stage == 'edit_plan':
         if not isinstance(data.get('plan'), dict):
             raise ContractError('edit_plan must return a structured cut plan')
+    elif stage == 'edit':
+        if not isinstance(data.get('plan'), dict):
+            raise ContractError('Editor must return its approved cut plan')
+        for key in ('master', 'timeline'):
+            if data.get(key) not in paths:
+                raise ContractError(f'{key} must name a declared editor file')
     elif stage in ('audio', 'animate', 'edit'):
         required = {'audio': ['mix', 'timeline'], 'animate': ['preview', 'source'],
                     'edit': ['master', 'timeline']}[stage]

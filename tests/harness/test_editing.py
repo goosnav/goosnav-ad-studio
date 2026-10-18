@@ -94,19 +94,19 @@ def test_independent_script_gate_requires_all_causal_fields(tmp_path):
                        'reaction': 'Another person reacts directly',
                        'payoff': 'The property has a consequence',
                        'product_connection': 'The book is the original object'}]}
-    validate('script_sense', data, tmp_path, {'selected_ids': ['one']})
+    data.update(selected=['one'], reason='causal and feasible')
+    validate('select', data, tmp_path, {'count': 1, 'candidate_ids': ['one']})
     del data['logic'][0]['reaction']
     with pytest.raises(ContractError, match='reaction'):
-        validate('script_sense', data, tmp_path, {'selected_ids': ['one']})
+        validate('select', data, tmp_path, {'count': 1, 'candidate_ids': ['one']})
 
 
 def test_dedicated_editor_and_story_gate_are_in_actual_graph():
     stages = [t['stage'] for t in build_tasks(1)]
-    assert stages.index('script_sense') < stages.index('direct')
-    assert stages.index('review') < stages.index('edit_plan') < stages.index('edit')
-    assert stages.index('edit') < stages.index('edit_review') < stages.index('frame')
-    assert ROLES['edit'] == ROLES['edit_plan'] == 'editor'
-    assert ROLES['script_sense'] == ROLES['edit_review'] == 'director'
+    assert stages.index('write') < stages.index('select') < stages.index('direct')
+    assert stages.index('animate') < stages.index('edit') < stages.index('frame')
+    assert stages.index('frame') < stages.index('qa') < stages.index('creative_qa')
+    assert ROLES['edit'] == 'editor' and ROLES['select'] == 'selector'
 
 
 def test_long_unmotivated_dialogue_pause_is_rejected():

@@ -25,7 +25,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         '-t','1','-c:a','pcm_s16le',str(audio)],check=True)
     c=load_config(None,{'count':2,'output':{'width':64,'height':64,'target_seconds':1,'min_seconds':1,'max_seconds':2,'cta':False,
         'folder':str(tmp_path/'delivered')}})
-    store=Store(tmp_path/'state');s=store.create(c);calls=[];review_count=[0]
+    store=Store(tmp_path/'state');s=store.create(c);calls=[]
     def execute(profile,work,prompt,log,**kwargs):
         stage=work.name.split('-')[-1];calls.append(work.name)
         # critique_final and creative_qa use underscores, not hyphens.
@@ -34,17 +34,15 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         if stage=='research':d.update(brand_brief='fictional',creative_directions='object comedy',references=[])
         elif stage in ('write','revise'):
             d['scripts']=[dict(id=str(i),title='fixture',premise='test',script='test',visual_direction='motion',product='demo',cta='none') for i in range(6)]
-        elif stage in ('critique','critique_final','script_sense','board_review','review','edit_review','creative_qa'):
-            d.update(verdict='pass',findings=[])
-            if stage=='script_sense':
-                d['logic']=[dict(script_id=str(i),setup='A clear opening is shown',
-                    cause='Someone acts because of the opening', reaction='Someone responds to the action',
-                    payoff='The action has a specific consequence',
-                    product_connection='The object ties to the punchline') for i in (0,1)]
-            if stage=='review' and review_count[0]==0:
-                d.update(verdict='revise',restart='animate',findings=[dict(target='0.5s',severity='important',problem='test repair',fix='rebuild')])
-            if stage=='review':review_count[0]+=1
-        elif stage=='select':d.update(selected=['0','1'],reason='distinct')
+        elif stage=='creative_qa':
+            d.update(verdict='pass', findings=[])
+        elif stage=='select':
+            d.update(selected=['0','1'],reason='causal scripts',verdict='pass',findings=[],
+                     logic=[dict(script_id=str(i), setup='An object is shown',
+                         cause='Something unexpected happens',
+                         reaction='Character responds to the event',
+                         payoff='A clear reversal',
+                         product_connection='The original book is the product') for i in (0,1)])
         elif stage=='direct':
             d['direction']=dict(duration=1,beats=[dict(start=0,end=1,shot='wide',picture='test pattern',sound='tone',faces=[])],
                                 cast=[],lines=[],mix='tone only')
@@ -67,6 +65,8 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
             d['plan']=dict(segments=[dict(start=0,end=1,reason='one meaningful shot')],
                            removed_lines=[],sound_plan='source dialogue and tone retained')
         elif stage=='edit':
+            d['plan']=dict(segments=[dict(start=0,end=1,reason='whole story')],
+                           removed_lines=[],sound_plan='existing audio')
             shutil.copy2(video,work/'master.mp4');file('master.mp4','video');d['master']='master.mp4'
             (work/'edited-timeline.json').write_text(json.dumps(dict(fps=24,sample_rate=48000,duration=1,
                 dialogue=[],events=[],sound_rationale='test tone')))
@@ -78,10 +78,9 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
     state=engine.run(s['id'])
     assert state['status']=='complete',state.get('error') or [(t['id'],t['status'],t['feedback']) for t in state['tasks']]
     assert len([t for t in state['tasks'] if t['stage']=='package' and t['status']=='succeeded'])==2
-    assert calls.count('ad-01-animate')==2 and calls.count('ad-01-direct')==1
-    # A passing first critique makes the rewrite and second critique redundant.
-    assert 'campaign-revise' not in calls and 'campaign-critique_final' not in calls
-    assert calls.count('ad-01-board_review')==1
+    assert calls.count('ad-01-animate')==1 and calls.count('ad-01-direct')==1
+    assert 'campaign-critique' not in calls and 'ad-01-board_review' not in calls
+    assert calls.count('ad-01-edit')==1
     out=tmp_path/'delivered'/s['id']
     assert sorted(f.name for f in out.iterdir())==['ad-01.mp4','ad-01.zip','ad-02.mp4','ad-02.zip']
     before=list(calls);engine.run(s['id']);assert calls==before

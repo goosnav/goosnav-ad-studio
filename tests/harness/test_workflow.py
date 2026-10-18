@@ -8,9 +8,8 @@ from harness.workflow import Engine, build_tasks
 
 def test_graph_has_independent_writing_and_review_steps():
     tasks = build_tasks(2)
-    assert [t['stage'] for t in tasks[:8]] == [
-        'research', 'write', 'critique', 'revise', 'critique_final', 'select', 'script_sense', 'direct']
-    assert [t['stage'] for t in tasks if t['ad'] == 0][:4] == ['direct', 'assets', 'board_review', 'audio']
+    assert [t['stage'] for t in tasks[:4]] == ['research', 'write', 'select', 'direct']
+    assert [t['stage'] for t in tasks if t['ad'] == 0][:4] == ['direct', 'assets', 'audio', 'animate']
     assert len([t for t in tasks if t['stage'] == 'package']) == 2
 
 
@@ -144,9 +143,9 @@ def test_mid_run_tampering_rejects_next_result(tmp_path):
 
 def test_review_retry_reopens_producer_with_findings(tmp_path):
     store=Store(tmp_path);r=store.create(load_config());r['tasks']=build_tasks(1)
-    target=next(t for t in r['tasks'] if t['stage']=='review')
+    target=next(t for t in r['tasks'] if t['stage']=='creative_qa')
     target['status']='needs_review';target['result']={'summary':'bad contact','verdict':'revise','files':[],
-       'findings':[{'target':'2s','severity':'important','problem':'floating prop','fix':'ground it'}]}
+       'restart':'assets', 'findings':[{'target':'2s','severity':'important','problem':'floating prop','fix':'ground it'}]}
     for t in r['tasks']:
         if t['ad']==0 and t['stage'] in ('assets','audio','animate'):t['status']='succeeded'
     store.save(r,'fixture')
@@ -164,7 +163,7 @@ def test_cancelled_task_cannot_be_skipped(tmp_path):
 
 def exhausted_review(severity):
     state ={'config': load_config(), 'tasks': build_tasks(1)}
-    task = next(t for t in state['tasks'] if t['stage'] == 'critique_final')
+    task = next(t for t in state['tasks'] if t['stage'] == 'creative_qa')
     task.update(status='succeeded', rounds=state['config']['limits']['repairs'], result={
         'summary': 'still flawed', 'verdict': 'revise', 'files': [],
         'findings': [{'target': 'A', 'severity': severity, 'problem': 'p', 'fix': 'f'}]})
@@ -182,8 +181,7 @@ def test_exhausted_review_proceeds_on_nonblocking_and_stops_on_blocking(tmp_path
 
 
 def test_cheap_reviewer_escalates_to_stronger_route_on_contract_failures(tmp_path):
-    assert [p['model'] for p in load_config()['workers']['critic']] == [
-        'auto:economy', 'auto:economy', 'auto:balanced', 'auto:balanced']
+    assert [p['model'] for p in load_config()['workers']['critic']] == ['auto:economy', 'auto:economy']
     store = Store(tmp_path); c = load_config(); c['limits']['repairs'] = 0
     run = store.create(c); calls = []
     routes = [{'provider': 'claude', 'model': 'cheap'}, {'provider': 'claude', 'model': 'strong'}]
@@ -231,8 +229,9 @@ def test_review_restart_rewinds_only_from_the_named_stage(tmp_path):
 
 def test_director_and_final_reviews_use_the_director_role():
     from harness.workflow import ROLES
-    assert ROLES['direct'] == ROLES['review'] == ROLES['creative_qa'] == 'director'
-    assert [p['model'] for p in load_config()['workers']['director']] == ['auto:quality', 'auto:quality']
+    assert ROLES['direct'] == 'director' and ROLES['creative_qa'] == 'reviewer'
+    assert [p['model'] for p in load_config()['workers']['director']] == ['auto:balanced', 'auto:balanced']
+    assert [p['model'] for p in load_config()['workers']['reviewer']] == ['auto:economy', 'auto:economy']
 
 
 def test_a_repair_that_changes_nothing_is_rejected(tmp_path):
@@ -256,26 +255,17 @@ def test_a_repair_that_changes_nothing_is_rejected(tmp_path):
     assert next(t for t in state['tasks'] if t['id'] == 'ad-01-assets')['previous'] == {'summary': 'old'}
 
 
-def test_storyboard_gets_more_repair_rounds_than_animation(tmp_path):
-    e = Engine(Store(tmp_path))
-    def exhausted(stage, revision):
-        state = {'config': load_config(), 'tasks': build_tasks(1)}
-        task = next(t for t in state['tasks'] if t['stage'] == stage)
-        task.update(status='succeeded', rounds=revision, result={'summary': 's', 'verdict': 'revise', 'restart': 'assets',
-            'files': [], 'findings': [{'target': 'b', 'severity': 'blocking', 'problem': 'p', 'fix': 'f'}]})
-        state['id'] = 'x'
-        e.store.save = lambda *a, **k: None
-        e.review_transition(state, task)
-        return task['status']
-    assert exhausted('review', 2) == 'needs_review'          # limits.repairs (2)
-    assert exhausted('board_review', 2) == 'pending'         # rewound: boards are cheap to redo
-    assert exhausted('board_review', 4) == 'needs_review'    # limits.board_repairs (4)
+def test_only_necessary_review_stages_are_scheduled():
+    stages = {t['stage'] for t in build_tasks(1)}
+    assert not stages.intersection({'critique', 'revise', 'critique_final', 'script_sense',
+                                    'board_review', 'review', 'edit_plan', 'edit_review'})
+    assert load_config()['limits']['repairs'] == 1
 
 
 def test_upstream_rewinds_do_not_use_up_a_review_budget(tmp_path):
     e = Engine(Store(tmp_path)); e.store.save = lambda *a, **k: None
     state = {'id': 'x', 'config': load_config(), 'tasks': build_tasks(1)}
-    review = next(t for t in state['tasks'] if t['stage'] == 'review')
+    review = next(t for t in state['tasks'] if t['stage'] == 'creative_qa')
     review['revision'] = 5          # bumped by five storyboard rewinds before it ever ran
     review.update(status='succeeded', result={'summary': 's', 'verdict': 'revise', 'restart': 'animate', 'files': [],
                   'findings': [{'target': 't', 'severity': 'blocking', 'problem': 'p', 'fix': 'f'}]})
@@ -298,16 +288,17 @@ def test_retry_on_a_finished_stage_redoes_it_and_everything_after(tmp_path):
 def test_quick_stage_timeout_and_heavy_animation_budget():
     from harness.workflow import agent_deadline
     c = load_config()
-    assert agent_deadline(c, 'research') == (600, 300)
+    assert agent_deadline(c, 'research') == (180, 180)
+    assert agent_deadline(c, 'select') == (240, 240)
     assert agent_deadline(c, 'write') == (600, 300)
-    assert agent_deadline(c, 'direct') == (900, 300)
+    assert agent_deadline(c, 'direct') == (600, 300)
     assert agent_deadline(c, 'animate') == (14400, None)
     assert agent_deadline(c, 'edit') == (14400, None)
     # Old run configurations remain usable after introducing new limits.
     del c['limits']['quick_timeout_seconds']
     del c['limits']['review_timeout_seconds']
     del c['limits']['idle_timeout_seconds']
-    assert agent_deadline(c, 'research') == (600, 300)
+    assert agent_deadline(c, 'research') == (180, 180)
 
 
 def test_idle_research_falls_back_without_repeating_same_model(tmp_path):
@@ -363,10 +354,8 @@ def test_unexpected_worker_exception_moves_to_backup(tmp_path):
 
 def test_research_has_cheaper_route_after_balanced_and_writer_after_quality():
     c = load_config()
-    assert [p['model'] for p in c['workers']['researcher']] == [
-        'auto:balanced', 'auto:balanced', 'auto:economy', 'auto:economy']
-    assert [p['model'] for p in c['workers']['writer']] == [
-        'auto:quality', 'auto:quality', 'auto:balanced', 'auto:balanced']
+    assert [p['model'] for p in c['workers']['researcher']] == ['auto:economy', 'auto:economy']
+    assert [p['model'] for p in c['workers']['writer']] == ['auto:balanced', 'auto:balanced']
 
 
 def test_claude_quota_hands_off_to_codex_without_waiting(tmp_path):
