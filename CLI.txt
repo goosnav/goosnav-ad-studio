@@ -43,6 +43,9 @@ STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   # Queued jobs exit promptly instead of waiting a 30-second queue interval.
   # No unrelated processes are killed; no finished MP4s or state are deleted.
   ./ad upload [RUN_ID]         retry Drive upload of packaged MP4s/ZIPs; no re-render
+  ./ad cooldown status         show cached quota cooldowns
+  ./ad cooldown clear          clear all cached cooldowns and let the next run retry providers
+  ./ad cooldown clear codex    clear only that provider (also accepts claude)
   ./ad doctor                  check dependencies
   # Status shows the current model, elapsed time and seconds since CLI output.
   python3 -m harness retry RUN_ID --task ad-01-animate
@@ -77,8 +80,9 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # 1. Install rclone and authorize a Google Drive remote on the render PC:
   rclone config
   rclone lsd agent-exchange:             # replace with your actual remote name
-  # 2. In harness.local.json, set:
-  #    "delivery": {"drive": "agent-exchange:deliverables/ad-studio"}
+  # 2. In harness.local.json, set delivery.drive to an rclone path or a
+  #    Google Drive folder URL. Folder URLs use the configured agent-exchange remote.
+  #    "delivery": {"drive": "https://drive.google.com/drive/folders/FOLDER_ID"}
   # 3. Run ./ad "..." normally. It renders locally first and then uploads
   #    finished ad-NN.mp4 + ad-NN.zip to <drive>/<RUN_ID>/ automatically.
   # 4. Check ./ad status to see the upload outcome. If it fails:

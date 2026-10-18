@@ -18,7 +18,7 @@ import time
 
 REPO = Path(__file__).resolve().parent
 HOME = Path(os.environ.get('STUDIO_HARNESS_HOME', Path.home() / '.local/share/goosnav-ad-studio'))
-COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'gui', 'doctor')
+COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'cooldown', 'gui', 'doctor')
 DONE = ('complete', 'partial', 'failed', 'needs_review', 'waiting_provider', 'cancelled', 'interrupted', 'paused')
 
 
@@ -103,6 +103,17 @@ def main():
                 return 1
             print(f'Uploaded to Drive: {d["remote"]}')
             return 0
+        if command == 'cooldown':
+            result = harness('cooldown', *(rest or ['status']))
+            if isinstance(result, dict):
+                if 'cleared' in result:
+                    print(f"Cleared {result['cleared']} provider cooldown(s).")
+                else:
+                    for provider, seconds in result.items():
+                        print(f'{provider}: {seconds}s remaining')
+                return 0
+            print('Could not inspect provider cooldowns.', file=sys.stderr)
+            return 1
         if command == 'watch':
             while summary(run_id) not in DONE:
                 time.sleep(60)

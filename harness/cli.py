@@ -91,6 +91,9 @@ def main(argv=None):
     q=sub.add_parser('retry');q.add_argument('id');q.add_argument('--task',required=True)
     q=sub.add_parser('upload',help='Upload packaged ads to configured Drive (or retry a failed upload)')
     q.add_argument('id')
+    q=sub.add_parser('cooldown',help='Inspect or clear cached provider quota cooldowns')
+    q.add_argument('action',choices=('status','clear'))
+    q.add_argument('provider',nargs='?',choices=('codex','claude','all'),default='all')
     sub.add_parser('list')
     for name in ('doctor','models'):
         q=sub.add_parser(name);q.add_argument('--config',default=default_config())
@@ -141,6 +144,13 @@ def main(argv=None):
                 result=store.get(a.id) if cancelled else drive(Engine(store),store,a.id)
             elif a.cmd=='upload':
                 result=upload_run(store,store.get(a.id))
+            elif a.cmd=='cooldown':
+                if a.action=='clear':
+                    store.clear_cooldowns(None if a.provider=='all' else a.provider)
+                    result={'cleared':a.provider}
+                else:
+                    result={p:round(store.cooldown(p)) for p in ('codex','claude')
+                            if a.provider in ('all',p)}
             elif a.cmd=='cancel':
                 if a.all or a.id=='all':
                     if a.all and a.id is not None:

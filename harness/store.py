@@ -112,6 +112,14 @@ class Store:
             row = db.execute('SELECT until FROM cooldowns WHERE provider=?', (provider,)).fetchone()
         return max(0, row[0] - time.time()) if row else 0
 
+    def clear_cooldowns(self, provider=None):
+        """Clear cached quota cooldowns after a user confirms provider capacity is back."""
+        with self.connect() as db:
+            if provider is None:
+                db.execute('DELETE FROM cooldowns')
+            else:
+                db.execute('DELETE FROM cooldowns WHERE provider=?', (provider,))
+
     @contextmanager
     def worker_lock(self):
         with (self.root / 'worker.lock').open('a') as lock:

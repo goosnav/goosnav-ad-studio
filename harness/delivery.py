@@ -7,6 +7,21 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from urllib.parse import urlparse
+
+
+def _destination(value, run_id):
+    """Resolve an rclone path or a Google Drive folder link to upload arguments."""
+    parsed = urlparse(value)
+    if parsed.scheme in ('http', 'https'):
+        match = re.fullmatch(r'/drive/folders/([A-Za-z0-9_-]+)', parsed.path)
+        if parsed.netloc not in ('drive.google.com', 'www.drive.google.com') or not match:
+            raise ValueError('delivery.drive must be an rclone destination or Google Drive folder link')
+        folder_id = match.group(1)
+        return f'agent-exchange:{run_id}', ['--drive-root-folder-id', folder_id]
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+:.*', value):
+        raise ValueError('delivery.drive must be an rclone destination or Google Drive folder link')
+    return value.rstrip('/') + ('' if value.endswith(':') else '/') + run_id, []
 
 
 def upload_run(store, state, *, run=subprocess.run, which=shutil.which):
@@ -14,11 +29,11 @@ def upload_run(store, state, *, run=subprocess.run, which=shutil.which):
     destination = state['config'].get('delivery', {}).get('drive', '').strip()
     if not destination:
         raise ValueError('Drive delivery is not configured: set delivery.drive in harness.local.json')
-    remote = destination.rstrip('/') + ('' if destination.endswith(':') else '/') + state['id']
+    remote = destination
     info = {'status': 'failed', 'remote': remote}
     try:
-        if not re.fullmatch(r'[A-Za-z0-9_.-]+:.*', destination):
-            raise ValueError('delivery.drive must be an rclone destination, e.g. agent-exchange:deliverables/ad-studio')
+        remote, drive_flags = _destination(destination, state['id'])
+        info['remote'] = remote
         if not which('rclone'):
             raise RuntimeError('rclone not found; install it and run rclone config')
         output = state['config']['output']['folder']
@@ -34,9 +49,9 @@ def upload_run(store, state, *, run=subprocess.run, which=shutil.which):
             raise FileNotFoundError('Packaged local files missing: ' + ', '.join(missing_local))
         # Copy only this run's accepted packages, never stale files left by a retry.
         filters = [arg for name in sorted(expected) for arg in ('--include', name)]
-        run(['rclone', 'copy', str(folder), remote, *filters, '--transfers', '2'],
+        run(['rclone', 'copy', str(folder), remote, *drive_flags, *filters, '--transfers', '2'],
             check=True, capture_output=True, text=True, timeout=3600)
-        result = run(['rclone', 'lsf', remote, '--files-only'],
+        result = run(['rclone', 'lsf', remote, '--files-only', *drive_flags],
                      check=True, capture_output=True, text=True, timeout=120)
         found = set(result.stdout.splitlines())
         missing_remote = sorted(expected - found)
