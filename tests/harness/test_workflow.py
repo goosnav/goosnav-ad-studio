@@ -326,3 +326,110 @@ def test_research_has_cheaper_route_after_balanced_and_writer_after_quality():
         'auto:balanced', 'auto:balanced', 'auto:economy', 'auto:economy']
     assert [p['model'] for p in c['workers']['writer']] == [
         'auto:quality', 'auto:quality', 'auto:balanced', 'auto:balanced']
+
+
+def test_claude_quota_hands_off_to_codex_without_waiting(tmp_path):
+    store = Store(tmp_path); c = load_config(); c['limits']['repairs'] = 0
+    run = store.create(c); calls = []
+    def resolver(workers):
+        return {'workers': {role: [{'provider': 'claude', 'model': 'sonnet'},
+                                   {'provider': 'codex', 'model': 'codex-working'}]
+                            for role in workers}}
+    def worker(profile, work, *args, **kwargs):
+        calls.append(profile['provider'])
+        if profile['provider'] == 'claude':
+            (work / 'handoff.md').write_text('Research gathered before hitting Claude limits')
+            return {'kind': 'quota', 'detail': 'usage limit'}
+        assert (work / 'handoff.md').read_text().startswith('Research gathered')
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    engine = Engine(store, execute=worker, resolve=resolver, auth=lambda _: True)
+    engine.run(run['id'], max_steps=1)
+    state = store.get(run['id'])
+    assert state['tasks'][0]['status'] == 'succeeded'
+    assert state['status'] != 'waiting_provider'
+    assert calls == ['claude', 'codex']
+    assert store.cooldown('claude') > 0
+
+
+def test_resuming_stale_codex_discovery_recovers_and_skips_claude_cooldown(tmp_path):
+    store = Store(tmp_path); c = load_config()
+    run = store.create(c); run['tasks'] = build_tasks(1)
+    run['status'] = 'waiting_provider'
+    run['tasks'][0]['status'] = 'waiting_provider'
+    run['tasks'][0]['attempts'] = [
+        {'provider': 'claude', 'model': 'sonnet', 'kind': 'quota',
+         'revision': 0, 'route': 1, 'detail': 'usage limit'}]
+    run['models'] = {'workers': {
+        role: [{'provider': 'codex', 'model': 'auto:balanced',
+                'unavailable': 'Codex app-server catalog timed out'},
+               {'provider': 'claude', 'model': 'sonnet'}]
+        for role in c['workers']}}
+    store.save(run, 'fixture')
+    store.cooldown('claude', 3600)
+    calls = []
+    def resolver(workers):
+        return {'workers': {
+            role: [{'provider': 'codex', 'model': 'cli-default'},
+                   {'provider': 'claude', 'model': 'sonnet'}] for role in workers}}
+    def worker(profile, work, *args, **kwargs):
+        calls.append(profile['provider'])
+        assert profile['provider'] == 'codex'
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    engine = Engine(store, execute=worker, resolve=resolver, auth=lambda _: True)
+    engine.run(run['id'], max_steps=1)
+    saved = store.get(run['id'])
+    assert saved['tasks'][0]['status'] == 'succeeded'
+    assert saved['status'] != 'waiting_provider'
+    assert calls == ['codex']
+    assert saved['models']['workers']['researcher'][0]['model'] == 'cli-default'
+    assert not saved['models']['workers']['researcher'][0].get('unavailable')
+    assert 'codex_routes_refreshed' in [event['kind'] for event in store.events(run['id'])]
+
+
+def test_codex_missing_model_falls_back_to_default_without_waiting(tmp_path):
+    from harness.workers import CODEX_CLI_DEFAULT
+    store = Store(tmp_path); c = load_config(); c['limits']['repairs'] = 0
+    run = store.create(c)
+    store.cooldown('claude', 3600)
+    calls = []
+    def resolver(workers):
+        return {'workers': {role: [
+            {'provider': 'codex', 'model': 'retired-codex-model'},
+            {'provider': 'claude', 'model': 'sonnet'}] for role in workers}}
+    def worker(profile, work, *args, **kwargs):
+        calls.append(profile['model'])
+        if profile['model'] != CODEX_CLI_DEFAULT:
+            return {'kind': 'model', 'detail': 'model not found'}
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    engine = Engine(store, execute=worker, resolve=resolver, auth=lambda _: True)
+    engine.run(run['id'], max_steps=1)
+    saved = store.get(run['id'])
+    assert saved['tasks'][0]['status'] == 'succeeded'
+    assert calls == ['retired-codex-model', CODEX_CLI_DEFAULT]
+    assert saved['models']['workers']['researcher'][0]['model'] == CODEX_CLI_DEFAULT
+    assert len(saved['tasks'][0]['attempts']) == 2
+    assert 'codex_model_fallback' in [event['kind'] for event in store.events(run['id'])]
+
+
+def test_real_auth_gate_does_not_skip_codex_on_uncertain_status(tmp_path, monkeypatch):
+    import harness.workflow as workflow
+    from harness.workers import CODEX_CLI_DEFAULT
+    store = Store(tmp_path); c = load_config()
+    run = store.create(c); calls = []
+    def unauthenticated(_provider):
+        return False  # Codex CLI itself must be allowed to verify this.
+    monkeypatch.setattr(workflow, 'subscription_status', unauthenticated)
+    def resolver(workers):
+        return {'workers': {role: [{'provider': 'codex', 'model': CODEX_CLI_DEFAULT},
+                                   {'provider': 'claude', 'model': 'sonnet'}] for role in workers}}
+    def worker(profile, work, *args, **kwargs):
+        calls.append(profile['provider'])
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    engine = Engine(store, execute=worker, resolve=resolver, auth=workflow.subscription_status)
+    engine.run(run['id'], max_steps=1)
+    assert calls == ['codex']
+    assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
