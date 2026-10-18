@@ -1,0 +1,3 @@
+[submodule "assets/goosnav-3D-assets"]
+	path = assets/goosnav-3D-assets
+	url = git@github.com:goosnav/goosnav-3D-assets.git
