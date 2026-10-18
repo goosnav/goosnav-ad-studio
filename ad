@@ -39,6 +39,14 @@ def summary(run_id):
     current = next((t for t in s['tasks'] if t['status'] in ('running', 'waiting_provider', 'failed', 'needs_review')), None)
     where = f" | {current['id']} {current['status']}" if current else ''
     print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
+    if current and current['status'] == 'running' and current['attempts']:
+        attempt = current['attempts'][-1]
+        seconds = max(0, int(time.time() - attempt['started']))
+        log = Path(attempt.get('log', ''))
+        activity = (f'{int(time.time()-log.stat().st_mtime)}s since CLI output'
+                    if log.is_file() else 'CLI has not written a log yet')
+        print(f'  Worker: {attempt["provider"]}/{attempt["model"]} | '
+              f'elapsed {seconds//60}m {seconds%60}s | {activity}')
     if s.get('delivery'):
         d = s['delivery']
         if d['status'] == 'uploaded':
