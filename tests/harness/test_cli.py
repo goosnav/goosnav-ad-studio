@@ -75,3 +75,26 @@ def test_drive_queues_behind_a_running_controller(tmp_path):
         def run(self, run_id, max_steps=None):
             raise Busy('another controller')
     assert drive(AlwaysBusy(), store, run['id'], sleep=slept.append)['status'] == 'cancelled'
+
+
+def test_ad_status_explains_waiting_provider_and_watch_finishes(tmp_path):
+    from harness.config import load_config
+    from harness.store import Store
+    from harness.workflow import build_tasks
+    store = Store(tmp_path)
+    state = store.create(load_config())
+    state['tasks'] = build_tasks(1)
+    state['status'] = 'waiting_provider'
+    task = state['tasks'][0]
+    task['status'] = 'waiting_provider'
+    task['feedback'] = 'codex (auto:balanced): model catalog unavailable; claude: usage limit'
+    store.save(state, 'fixture')
+
+    env = {**os.environ, 'STUDIO_HARNESS_HOME': str(store.root)}
+    for action in ('status', 'watch'):
+        result = subprocess.run([sys.executable, str(ROOT / 'ad'), action, state['id']],
+                                cwd=ROOT, env=env, capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0, result.stderr
+        assert 'Provider blockers:' in result.stdout
+        assert 'model catalog unavailable' in result.stdout
+        assert './ad resume ' in result.stdout
