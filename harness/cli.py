@@ -117,7 +117,11 @@ def main(argv=None):
                         store.control(a.id,'run')
                 result=drive(Engine(store),store,a.id,not a.no_wait,a.steps)
             elif a.cmd=='retry':
-                Engine(store).prepare_retry(a.id,a.task)
+                while True:
+                    try:
+                        Engine(store).prepare_retry(a.id,a.task);break
+                    except Busy:   # queue behind the active controller, like make/resume
+                        time.sleep(30)
                 result=drive(Engine(store),store,a.id)
             elif a.cmd in ('pause','cancel'):
                 store.control(a.id,a.cmd);result={'id':a.id,'requested':a.cmd}
