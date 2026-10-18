@@ -9,6 +9,10 @@ import subprocess
 import time
 
 
+# Ask the Codex CLI to choose its own working model when catalog discovery fails.
+CODEX_CLI_DEFAULT = 'cli-default'
+
+
 def worker_env(source=None):
     env = dict(os.environ if source is None else source)
     for key in list(env):
@@ -23,12 +27,14 @@ def command(profile, workspace):
     if model.startswith('auto:'):
         raise ValueError('Resolve model selectors before launching a worker')
     if profile['provider'] == 'codex':
-        return ['codex', 'exec', '--ignore-user-config', '--skip-git-repo-check',
-                # Full access by owner decision: a sandbox or approval prompt stalls an unattended worker.
-                '-C', str(workspace), '--dangerously-bypass-approvals-and-sandbox',
-                '-c', 'forced_login_method="chatgpt"',
-                '-m', model, '-c', f'model_reasoning_effort="{profile.get("effort", "medium")}"',
-                '--json', '-']
+        cmd = ['codex', 'exec', '--ignore-user-config', '--skip-git-repo-check',
+               # Full access by owner decision: a sandbox or approval prompt stalls an unattended worker.
+               '-C', str(workspace), '--dangerously-bypass-approvals-and-sandbox',
+               '-c', 'forced_login_method="chatgpt"']
+        if model != CODEX_CLI_DEFAULT:
+            cmd += ['-m', model, '-c', f'model_reasoning_effort="{profile.get("effort", "medium")}"']
+        # An omitted -m uses the Codex CLI's own default; never invent a model ID.
+        return cmd + ['--json', '-']
     return ['claude', '-p', '--model', model, '--output-format', 'stream-json', '--verbose',
             '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
             '--dangerously-skip-permissions',
@@ -41,7 +47,7 @@ def subscription_status(provider):
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=20, env=worker_env())
         if provider == 'codex':
-            return r.returncode == 0 and 'using ChatGPT' in r.stdout + r.stderr
+            return r.returncode == 0 and 'chatgpt' in (r.stdout + r.stderr).lower()
         d = json.loads(r.stdout)
         return d.get('loggedIn') is True and d.get('authMethod') == 'claude.ai'
     except (OSError, subprocess.TimeoutExpired, ValueError):
