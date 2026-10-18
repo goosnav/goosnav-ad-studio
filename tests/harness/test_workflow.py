@@ -252,3 +252,77 @@ def test_retry_on_a_finished_stage_redoes_it_and_everything_after(tmp_path):
     after = {t['stage']: t['status'] for t in store.get(r['id'])['tasks'] if t['ad'] == 0}
     assert after['edit'] == 'succeeded'
     assert all(after[s] == 'pending' for s in ('frame', 'qa', 'creative_qa', 'package'))
+
+
+def test_quick_stage_timeout_and_heavy_animation_budget():
+    from harness.workflow import agent_deadline
+    c = load_config()
+    assert agent_deadline(c, 'research') == (600, 300)
+    assert agent_deadline(c, 'write') == (600, 300)
+    assert agent_deadline(c, 'direct') == (900, 300)
+    assert agent_deadline(c, 'animate') == (14400, None)
+    assert agent_deadline(c, 'edit') == (14400, None)
+    # Old run configurations remain usable after introducing new limits.
+    del c['limits']['quick_timeout_seconds']
+    del c['limits']['review_timeout_seconds']
+    del c['limits']['idle_timeout_seconds']
+    assert agent_deadline(c, 'research') == (600, 300)
+
+
+def test_idle_research_falls_back_without_repeating_same_model(tmp_path):
+    store = Store(tmp_path); c = load_config()
+    run = store.create(c)
+    calls = []
+    def worker(profile, work, prompt, log, cancelled, timeout, started):
+        calls.append((profile['model'], timeout, profile.get('idle_timeout')))
+        if profile['model'] == 'first':
+            (work / 'handoff.md').write_text('Facts found before the stall')
+            return {'kind': 'idle_timeout', 'detail': 'no activity'}
+        assert (work / 'handoff.md').read_text() == 'Facts found before the stall'
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    def routes(workers):
+        return {'workers': {role: [{'provider': 'codex', 'model': 'first'},
+                                  {'provider': 'claude', 'model': 'fallback'}] for role in workers}}
+    e = Engine(store, execute=worker, resolve=routes, auth=lambda _: True)
+    e.run(run['id'], max_steps=1)
+    assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+    assert calls == [('first', 600, 300), ('fallback', 600, 300)]
+    assert store.get(run['id'])['tasks'][0]['attempts'][0]['kind'] == 'idle_timeout'
+
+
+def test_timeout_accepts_only_complete_valid_checkpoint(tmp_path):
+    store = Store(tmp_path); c = load_config()
+    run = store.create(c)
+    def worker(profile, work, prompt, log, cancelled, timeout, started):
+        research_result(work)  # Worker produced valid deliverable before timing out
+        return {'kind': 'timeout', 'detail': 'time budget hit'}
+    e = Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True)
+    e.run(run['id'], max_steps=1)
+    task = store.get(run['id'])['tasks'][0]
+    assert task['status'] == 'succeeded'
+    assert task['attempts'][0]['recovered_from'] == 'timeout'
+    assert len(task['attempts']) == 1
+
+
+def test_unexpected_worker_exception_moves_to_backup(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    calls = []
+    def worker(profile, work, *args, **kwargs):
+        calls.append(profile['provider'])
+        if profile['provider'] == 'codex':
+            raise OSError('CLI failed to launch')
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    e = Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True)
+    e.run(run['id'], max_steps=1)
+    assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+    assert calls == ['codex', 'claude']
+
+
+def test_research_has_cheaper_route_after_balanced_and_writer_after_quality():
+    c = load_config()
+    assert [p['model'] for p in c['workers']['researcher']] == [
+        'auto:balanced', 'auto:balanced', 'auto:economy', 'auto:economy']
+    assert [p['model'] for p in c['workers']['writer']] == [
+        'auto:quality', 'auto:quality', 'auto:balanced', 'auto:balanced']
