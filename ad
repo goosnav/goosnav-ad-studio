@@ -5,6 +5,8 @@
     ./ad "..." -n 3 -s 15             three ads, 15 seconds each
     ./ad                              no description: the agents pick the idea
     ./ad watch | status | list | pause | resume | cancel | upload | gui | doctor   [RUN_ID]
+    ./ad cancel all                  cancel every unfinished job on this render machine
+    ./ad cancel -a                   same as cancel all
 """
 import argparse
 import json
@@ -73,6 +75,16 @@ def main():
         if command == 'list':
             for r in harness('list')[:15]:
                 print(time.strftime('%m-%d %H:%M', time.localtime(r['created'])), r['id'], r['status'])
+            return 0
+        if command == 'cancel' and rest in (['all'], ['-a'], ['--all']):
+            result = harness('cancel', '--all')
+            if not isinstance(result, dict) or result.get('requested') != 'cancel_all':
+                print('Failed to request cancellation; inspect: python3 -m harness cancel --all',
+                      file=sys.stderr)
+                return 1
+            print(f"Cancellation requested for {result['count']} unfinished Ad Studio run(s).")
+            for run_id in result['runs']:
+                print('  ' + run_id)
             return 0
         run_id = rest[0] if rest else latest()
         if command == 'status':
