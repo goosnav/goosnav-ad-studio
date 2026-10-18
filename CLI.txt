@@ -10,6 +10,10 @@ ONE-TIME SETUP (ON THE RENDER COMPUTER)
   # Edit harness.local.json: brand sources, products, 3D paths under
   # sources.assets / sources.characters, audio.python, tools.frame_*,
   # and output.folder (ABSOLUTE local directory for finished files).
+  # OPTIONAL: set delivery.drive to "agent-exchange:deliverables/ad-studio"
+  # for automatic Drive upload after a completed or partially completed run.
+  # Leave delivery.drive empty for local-only operation (the default).
+  # Install/configure rclone once: rclone config && rclone lsd agent-exchange:
   ./ad doctor
   # Doctor should show no run_blockers or missing_sources.
   # Blender, FFmpeg, Codex/Claude logins, Kokoro and Goosnav Frame
@@ -31,6 +35,7 @@ STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   ./ad pause [RUN_ID]          pause after current stage
   ./ad resume [RUN_ID]         continue
   ./ad cancel [RUN_ID]         cancel now
+  ./ad upload [RUN_ID]         retry Drive upload of packaged MP4s/ZIPs; no re-render
   ./ad doctor                  check dependencies
   python3 -m harness retry RUN_ID --task ad-01-animate
   python3 -m pytest -q tests   run harness tests
@@ -59,24 +64,22 @@ WHERE THE OUTPUT GOES
   # output.folder is set in harness.local.json.
   # Detailed job state: ~/.local/share/goosnav-ad-studio/runs/<RUN_ID>/
 
-UPLOAD TO GOOGLE DRIVE (CURRENTLY MANUAL FOR HARNESS RUNS)
-  # Configure rclone once on the RENDER computer:
-  rclone config                    # create a Google Drive remote
-  rclone lsd agent-exchange:      # example remote name; confirm it exists
-  # Upload a completed run (replace OUTPUT_DIR and RUN_ID):
-  rclone copy "/absolute/OUTPUT_DIR/RUN_ID" "agent-exchange:deliverables/ad-studio/RUN_ID" -P
-  rclone lsf "agent-exchange:deliverables/ad-studio/RUN_ID"
-  # These commands do not run automatically after ./ad.
-
-ONE-SHOT FOREGROUND RUN + AUTOMATIC DRIVE UPLOAD
-  # Only if output.folder is configured and your shell stays active.
-  # Change the absolute output directory and your Drive remote.
-  python3 -m harness make --concept "Your exact ad prompt" --count 1 > /tmp/goosnav-last-run.json &&
-  RUN_ID=$(python3 -c 'import json; print(json.load(open("/tmp/goosnav-last-run.json"))["id"])') &&
-  rclone copy "/absolute/OUTPUT_DIR/$RUN_ID" "agent-exchange:deliverables/ad-studio/$RUN_ID" -P
-  # For unattended SSH sessions, run this sequence inside tmux;
-  # ./ad by itself is detached, so chaining rclone after ./ad is TOO EARLY.
-  # Native automatic Drive delivery for detached ./ad jobs remains TODO.
+GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
+  # 1. Install rclone and authorize a Google Drive remote on the render PC:
+  rclone config
+  rclone lsd agent-exchange:             # replace with your actual remote name
+  # 2. In harness.local.json, set:
+  #    "delivery": {"drive": "agent-exchange:deliverables/ad-studio"}
+  # 3. Run ./ad "..." normally. It renders locally first and then uploads
+  #    finished ad-NN.mp4 + ad-NN.zip to <drive>/<RUN_ID>/ automatically.
+  # 4. Check ./ad status to see the upload outcome. If it fails:
+  ./ad upload [RUN_ID]                  # upload again, no re-render
+  # The rclone copy never deletes files on Drive. If Drive is down, the
+  # local MP4/ZIP remain intact and the render is still marked successful.
+  # Partial runs with some packaged ads upload the successfully packaged ads.
+  # To disable upload, leave delivery.drive blank or remove the delivery key.
+  # You can also upload a prior local-only run by setting the delivery.drive
+  # of that run using the saved run config, or by running rclone copy manually.
 
 NOTES
   - Submodule files are pointers until initialized; Blender needs real
