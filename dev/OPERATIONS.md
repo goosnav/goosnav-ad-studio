@@ -143,9 +143,18 @@ and only `blocking` findings stop for a person (`needs_review`).
 | critic | economy | affordable model, low effort | `haiku` |
 | critic (last resort) | balanced | workhorse | `sonnet` |
 
-Codex models are discovered from the account's live catalog (`codex
-app-server` metadata, no inference). Claude aliases are pinned to the concrete
-model observed in the first session. Override any role in the config:
+Codex models are normally discovered from the account's live catalog
+(`codex app-server` metadata, no inference). If that catalog is unreachable
+or does not describe an appropriate model, the Codex route now **remains
+available** and runs without `-m`, allowing the installed Codex CLI to
+choose its own default model. If a previously selected Codex model is later
+rejected as unsupported, the scheduler retries that task once using the CLI
+default, without consuming a creative repair. On resume, saved `unavailable`
+Codex routes from earlier discovery failures are re-resolved. A failed or
+unexpectedly formatted `codex login status` check alone no longer prevents a
+Codex attempt: the actual CLI reports any real authentication error instead.
+Claude aliases are pinned to the concrete model observed in the first session.
+Override any role in the config:
 
 ```json
 "workers": {"writer": [{"provider": "claude", "model": "opus"}, {"provider": "codex", "model": "gpt-6-astra", "effort": "high"}]}
@@ -163,7 +172,9 @@ risking an incomplete result entering production.
 
 A quota/usage-limit error puts that provider on cooldown
 (`limits.provider_cooldown_seconds`, default 1 h) and the same role moves to
-the other CLI. Writers may downgrade to the balanced tier if quality routes stall or fail. Both CLIs report when their limit resets ("resets 5:40pm", "try again at
+the other CLI. The state machine only reports `waiting_provider` once its
+usable routes really are exhausted; `./ad status` now prints the reason each
+route was skipped, and `./ad watch` exits if the run cannot progress. Writers may downgrade to the balanced tier if quality routes stall or fail. Both CLIs report when their limit resets ("resets 5:40pm", "try again at
 4:24 PM"); that time becomes the cooldown. Quota failures do not use up a task's
 repair budget. If every route is cooling down, `make`/`resume`/`retry` sleep until
 the earliest reset and continue (`--no-wait` stops at `waiting_provider` instead).
