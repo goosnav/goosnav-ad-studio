@@ -18,6 +18,19 @@ ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'rev
          'direct': 'director', 'board_review': 'director'}
 CAMPAIGN = ['research', 'write', 'critique', 'revise', 'critique_final', 'select']
 PRODUCTION = ['direct', 'assets', 'board_review', 'audio', 'animate', 'review', 'edit', 'frame', 'qa', 'creative_qa', 'package']
+# Long operations render or build assets; planning/review should never consume a render-length budget.
+HEAVY_STAGES = {'assets', 'audio', 'animate', 'edit'}
+
+
+def agent_deadline(config, stage):
+    limits = config['limits']
+    if stage in HEAVY_STAGES:
+        return limits['production_timeout_seconds'], None
+    if stage in CAMPAIGN:
+        total = min(limits['timeout_seconds'], limits.get('quick_timeout_seconds', 600))
+    else:
+        total = min(limits['production_timeout_seconds'], limits.get('review_timeout_seconds', 900))
+    return total, min(total, limits.get('idle_timeout_seconds', 300))
 
 
 def build_tasks(count):
@@ -37,7 +50,8 @@ def process_identity(pid):
 def execute_worker(profile, work, prompt, log, cancelled, timeout, started):
     return supervise(command(profile, work), cwd=work, prompt=prompt, log=log,
                      timeout=timeout, cancelled=cancelled, started=started,
-                     max_log_mb=profile.get('log_mb', 32))
+                     max_log_mb=profile.get('log_mb', 32),
+                     idle_timeout=profile.get('idle_timeout'))
 
 
 class Engine:
@@ -221,8 +235,9 @@ class Engine:
                 def started(pid):
                     attempt['pid'] = pid; attempt['identity'] = process_identity(pid)
                     self.store.save(state, 'worker_started', {'task': task['id'], 'pid': pid})
-                timeout = c['limits']['production_timeout_seconds' if task['ad'] is not None else 'timeout_seconds']
-                outcome = self.execute({**profile, 'log_mb': c['limits']['log_mb']}, work, prompt, log,
+                timeout, idle = agent_deadline(c, task['stage'])
+                outcome = self.execute({**profile, 'log_mb': c['limits']['log_mb'],
+                                        'idle_timeout': idle}, work, prompt, log,
                     cancelled=lambda: self.store.control_value(state['id']) == 'cancel', timeout=timeout, started=started)
                 attempt.update(outcome, ended=time.time()); attempt.pop('pid', None); attempt.pop('identity', None)
                 # Claude aliases move over time. Pin the concrete observed model for the rest of this run.
@@ -235,7 +250,10 @@ class Engine:
                                 if route['provider']=='claude' and route['model']==alias:
                                     route['model']=observed[0];route['resolved_alias']=alias
                 self.verify_history(state)
-                if outcome['kind'] == 'ok':
+                # If a deadline hit after a worker wrote a COMPLETE valid result,
+                # salvage it rather than discarding good work. Partial text isn't
+                # accepted: the same contract/media checks still apply.
+                if outcome['kind'] in ('ok', 'timeout', 'idle_timeout') and result_file.is_file():
                     try:
                         if not result_file.is_file() or result_file.stat().st_size > 2 * 1024 * 1024:
                             raise ContractError('Missing result.json or result larger than 2 MB')
@@ -243,10 +261,14 @@ class Engine:
                         self.validate_media(task, data, work, c, state)
                         task['result'] = promote(data, work, root/'artifacts'/task['id']/f'attempt-{number}')
                         task['status'] = 'succeeded'
+                        if outcome['kind'] != 'ok':
+                            attempt['recovered_from'] = outcome['kind']
                         self.store.save(state, 'task_succeeded', {'task': task['id']}); return
                     except Exception as e:
-                        # Whatever the worker handed in, a bad result is a repair note, never a dead run.
-                        attempt['kind'] = 'invalid'
+                        # A timed-out or idle worker may have left an incomplete draft.
+                        # Keep the timeout classification and switch routes promptly.
+                        if outcome['kind'] == 'ok':
+                            attempt['kind'] = 'invalid'
                         attempt['detail'] = str(e) if isinstance(e, ValueError) else f'{type(e).__name__}: {e}'
                 task['feedback'] = f'Previous {provider} attempt: {attempt["kind"]}. {attempt.get("detail", "")[-4000:]}'
                 self.store.save(state, 'attempt_failed', {'task': task['id'], 'kind': attempt['kind']})
@@ -255,6 +277,10 @@ class Engine:
                 if attempt['kind'] == 'quota':
                     self.store.cooldown(provider, reset_delay(attempt.get('detail', ''))
                                         or c['limits']['provider_cooldown_seconds'])
+                # Don't repeat a hung session on the same model; try the next
+                # provider or cheaper route while retaining workspace notes.
+                if attempt['kind'] in ('timeout', 'idle_timeout', 'log_limit'):
+                    break
                 if attempt['kind'] in ('quota', 'auth', 'model', 'permission', 'dependency'):
                     unavailable.append(task['feedback']); break
         task['status'] = 'waiting_provider' if unavailable and all(
