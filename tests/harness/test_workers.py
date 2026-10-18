@@ -73,3 +73,20 @@ def test_reset_time_becomes_cooldown():
     assert reset_delay('usage limit, no time given', now) is None
     weekly = 'purchase more credits or try again at Oct 22nd, 2026 11:24 AM.'
     assert reset_delay(weekly, now) == int((datetime(2026, 10, 22, 11, 24) - now).total_seconds()) + 60
+
+
+def test_idle_timeout_terminates_a_silent_worker(tmp_path):
+    result = supervise([sys.executable, '-c', 'import time; time.sleep(30)'],
+        cwd=tmp_path, prompt='', log=tmp_path/'log', timeout=5,
+        idle_timeout=.25, cancelled=lambda: False)
+    assert result['kind'] == 'idle_timeout'
+    assert 'idle_timeout' in result['detail']
+
+
+def test_active_logs_prevent_false_idle_timeout(tmp_path):
+    program = ('import sys,time; '
+               '[(sys.stdout.write("ping\\n"),sys.stdout.flush(),time.sleep(.08)) for _ in range(7)]')
+    result = supervise([sys.executable, '-c', program],
+        cwd=tmp_path, prompt='', log=tmp_path/'log', timeout=5,
+        idle_timeout=.25, cancelled=lambda: False)
+    assert result['kind'] == 'ok'
