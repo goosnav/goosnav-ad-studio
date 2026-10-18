@@ -1,36 +1,86 @@
 GOOSNAV AD STUDIO - QUICK COMMANDS
-Run these from this folder (cd ~/Desktop/code/goosnav-ad-studio).
+=================================
+Run from the repo root: cd /path/to/goosnav-ad-studio
+Full guide: README.md and dev/OPERATIONS.md
 
-MAKE AN AD
-  ./ad "the guy keeps losing Book Two to increasingly official people"
-        One 10-second ad from your description. It runs in the background,
-        so you can close the terminal.
+ONE-TIME SETUP (ON THE RENDER COMPUTER)
+  git submodule update --init --recursive
+  git -C assets/goosnav-3D-assets lfs pull   # requires Git LFS
+  cp harness.example.json harness.local.json  # if not already configured
+  # Edit harness.local.json: brand sources, products, 3D paths under
+  # sources.assets / sources.characters, audio.python, tools.frame_*,
+  # and output.folder (ABSOLUTE local directory for finished files).
+  ./ad doctor
+  # Doctor should show no run_blockers or missing_sources.
+  # Blender, FFmpeg, Codex/Claude logins, Kokoro and Goosnav Frame
+  # must be installed/configured on THIS computer.
+  # This quick guide does not install those dependencies.
 
-  ./ad "..." -n 3              three ads from the same description
-  ./ad "..." -s 15             15 seconds long instead of 10
-  ./ad "..." -n 3 -s 15        both
-  ./ad                         no description: the agents pick the idea
+MAKE AN AD (DETACHED - SURVIVES TERMINAL CLOSURE)
+  ./ad "A PS1-style character struggles to open Book Two"
+  ./ad "..." -n 3             make 3 ads
+  ./ad "..." -s 15            target 15 seconds (default 10)
+  ./ad "..." -n 3 -s 15      both
+  ./ad                        open brief: agents choose the concept
+  # Starting another job queues it behind the active job.
 
-  Starting another ad while one is running queues it; it starts when the first finishes.
-  Finished videos land in business/studio/output/harness/<run>/ad-01.mp4 (and ad-01.zip).
-
-CHECK ON IT (RUN_ID is optional; leave it out to mean the latest run)
-  ./ad watch [RUN_ID]          one progress line a minute until it finishes
-  ./ad status [RUN_ID]         one line now (and why, if it stopped)
-  ./ad list                    recent runs
-  ./ad pause [RUN_ID]          stop after the current step
-  ./ad resume [RUN_ID]         carry on (after a pause, a stop, or a fix)
-  ./ad cancel [RUN_ID]         stop now
+STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
+  ./ad status [RUN_ID]         quick status and failure reason
+  ./ad watch [RUN_ID]          watch until stopped/finished
+  ./ad list                    recent runs / IDs
+  ./ad pause [RUN_ID]          pause after current stage
+  ./ad resume [RUN_ID]         continue
+  ./ad cancel [RUN_ID]         cancel now
+  ./ad doctor                  check dependencies
   python3 -m harness retry RUN_ID --task ad-01-animate
-                               redo one step (and everything after it); ./ad status names the step
+  python3 -m pytest -q tests   run harness tests
 
-OTHER
-  ./ad gui                     browser page: open http://192.168.1.193:8788/ from any
-                               computer on the network (this one: http://127.0.0.1:8788/)
-  ./ad gui --local             browser page for this computer only
-  ./ad doctor                  check tools, logins, Frame, voices and sources
+REMOTE COMMAND VIA TAILSCALE (FROM LAPTOP/PHONE SSH CLIENT)
+  # Install Tailscale on both computers. Enable Tailscale SSH on the
+  # render computer, OR use ordinary SSH to its Tailscale IP/hostname.
+  tailscale ssh USER@RENDER-PC
+  # Then: cd /path/to/goosnav-ad-studio && ./ad "your prompt"
 
-ONE-TIME NETWORK SETUP (only if other computers cannot open the GUI)
-  sudo ufw allow from 192.168.1.0/24 to any port 8788:8807 proto tcp
+  # Launch directly in one command (edit USER, RENDER-PC, and path):
+  tailscale ssh USER@RENDER-PC 'cd /path/to/goosnav-ad-studio && ./ad "A 10-second Goosklerf ad with the PS1 characters"'
+  # This starts a DETACHED job; disconnecting will not cancel it.
+  tailscale ssh USER@RENDER-PC 'cd /path/to/goosnav-ad-studio && ./ad status'
 
-The full command set is "python3 -m harness --help"; dev/OPERATIONS.md explains everything.
+OPTIONAL GUI
+  ./ad gui --local              safe default: localhost only (127.0.0.1:8788)
+  # To view it remotely, prefer a Tailscale SSH tunnel:
+  ssh -L 8788:127.0.0.1:8788 USER@RENDER-PC
+  # Then open http://127.0.0.1:8788 on your computer.
+  # Avoid ./ad gui on an untrusted LAN or the public internet:
+  # the GUI has NO LOGIN and can run unrestricted agent commands.
+
+WHERE THE OUTPUT GOES
+  <output.folder>/<RUN_ID>/ad-01.mp4  (and ad-01.zip)
+  # output.folder is set in harness.local.json.
+  # Detailed job state: ~/.local/share/goosnav-ad-studio/runs/<RUN_ID>/
+
+UPLOAD TO GOOGLE DRIVE (CURRENTLY MANUAL FOR HARNESS RUNS)
+  # Configure rclone once on the RENDER computer:
+  rclone config                    # create a Google Drive remote
+  rclone lsd agent-exchange:      # example remote name; confirm it exists
+  # Upload a completed run (replace OUTPUT_DIR and RUN_ID):
+  rclone copy "/absolute/OUTPUT_DIR/RUN_ID" "agent-exchange:deliverables/ad-studio/RUN_ID" -P
+  rclone lsf "agent-exchange:deliverables/ad-studio/RUN_ID"
+  # These commands do not run automatically after ./ad.
+
+ONE-SHOT FOREGROUND RUN + AUTOMATIC DRIVE UPLOAD
+  # Only if output.folder is configured and your shell stays active.
+  # Change the absolute output directory and your Drive remote.
+  python3 -m harness make --concept "Your exact ad prompt" --count 1 > /tmp/goosnav-last-run.json &&
+  RUN_ID=$(python3 -c 'import json; print(json.load(open("/tmp/goosnav-last-run.json"))["id"])') &&
+  rclone copy "/absolute/OUTPUT_DIR/$RUN_ID" "agent-exchange:deliverables/ad-studio/$RUN_ID" -P
+  # For unattended SSH sessions, run this sequence inside tmux;
+  # ./ad by itself is detached, so chaining rclone after ./ad is TOO EARLY.
+  # Native automatic Drive delivery for detached ./ad jobs remains TODO.
+
+NOTES
+  - Submodule files are pointers until initialized; Blender needs real
+    local .blend assets, not Git LFS pointer files.
+  - harness.local.json and studio.local.json are separate configs.
+  - A completed pipeline does not guarantee an aesthetically good ad;
+    review the MP4 before publishing.
