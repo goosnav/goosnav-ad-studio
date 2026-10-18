@@ -10,7 +10,7 @@ from .briefs import brief
 from .contracts import ContractError, validate, promote, verify_accepted
 from .models import resolve_workers
 from .sources import snapshot
-from .workers import command, reset_delay, subscription_status, supervise
+from .workers import CODEX_CLI_DEFAULT, command, reset_delay, subscription_status, supervise
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'assets': 'producer', 'audio': 'producer',
@@ -80,6 +80,8 @@ class Engine:
                 if not state['models']:
                     state['models'] = self.resolve(state['config']['workers'])
                     self.store.save(state, 'models_resolved')
+                else:
+                    self.refresh_unavailable_codex(state)
                 steps = 0
                 while max_steps is None or steps < max_steps:
                     action = self.store.control_value(run_id)
@@ -116,6 +118,28 @@ class Engine:
                         t['status'] = 'failed'; t['feedback'] = state['error']
                 self.store.save(state, 'exception', {'error': state['error']})
             return state
+
+    def refresh_unavailable_codex(self, state):
+        """Recover Codex routes disabled by an earlier transient discovery error.
+
+        Resumed runs retain their model snapshots. Only re-resolve unavailable Codex
+        entries, never successful/pinned routes from another provider.
+        """
+        routes = state['models'].get('workers', {})
+        stale = [(role, index) for role, profiles in routes.items()
+                 for index, profile in enumerate(profiles)
+                 if profile['provider'] == 'codex' and profile.get('unavailable')]
+        if not stale:
+            return
+        refreshed = self.resolve(state['config']['workers'])
+        newer = refreshed.get('workers', {})
+        for role, index in stale:
+            candidates = newer.get(role, [])
+            if index < len(candidates) and candidates[index].get('provider') == 'codex':
+                routes[role][index] = candidates[index]
+        state['models']['checked_at'] = time.time()
+        state['models']['discovery_error'] = refreshed.get('discovery_error')
+        self.store.save(state, 'codex_routes_refreshed', {'count': len(stale)})
 
     def reconcile(self, state):
         for task in state['tasks']:
@@ -207,8 +231,18 @@ class Engine:
         unavailable = []
         for route, profile in enumerate(routes):
             provider = profile['provider']
-            if profile.get('unavailable') or self.store.cooldown(provider) or not self.auth(provider):
-                unavailable.append(f'{provider}: {profile.get("unavailable") or "cooldown or subscription login unavailable"}')
+            reason = profile.get('unavailable')
+            if not reason and self.store.cooldown(provider):
+                reason = 'provider is on usage-limit cooldown'
+            if not reason:
+                authenticated = self.auth(provider)
+                if not authenticated and not (provider == 'codex' and self.auth is subscription_status):
+                    reason = 'subscription login unavailable'
+                # Codex login-status wording varies across CLI versions. The CLI
+                # itself is authoritative: try its ChatGPT session and classify
+                # any real auth error, rather than silently disabling the route.
+            if reason:
+                unavailable.append(f'{provider} ({profile.get("model")}): {reason}')
                 continue
             # Attempts are durable. Resume cannot silently reset a consumed budget.
             # Budgets are per route; attempts from before routes were recorded count against
@@ -216,8 +250,10 @@ class Engine:
             first = next(i for i, r in enumerate(routes) if r['provider'] == provider)
             used = sum(a.get('route', first if a['provider'] == provider else -1) == route
                        and a['revision'] == task['revision']
-                       and a.get('kind') not in ('cancelled', 'quota', None) for a in task['attempts'])
-            for _ in range(max(0, c['limits']['repairs'] + 1 - used)):
+                       and a.get('kind') not in ('cancelled', 'quota', 'model', None) for a in task['attempts'])
+            remaining = max(0, c['limits']['repairs'] + 1 - used)
+            while remaining > 0:
+                remaining -= 1
                 if self.store.control_value(state['id']) == 'cancel':
                     task['status'] = 'cancelled'; return
                 number = len(task['attempts']) + 1
@@ -286,6 +322,15 @@ class Engine:
                 if attempt['kind'] == 'quota':
                     self.store.cooldown(provider, reset_delay(attempt.get('detail', ''))
                                         or c['limits']['provider_cooldown_seconds'])
+                if provider == 'codex' and attempt['kind'] == 'model' and profile['model'] != CODEX_CLI_DEFAULT:
+                    # A pinned model may have disappeared after the run was created.
+                    # A model-not-found error is not a creative repair; retry this
+                    # same route once with Codex's native default model.
+                    profile['model'] = CODEX_CLI_DEFAULT
+                    profile['resolution'] = 'Codex CLI default after model error'
+                    remaining += 1
+                    self.store.save(state, 'codex_model_fallback', {'task': task['id'], 'route': route})
+                    continue
                 # Don't repeat a hung session on the same model; try the next
                 # provider or cheaper route while retaining workspace notes.
                 if attempt['kind'] in ('timeout', 'idle_timeout', 'log_limit'):
