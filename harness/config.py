@@ -27,13 +27,17 @@ DEFAULTS = {
                'frame': 'end_card', 'end_card_seconds': 2.5,
                # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
                'look': 'clean', 'loudness': -14},
-    'workers': {'researcher': profiles('balanced'), 'writer': profiles('quality'),
+    # Faster/cheaper routes are a last resort for hung research or writing sessions.
+    'workers': {'researcher': profiles('balanced') + profiles('economy'),
+                'writer': profiles('quality') + profiles('balanced'),
                 # Cheap reviewers first; a stronger route only after they fail the contract.
                 'critic': profiles('economy') + profiles('balanced'), 'selector': profiles('quality'),
                 'producer': profiles('balanced'),
                 # The director plans pacing, casting and the end card, then reviews the cuts.
                 'director': profiles('quality')},
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
+               'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
+               'idle_timeout_seconds': 300,
                'repairs': 2, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
