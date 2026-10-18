@@ -4,7 +4,7 @@
     ./ad "what the ad should be"      start one 10-second ad in the background
     ./ad "..." -n 3 -s 15             three ads, 15 seconds each
     ./ad                              no description: the agents pick the idea
-    ./ad watch | status | list | pause | resume | cancel | gui | doctor   [RUN_ID]
+    ./ad watch | status | list | pause | resume | cancel | upload | gui | doctor   [RUN_ID]
 """
 import argparse
 import json
@@ -16,7 +16,7 @@ import time
 
 REPO = Path(__file__).resolve().parent
 HOME = Path(os.environ.get('STUDIO_HARNESS_HOME', Path.home() / '.local/share/goosnav-ad-studio'))
-COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'gui', 'doctor')
+COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'gui', 'doctor')
 DONE = ('complete', 'partial', 'failed', 'needs_review', 'cancelled', 'interrupted', 'paused')
 
 
@@ -39,6 +39,12 @@ def summary(run_id):
     current = next((t for t in s['tasks'] if t['status'] in ('running', 'waiting_provider', 'failed', 'needs_review')), None)
     where = f" | {current['id']} {current['status']}" if current else ''
     print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
+    if s.get('delivery'):
+        d = s['delivery']
+        if d['status'] == 'uploaded':
+            print(f'Drive: {d["remote"]}')
+        elif d['status'] == 'failed':
+            print(f'Drive delivery failed: {d.get("error", "unknown error")[:240]}\nRetry: ./ad upload {run_id}')
     if s['status'] in DONE:
         folder = s['config']['output'].get('folder')
         if done and folder:
@@ -63,6 +69,17 @@ def main():
         run_id = rest[0] if rest else latest()
         if command == 'status':
             summary(run_id); return 0
+        if command == 'upload':
+            result = harness('upload', run_id)
+            if not isinstance(result, dict):
+                print('Upload could not start (check rclone configuration).', file=sys.stderr)
+                return 1
+            d = result.get('delivery', {})
+            if d.get('status') != 'uploaded':
+                print(f'Drive upload failed: {d.get("error", "unknown error")}', file=sys.stderr)
+                return 1
+            print(f'Uploaded to Drive: {d["remote"]}')
+            return 0
         if command == 'watch':
             while summary(run_id) not in DONE:
                 time.sleep(60)
