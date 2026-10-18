@@ -38,6 +38,7 @@ DEFAULTS = {
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},
+    'delivery': {'drive': ''},  # optional rclone remote path; empty = local-only
     'tools': {'blender': 'blender', 'ffmpeg': 'ffmpeg', 'ffprobe': 'ffprobe',
               'frame_root': '', 'frame_python': ''},
 }
@@ -97,6 +98,8 @@ def load_config(path=None, overrides=None):
     for key, value in c['limits'].items():
         if type(value) is not int or not (0 if key in ('repairs', 'board_repairs') else 1) <= value <= 86400:
             raise ConfigError(f'limits.{key} is out of range')
+    if not isinstance(c['delivery']['drive'], str):
+        raise ConfigError('delivery.drive must be an rclone destination string')
     o = c['output']
     for key in ('width', 'height', 'fps', 'target_seconds', 'min_seconds', 'max_seconds'):
         if type(o[key]) is not int or o[key] < (0 if key.endswith(('min_seconds', 'max_seconds')) else 1):
