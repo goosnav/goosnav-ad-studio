@@ -54,3 +54,19 @@ def test_unknown_codex_catalog_descriptions_fall_back_to_cli_default(monkeypatch
     codex = resolved['workers']['researcher'][0]
     assert codex['model'] == CODEX_CLI_DEFAULT
     assert 'unavailable' not in codex
+
+
+def test_malformed_codex_catalog_response_still_keeps_cli_eligible(monkeypatch):
+    import harness.models as models
+    from harness.config import profiles
+    from harness.workers import CODEX_CLI_DEFAULT
+
+    def broken_catalog():
+        raise KeyError('result')
+
+    monkeypatch.setattr(models, 'codex_catalog', broken_catalog)
+    monkeypatch.setattr(models.shutil, 'which', lambda _: '/usr/bin/agent-cli')
+    resolved = models.resolve_workers({'producer': profiles('balanced')})
+    assert resolved['workers']['producer'][0]['model'] == CODEX_CLI_DEFAULT
+    assert 'unavailable' not in resolved['workers']['producer'][0]
+    assert 'KeyError' in resolved['discovery_error']
