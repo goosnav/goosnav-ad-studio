@@ -124,7 +124,7 @@ def test_cancelled_task_cannot_be_skipped(tmp_path):
 def exhausted_review(severity):
     state ={'config': load_config(), 'tasks': build_tasks(1)}
     task = next(t for t in state['tasks'] if t['stage'] == 'critique_final')
-    task.update(status='succeeded', revision=state['config']['limits']['repairs'], result={
+    task.update(status='succeeded', rounds=state['config']['limits']['repairs'], result={
         'summary': 'still flawed', 'verdict': 'revise', 'files': [],
         'findings': [{'target': 'A', 'severity': severity, 'problem': 'p', 'fix': 'f'}]})
     return state, task
@@ -220,7 +220,7 @@ def test_storyboard_gets_more_repair_rounds_than_animation(tmp_path):
     def exhausted(stage, revision):
         state = {'config': load_config(), 'tasks': build_tasks(1)}
         task = next(t for t in state['tasks'] if t['stage'] == stage)
-        task.update(status='succeeded', revision=revision, result={'summary': 's', 'verdict': 'revise', 'restart': 'assets',
+        task.update(status='succeeded', rounds=revision, result={'summary': 's', 'verdict': 'revise', 'restart': 'assets',
             'files': [], 'findings': [{'target': 'b', 'severity': 'blocking', 'problem': 'p', 'fix': 'f'}]})
         state['id'] = 'x'
         e.store.save = lambda *a, **k: None
@@ -229,3 +229,14 @@ def test_storyboard_gets_more_repair_rounds_than_animation(tmp_path):
     assert exhausted('review', 2) == 'needs_review'          # limits.repairs (2)
     assert exhausted('board_review', 2) == 'pending'         # rewound: boards are cheap to redo
     assert exhausted('board_review', 4) == 'needs_review'    # limits.board_repairs (4)
+
+
+def test_upstream_rewinds_do_not_use_up_a_review_budget(tmp_path):
+    e = Engine(Store(tmp_path)); e.store.save = lambda *a, **k: None
+    state = {'id': 'x', 'config': load_config(), 'tasks': build_tasks(1)}
+    review = next(t for t in state['tasks'] if t['stage'] == 'review')
+    review['revision'] = 5          # bumped by five storyboard rewinds before it ever ran
+    review.update(status='succeeded', result={'summary': 's', 'verdict': 'revise', 'restart': 'animate', 'files': [],
+                  'findings': [{'target': 't', 'severity': 'blocking', 'problem': 'p', 'fix': 'f'}]})
+    e.review_transition(state, review)
+    assert review['status'] == 'pending' and review['rounds'] == 1   # its first verdict gets a repair

@@ -376,8 +376,9 @@ class Engine:
         if task['stage'] not in ('critique_final', 'board_review', 'review', 'creative_qa') or task['result']['verdict'] == 'pass':
             return
         limits = state['config']['limits']
-        rounds = limits.get('board_repairs', 4) if task['stage'] == 'board_review' else limits['repairs']
-        if task['revision'] >= rounds:
+        budget = limits.get('board_repairs', 4) if task['stage'] == 'board_review' else limits['repairs']
+        # Count this review's own requests; upstream rewinds also bump revision and must not spend them.
+        if task.get('rounds', 0) >= budget:
             # Out of repair rounds: only blockers need a human. Other notes travel downstream.
             if any(f['severity'] == 'blocking' for f in task['result']['findings']):
                 task['status'] = 'needs_review'
@@ -387,7 +388,9 @@ class Engine:
         default = {'critique_final': 'revise', 'board_review': 'assets'}.get(task['stage'], 'audio')
         start_stage = 'revise' if task['stage'] == 'critique_final' else task['result'].get('restart', default)
         feedback = json.dumps(task['result'], indent=2)
+        rounds = task.get('rounds', 0) + 1
         self.rewind(state,task['ad'],start_stage,feedback)
+        task['rounds'] = rounds
         self.store.save(state, 'revision_requested', {'task': task['id']})
 
     def builtin_task(self, state, task, root):

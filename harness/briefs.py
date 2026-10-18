@@ -210,12 +210,14 @@ LOOK_PIXEL = {'ps1': 3}  # native render = delivery size / 3 (360x450), as the P
 LOOKS = {'ps1': {
  'all': '''LOOK: crunchy late-1990s/early-2000s console game (PlayStation 1 era). Not polished, not
 modern-smooth. Low-poly models, tiny unfiltered textures, hard pixel edges, fog where the
-world ends. The look comes from the scene itself. Nothing is added afterwards: no scanlines,
-no dither or CRT filters, no jitter, and no text in the picture (Goosnav Frame sets the end
-text in its clean type).''',
+world ends. The look comes from the scene plus the library's own PS1 finish (blender/ps1_finish.py:
+15-bit Bayer dither and a nearest-neighbour upscale, as in the library's character ads). Nothing
+else is added: no scanlines, CRT filters or jitter, and no text in the picture (Goosnav Frame
+sets the end text in clean type and does not post-process the picture).''',
  'write': 'Write for that world: staging, framing and gags that play like a PS1 cutscene.',
  'direct': '''Direct it like a PS1 cutscene: blocky staging, simple readable silhouettes, stiff
-stepped character motion, hard cuts, big chunky close-ups (detail dies at this resolution:
+stepped body motion on twos (but every planned action is seen happening, never a one-frame pop),
+hard cuts, big chunky close-ups (detail dies at this resolution:
 make subjects and products large in frame). Plan the end card picture as a chunky hero shot.''',
  'assets': '''Use the library's PS1 variants: products from assets/3D/ps1, cards from cards/ps1, the
 PS1 character rigs. Their textures are already 15-bit dithered with nearest sampling. Only use

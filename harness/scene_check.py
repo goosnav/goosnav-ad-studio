@@ -54,9 +54,14 @@ def face_state(scene, arm, parts, depsgraph):
     size = math.hypot(pa.x - pb.x, (pa.y - pb.y) * scene.render.resolution_y / scene.render.resolution_x)
     origin = cam.matrix_world.translation
     ray = point - origin
-    hit, _, _, _, obj, _ = scene.ray_cast(depsgraph, origin, ray.normalized(), distance=ray.length + 0.5)
+    hit, loc, _, _, obj, _ = scene.ray_cast(depsgraph, origin, ray.normalized(), distance=ray.length + 0.5)
+    # Objects hidden from the render neither block a face nor count as one.
+    while hit and obj.original.hide_render and obj.original.name not in parts:
+        origin = loc + ray.normalized() * 1e-3
+        hit, loc, _, _, obj, _ = scene.ray_cast(depsgraph, origin, ray.normalized(), distance=(point - origin).length + 0.5)
     clear = (not hit) or obj.name in parts or (obj.original and obj.original.name in parts)
-    return inside, size, clear
+    shown = not all(bpy.data.objects[n].hide_render for n in parts if bpy.data.objects[n].type == 'MESH')
+    return inside and shown, size, clear
 
 
 def main():
