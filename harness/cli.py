@@ -66,7 +66,8 @@ def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
         while delay>0:
             if store.control_value(run_id)!='run':
                 return store.get(run_id)
-            step=min(30,delay);sleep(step);delay-=step
+            # A bulk cancel should wake quota-waiting controllers promptly.
+            step=min(1,delay);sleep(step);delay-=step
 
 
 def main(argv=None):
