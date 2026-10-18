@@ -130,6 +130,6 @@ def test_upload_accepts_drive_folder_link_and_uses_folder_id(tmp_path):
         return Result()
     result = upload_run(store, state, run=fake_run, which=lambda _: '/usr/bin/rclone')
     assert result['delivery']['status'] == 'uploaded'
-    assert '--drive-root-folder-id' in calls[0]
-    assert calls[0][calls[0].index('--drive-root-folder-id') + 1] == 'folder123'
+    assert calls[0][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
+    assert calls[1][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
     assert 'agent-exchange:' + state['id'] in calls[0]

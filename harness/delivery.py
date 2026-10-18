@@ -49,9 +49,9 @@ def upload_run(store, state, *, run=subprocess.run, which=shutil.which):
             raise FileNotFoundError('Packaged local files missing: ' + ', '.join(missing_local))
         # Copy only this run's accepted packages, never stale files left by a retry.
         filters = [arg for name in sorted(expected) for arg in ('--include', name)]
-        run(['rclone', 'copy', str(folder), remote, *drive_flags, *filters, '--transfers', '2'],
+        run(['rclone', *drive_flags, 'copy', str(folder), remote, *filters, '--transfers', '2'],
             check=True, capture_output=True, text=True, timeout=3600)
-        result = run(['rclone', 'lsf', remote, '--files-only', *drive_flags],
+        result = run(['rclone', *drive_flags, 'lsf', remote, '--files-only'],
                      check=True, capture_output=True, text=True, timeout=120)
         found = set(result.stdout.splitlines())
         missing_remote = sorted(expected - found)
