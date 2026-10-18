@@ -90,3 +90,26 @@ def test_active_logs_prevent_false_idle_timeout(tmp_path):
         cwd=tmp_path, prompt='', log=tmp_path/'log', timeout=5,
         idle_timeout=.25, cancelled=lambda: False)
     assert result['kind'] == 'ok'
+
+
+def test_codex_login_status_accepts_chatgpt_variants(monkeypatch):
+    from types import SimpleNamespace
+    from harness.workers import subscription_status
+
+    for phrase in ('Logged in using ChatGPT', 'Logged in via chatgpt', 'CHATGPT authenticated'):
+        monkeypatch.setattr('harness.workers.subprocess.run', lambda *a, **k: SimpleNamespace(
+            returncode=0, stdout=phrase, stderr=''))
+        assert subscription_status('codex') is True
+    monkeypatch.setattr('harness.workers.subprocess.run', lambda *a, **k: SimpleNamespace(
+        returncode=0, stdout='Logged in using an API key', stderr=''))
+    assert subscription_status('codex') is False
+
+
+def test_cli_default_codex_preserves_chatgpt_auth_without_pinning_model(tmp_path):
+    from harness.workers import CODEX_CLI_DEFAULT
+    argv = command({'provider': 'codex', 'model': CODEX_CLI_DEFAULT}, tmp_path)
+    assert '--ignore-user-config' in argv
+    assert 'forced_login_method="chatgpt"' in argv
+    assert '--json' in argv
+    assert '-m' not in argv
+    assert 'model_reasoning_effort' not in str(argv)
