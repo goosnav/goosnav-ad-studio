@@ -37,6 +37,7 @@ STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   ./ad cancel [RUN_ID]         cancel now
   ./ad upload [RUN_ID]         retry Drive upload of packaged MP4s/ZIPs; no re-render
   ./ad doctor                  check dependencies
+  # Status shows the current model, elapsed time and seconds since CLI output.
   python3 -m harness retry RUN_ID --task ad-01-animate
   python3 -m pytest -q tests   run harness tests
 
@@ -80,6 +81,24 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # To disable upload, leave delivery.drive blank or remove the delivery key.
   # You can also upload a prior local-only run by setting the delivery.drive
   # of that run using the saved run config, or by running rclone copy manually.
+
+AGENT STALLS / TIMEOUTS
+  # Defaults for NEW runs: lightweight research/write/critique/select 10 min,
+  # direction/reviews 15 min, idle with no log/checkpoint changes 5 min.
+  # Asset building, audio, animation and final editing retain 4 hours per attempt.
+  # On a timeout/stall the next provider/cheaper route is tried immediately.
+  # A COMPLETE, contract-valid result.json is kept even if its worker timed out.
+  # These can be tuned in harness.local.json under limits:
+  # "limits": {"quick_timeout_seconds": 600, "review_timeout_seconds": 900,
+  #            "idle_timeout_seconds": 300}
+  # Limits apply to NEW attempts. Existing run configs retain their saved
+  # worker routes; start a new run to gain the new economy/balanced backups.
+  # If an already-running OLD controller is stuck, from another shell:
+  ./ad cancel RUN_ID
+  # Pull the new code, then:
+  git pull
+  ./ad resume RUN_ID
+  # Run IDs: ./ad list. Existing result/checkpoint files are retained.
 
 NOTES
   - Submodule files are pointers until initialized; Blender needs real
