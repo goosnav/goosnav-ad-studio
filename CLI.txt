@@ -95,7 +95,9 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # of that run using the saved run config, or by running rclone copy manually.
 
 PROVIDER FAILOVER / WAITING_PROVIDER
-  # Claude's subscription can be exhausted while Codex is available.
+  # Claude is the primary provider; Codex is the backup for every role.
+  # A worker cut off mid-task (usage, capacity, context, timeout) hands its
+  # partial workspace to the backup, which continues instead of restarting.
   # The harness now keeps Codex eligible if app-server model discovery fails:
   # Codex CLI selects its own default model rather than being skipped.
   # Resuming refreshes stale unavailable Codex routes from existing run state.

@@ -17,7 +17,7 @@ def test_cli_minimal_plan_and_status(tmp_path):
     r=cli(tmp_path,'make','--config',str(cfg),'--website','example.com','--count','2','--plan')
     assert r.returncode==0,r.stderr
     d=json.loads(r.stdout)
-    assert d['status']=='ready' and len(d['tasks'])==28
+    assert d['status']=='ready' and len(d['tasks'])==21
     s=cli(tmp_path,'status',d['id'])
     assert json.loads(s.stdout)['config']['website']=='https://example.com'
 
@@ -111,6 +111,21 @@ def test_cli_can_clear_stale_provider_cooldowns(tmp_path):
     assert store.cooldown('claude') > 0
     assert json.loads(cli(tmp_path, 'cooldown', 'status').stdout) == {
         'codex': 0, 'claude': round(store.cooldown('claude'))}
+
+
+def test_ad_status_shows_source_failure_before_a_worker_started(tmp_path):
+    from harness.config import load_config
+    from harness.store import Store
+    from harness.workflow import build_tasks
+    store = Store(tmp_path)
+    state = store.create(load_config())
+    state.update(tasks=build_tasks(1), status='failed', error='ContractError: Missing configured source: old/README.md')
+    store.save(state, 'fixture')
+    env = {**os.environ, 'STUDIO_HARNESS_HOME': str(store.root)}
+    result = subprocess.run([sys.executable, str(ROOT / 'ad'), 'status', state['id']],
+                            cwd=ROOT, env=env, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0
+    assert 'Missing configured source: old/README.md' in result.stdout
 
 
 def test_upload_accepts_drive_folder_link_and_uses_folder_id(tmp_path):

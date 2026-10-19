@@ -10,6 +10,7 @@ import re
 import wave
 
 from .contracts import ContractError
+from .sources import archived_asset
 
 GENDERS = ('male', 'female', 'neutral')
 MAX_WORDS_PER_SECOND = 3.0   # spoken English is ~2.5 w/s; above 3 an ad feels gabbled
@@ -107,6 +108,8 @@ def check_direction(direction, config):
             if c['gender'] != 'neutral' and heard != c['gender']:
                 raise ContractError(f'{where}: {c["character"]} is {c["gender"]} but {voice} is a {heard} voice')
         library = config['sources']['characters']
+        if c.get('model') and archived_asset(c['model']):
+            raise ContractError(f'{where}: archived characters are retired; choose an active library character')
         if library and c.get('model') not in library:
             raise ContractError(f'{where}: {speaker} must be played by a library character; set model to one of '
                                 + ', '.join(library))

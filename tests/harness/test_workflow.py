@@ -51,7 +51,8 @@ def test_animator_starts_with_opus_and_falls_back_to_codex_on_timeout(tmp_path):
     legacy.update(tasks=[old_task], models={'workers': old_workers}, sources={})
     calls.clear()
     engine.agent_task(legacy, old_task, store.path(legacy['id']))
-    assert calls == ['codex'] and old_task['status'] == 'succeeded'
+    # Legacy runs use the producer routes, which now also start on Claude.
+    assert calls == ['claude', 'codex'] and old_task['status'] == 'succeeded'
 
 
 def fake_models(workers):
@@ -319,7 +320,7 @@ def test_idle_research_falls_back_without_repeating_same_model(tmp_path):
     e = Engine(store, execute=worker, resolve=routes, auth=lambda _: True)
     e.run(run['id'], max_steps=1)
     assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
-    assert calls == [('first', 600, 300), ('fallback', 600, 300)]
+    assert calls == [('first', 180, 180), ('fallback', 180, 180)]
     assert store.get(run['id'])['tasks'][0]['attempts'][0]['kind'] == 'idle_timeout'
 
 
@@ -501,3 +502,140 @@ def test_model_capacity_then_quota_waits_for_providers_instead_of_failing(tmp_pa
     Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True).run(run['id'], max_steps=1)
     assert store.get(run['id'])['tasks'][0]['status'] == 'waiting_provider'
     assert 0 < store.cooldown('codex') <= 300
+
+
+def test_schema_failure_gets_one_targeted_correction_after_route_fallback(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    calls = []
+    def worker(profile, work, prompt, *args, **kwargs):
+        calls.append(profile['provider'])
+        research_result(work)
+        if len(calls) < 3:
+            data = json.loads((work / 'result.json').read_text())
+            data['references'] = 'none'  # Real schema failure, not missing work.
+            (work / 'result.json').write_text(json.dumps(data))
+        else:
+            assert 'references list' in prompt
+            assert 'TARGETED REPAIR' in prompt
+        return {'kind': 'ok'}
+    state = Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True).run(run['id'], max_steps=1)
+    assert state['tasks'][0]['status'] == 'succeeded'
+    assert calls == ['codex', 'claude', 'claude']
+    assert state['tasks'][0]['attempts'][-1]['contract_repair'] is True
+
+
+def test_schema_corrections_are_bounded_and_resume_does_not_reset_budget(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    def worker(profile, work, *args, **kwargs):
+        research_result(work)
+        data = json.loads((work / 'result.json').read_text()); data['references'] = 'none'
+        (work / 'result.json').write_text(json.dumps(data))
+        return {'kind': 'ok'}
+    engine = Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True)
+    state = engine.run(run['id'])
+    assert state['status'] == 'failed'
+    assert len(state['tasks'][0]['attempts']) == 3
+    # Retrying via the engine must not silently create another repair allowance.
+    task = state['tasks'][0]; task['status'] = 'pending'; store.save(state, 'resume_fixture')
+    state = engine.run(run['id'])
+    assert len(state['tasks'][0]['attempts']) == 3
+
+
+def test_media_failures_do_not_get_extra_schema_corrections(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    def worker(profile, work, *args, **kwargs):
+        research_result(work)
+        return {'kind': 'ok'}
+    engine = Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True)
+    def media_failure(*args):
+        raise ValueError('fixture: inaudible dialogue')
+    engine.validate_media = media_failure
+    state = engine.run(run['id'])
+    assert state['status'] == 'failed'
+    assert len(state['tasks'][0]['attempts']) == 2
+
+
+def test_schema_correction_survives_quota_wait_and_resumes(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    calls = []
+    def worker(profile, work, prompt, *args, **kwargs):
+        calls.append(profile['provider'])
+        if len(calls) == 3:
+            return {'kind': 'quota', 'detail': 'usage limit'}
+        research_result(work)
+        if len(calls) < 3:
+            data = json.loads((work / 'result.json').read_text()); data['references'] = 'none'
+            (work / 'result.json').write_text(json.dumps(data))
+        return {'kind': 'ok'}
+    engine = Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True)
+    state = engine.run(run['id'])
+    assert state['status'] == 'waiting_provider'
+    store.clear_cooldowns()
+    state = engine.run(run['id'], max_steps=1)
+    assert state['tasks'][0]['status'] == 'succeeded'
+    assert len(calls) == 4
+
+
+def test_anthropic_models_are_primary_and_codex_is_backup_for_every_role():
+    for role, routes in load_config()['workers'].items():
+        assert [r['provider'] for r in routes] == ['claude', 'codex'], role
+
+
+def claude_first(workers):
+    return {'workers': {role: [{'provider': 'claude', 'model': 'test-primary'},
+                               {'provider': 'codex', 'model': 'test-backup'}] for role in workers}}
+
+
+def interrupted_claude(work, log):
+    (work / 'draft.md').write_text('Half-written brand brief')
+    (work / 'handoff.md').write_text('Done: product facts. Next: creative directions.')
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text('\n'.join(json.dumps(e) for e in [
+        {'type': 'assistant', 'message': {'content': [
+            {'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'grep -i price product.html'}}]}},
+        {'type': 'assistant', 'message': {'content': [
+            {'type': 'text', 'text': 'Facts verified; drafting the creative directions now.'}]}},
+        {'type': 'result', 'is_error': True, 'result': "You've hit your limit"}]) + '\n')
+    return {'kind': 'quota', 'detail': "You've hit your limit"}
+
+
+def assert_continues_claude_work(prompt):
+    assert 'HANDOFF' in prompt and 'out of usage' in prompt
+    assert 'draft.md' in prompt
+    assert 'Next: creative directions.' in prompt
+    assert 'drafting the creative directions now' in prompt
+    assert 'grep -i price product.html' in prompt
+
+
+def test_backup_continues_from_where_quota_interrupted_the_primary(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config()); calls = []
+    def worker(profile, work, prompt, log, *args, **kwargs):
+        calls.append(profile['provider'])
+        if profile['provider'] == 'claude':
+            return interrupted_claude(work, Path(log))
+        assert_continues_claude_work(prompt)
+        assert (work / 'draft.md').read_text() == 'Half-written brand brief'
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    Engine(store, execute=worker, resolve=claude_first, auth=lambda _: True).run(run['id'], max_steps=1)
+    assert calls == ['claude', 'codex']
+    assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+
+
+def test_handoff_survives_waiting_for_a_cooled_down_backup(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config()); calls = []
+    store.cooldown('codex', 3600)
+    def worker(profile, work, prompt, log, *args, **kwargs):
+        calls.append(profile['provider'])
+        if profile['provider'] == 'claude':
+            return interrupted_claude(work, Path(log))
+        assert_continues_claude_work(prompt)
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    engine = Engine(store, execute=worker, resolve=claude_first, auth=lambda _: True)
+    engine.run(run['id'], max_steps=1)
+    assert store.get(run['id'])['tasks'][0]['status'] == 'waiting_provider'
+    store.clear_cooldowns('codex')
+    engine.run(run['id'], max_steps=1)
+    assert calls == ['claude', 'codex']
+    assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'

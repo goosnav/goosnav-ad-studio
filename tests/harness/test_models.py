@@ -20,6 +20,10 @@ def test_no_silent_quality_or_cost_downgrade():
         choose_model([{'model': 'old', 'description': 'Older frontier model'}], 'quality')
 
 
+def route(resolved, provider):
+    return next(p for p in resolved['workers']['researcher'] if p['provider'] == provider)
+
+
 def test_codex_catalog_failure_uses_cli_default_instead_of_disabling_provider(monkeypatch, tmp_path):
     import harness.models as models
     from harness.config import profiles
@@ -31,7 +35,7 @@ def test_codex_catalog_failure_uses_cli_default_instead_of_disabling_provider(mo
     monkeypatch.setattr(models, 'codex_catalog', fail_catalog)
     monkeypatch.setattr(models.shutil, 'which', lambda _: '/usr/bin/agent-cli')
     resolved = models.resolve_workers({'researcher': profiles('balanced')})
-    codex = resolved['workers']['researcher'][0]
+    codex = route(resolved, 'codex')
     assert codex['provider'] == 'codex'
     assert codex['model'] == CODEX_CLI_DEFAULT
     assert 'unavailable' not in codex
@@ -40,7 +44,7 @@ def test_codex_catalog_failure_uses_cli_default_instead_of_disabling_provider(mo
     assert argv[0:2] == ['codex', 'exec']
     assert '-m' not in argv  # let the CLI select its own supported model
     assert '--json' in argv
-    assert resolved['workers']['researcher'][1]['model'] == 'sonnet'
+    assert route(resolved, 'claude')['model'] == 'sonnet'
 
 
 def test_unknown_codex_catalog_descriptions_fall_back_to_cli_default(monkeypatch):
@@ -51,7 +55,7 @@ def test_unknown_codex_catalog_descriptions_fall_back_to_cli_default(monkeypatch
                         lambda: [{'model': 'working-model', 'description': 'Undocumented'}])
     monkeypatch.setattr(models.shutil, 'which', lambda _: '/usr/bin/agent-cli')
     resolved = models.resolve_workers({'researcher': profiles('balanced')})
-    codex = resolved['workers']['researcher'][0]
+    codex = route(resolved, 'codex')
     assert codex['model'] == CODEX_CLI_DEFAULT
     assert 'unavailable' not in codex
 
@@ -67,6 +71,6 @@ def test_malformed_codex_catalog_response_still_keeps_cli_eligible(monkeypatch):
     monkeypatch.setattr(models, 'codex_catalog', broken_catalog)
     monkeypatch.setattr(models.shutil, 'which', lambda _: '/usr/bin/agent-cli')
     resolved = models.resolve_workers({'producer': profiles('balanced')})
-    assert resolved['workers']['producer'][0]['model'] == CODEX_CLI_DEFAULT
-    assert 'unavailable' not in resolved['workers']['producer'][0]
+    assert next(r for r in resolved['workers']['producer'] if r['provider'] == 'codex')['model'] == CODEX_CLI_DEFAULT
+    assert 'unavailable' not in next(r for r in resolved['workers']['producer'] if r['provider'] == 'codex')
     assert 'KeyError' in resolved['discovery_error']

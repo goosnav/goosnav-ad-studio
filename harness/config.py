@@ -11,8 +11,8 @@ class ConfigError(ValueError):
 
 
 def profiles(tier):
-    return [{'provider': 'codex', 'model': f'auto:{tier}'},
-            {'provider': 'claude', 'model': f'auto:{tier}'}]
+    return [{'provider': 'claude', 'model': f'auto:{tier}'},
+            {'provider': 'codex', 'model': f'auto:{tier}'}]
 
 
 DEFAULTS = {
@@ -40,7 +40,8 @@ DEFAULTS = {
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
                'idle_timeout_seconds': 300,
-               'repairs': 1, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'capacity_cooldown_seconds': 300, 'log_mb': 32},
+               'repairs': 1, 'contract_repairs': 1, 'board_repairs': 4,
+               'provider_cooldown_seconds': 3600, 'capacity_cooldown_seconds': 300, 'log_mb': 32},
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},
@@ -102,7 +103,7 @@ def load_config(path=None, overrides=None):
         if 'url' in product:
             product['url'] = website(product['url'])
     for key, value in c['limits'].items():
-        if type(value) is not int or not (0 if key in ('repairs', 'board_repairs') else 1) <= value <= 86400:
+        if type(value) is not int or not (0 if key in ('repairs', 'contract_repairs', 'board_repairs') else 1) <= value <= 86400:
             raise ConfigError(f'limits.{key} is out of range')
     if not isinstance(c['delivery']['drive'], str):
         raise ConfigError('delivery.drive must be an rclone destination string')

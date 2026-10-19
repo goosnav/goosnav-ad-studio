@@ -136,12 +136,18 @@ and only `blocking` findings stop for a person (`needs_review`).
 
 ### Models and fallback
 
-| Role | Tier | Codex (first) | Claude (backup) |
+| Role | Tier | Claude (first) | Codex (backup) |
 |---|---|---|---|
-| researcher, producer | balanced | latest workhorse | `sonnet` |
-| writer, selector, director | quality | frontier model, high effort | `opus` |
-| critic | economy | affordable model, low effort | `haiku` |
-| critic (last resort) | balanced | workhorse | `sonnet` |
+| researcher, producer | balanced | `sonnet` | latest workhorse |
+| writer, selector, director | quality | `opus` | frontier model, high effort |
+| critic | economy | `haiku` | affordable model, low effort |
+| critic (last resort) | balanced | `sonnet` | workhorse |
+
+If a worker runs out of usage, capacity or context mid-task (or times out), the
+next route continues in the same workspace. Its brief carries a `HANDOFF` note:
+the files written so far, the end of `handoff.md` and the interrupted worker's
+last actions, plus the task's original repair notes. When the backup is also
+limited, the run waits and the note is kept for the resumed attempt.
 
 Animation has its own `workers.animator` routes: **Claude `opus` first**, then
 Codex `auto:quality` (the discovered frontier model). Existing timeout/quota
@@ -243,6 +249,19 @@ and only with the voices `studio/vo.py` lists as commercially cleared.
 
 ## Troubleshooting
 
+- Asset moves: missing character files are relocated only when an exact filename
+  has one active match inside the configured asset libraries. Archived models
+  (including symlinks into archives) are excluded, even if still configured.
+  Missing inspiration documents are optional and recorded in `source_warnings`
+  and the `sources_reconciled` event. Brand/script documents and library roots
+  remain required. No remaining usable character is an actionable configuration
+  error; the controller never substitutes an archived or arbitrary model.
+  On resume, an accepted direction with a retired cast restarts at `direct`.
+- Invalid worker handoff: after normal provider fallback, `limits.contract_repairs`
+  permits one targeted format correction by default. It does not bypass media
+  checks or review findings. Its allowance is durable across resume; quota waits
+  do not spend it. Valid empty diagnostic `.log` files declared as `notes` are
+  accepted; production media and sources must still be nonempty.
 - `waiting_provider`: both CLIs are out of quota, logged out, or in cooldown.
   `python3 -m harness doctor`, then `resume` when a provider is back.
 - `failed` task: `status RUN_ID` shows the attempt kind (`invalid`, `crash`,
@@ -257,3 +276,7 @@ and only with the voices `studio/vo.py` lists as commercially cleared.
 
 Frame CTA appears during the final two seconds of the actual master. The original
 audio is retained. Leave this hold clear when scripting and editing.
+
+Run the controller test suite with `python3 -m pytest -q`. Collection is restricted
+to `tests/`; the asset submodule also contains Blender build scripts named
+`*_test.py`, which need Blender's `bpy` interpreter and are not controller tests.

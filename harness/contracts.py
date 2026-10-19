@@ -25,14 +25,14 @@ def digest(path):
     return h.hexdigest()
 
 
-def contained(workspace, value):
+def contained(workspace, value, *, allow_empty=False):
     if not isinstance(value, str) or not value or Path(value).is_absolute():
         raise ContractError('Artifact paths must be nonempty relative paths')
     root = Path(workspace).resolve()
     p = root / value
     if '..' in Path(value).parts or any(q.is_symlink() for q in [p, *p.parents] if q != root.parent):
         raise ContractError(f'Unsafe artifact path: {value}')
-    if not p.resolve().is_relative_to(root) or not p.is_file() or p.stat().st_size == 0:
+    if not p.resolve().is_relative_to(root) or not p.is_file() or (not allow_empty and p.stat().st_size == 0):
         raise ContractError(f'Missing/empty artifact: {value}')
     return p
 
@@ -59,7 +59,10 @@ def validate(stage, data, workspace, context):
         text(f, 'kind'); text(f, 'path')
         if f['path'] in paths:
             raise ContractError('Duplicate artifact path')
-        paths.add(f['path']); contained(workspace, f['path'])
+        paths.add(f['path'])
+        # Silence from a diagnostic command (e.g. FFmpeg black/freeze detection)
+        # can mean no defects. Only notes logs may be empty, never production media.
+        contained(workspace, f['path'], allow_empty=f['kind'] == 'notes' and Path(f['path']).suffix.lower() == '.log')
     if stage == 'research':
         for key in ('brand_brief', 'creative_directions'):
             text(data, key)
@@ -133,7 +136,9 @@ def validate(stage, data, workspace, context):
             if selected:
                 raise ContractError('Rejected selection must not authorize production')
         elif len(selected) != context['count'] or len(set(selected)) != len(selected):
-            raise ContractError('Select exactly count distinct scripts')
+            raise ContractError(f'Select exactly {context["count"]} distinct script ID(s) in total; '
+                                f'received {len(selected)}: {selected}. Keep only the best '
+                                'requested number and matching logic entries.')
         if not set(selected) <= set(context['candidate_ids']):
             raise ContractError('Selection refers to an unknown script')
         if data['verdict'] == 'pass' and any(f['severity'] in ('blocking', 'important') for f in data['findings']):
@@ -184,7 +189,8 @@ def promote(data, workspace, destination):
     accepted = json.loads(json.dumps(data))
     mapping = {}
     for f in accepted['files']:
-        source = contained(workspace, f['path'])
+        source = contained(workspace, f['path'],
+                           allow_empty=f['kind'] == 'notes' and Path(f['path']).suffix.lower() == '.log')
         target = destination / f['path']; target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         target.chmod(0o444)

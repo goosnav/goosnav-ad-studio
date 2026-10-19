@@ -9,8 +9,8 @@ import time
 from .briefs import brief
 from .contracts import ContractError, validate, promote, verify_accepted
 from .models import resolve_workers
-from .sources import snapshot
-from .workers import CODEX_CLI_DEFAULT, command, reset_delay, subscription_status, supervise
+from .sources import archived_asset, reconcile_sources, snapshot
+from .workers import CODEX_CLI_DEFAULT, command, last_actions, reset_delay, subscription_status, supervise
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'script_sense': 'director',
@@ -24,6 +24,32 @@ CAMPAIGN = ['research', 'write', 'select']
 PRODUCTION = ['direct', 'assets', 'audio', 'animate', 'edit', 'frame', 'qa', 'creative_qa', 'package']
 # Long operations render or build assets; planning/review should never consume a render-length budget.
 HEAVY_STAGES = {'assets', 'audio', 'animate', 'edit'}
+# Worker stopped mid-task with its work intact; the next route continues it.
+INTERRUPTIONS = {'quota': 'ran out of usage', 'capacity': 'hit provider capacity',
+                 'context': 'ran out of context', 'timeout': 'timed out',
+                 'idle_timeout': 'stalled', 'log_limit': 'hit the log limit'}
+
+
+def continuation_note(task, attempt, work):
+    since = min(a['started'] for a in task['attempts'] if a['revision'] == task['revision'])
+    written = sorted(str(p.relative_to(work)) for p in work.rglob('*')
+                     if p.is_file() and p.stat().st_mtime >= since
+                     and p.name not in ('TASK.md', '.worker-input.txt') and not p.name.startswith('result.previous-'))
+    lines = [f'HANDOFF: the previous {attempt["provider"]} worker {INTERRUPTIONS[attempt["kind"]]} mid-task. '
+             'Continue its work in this workspace; do not start over. Check and reuse what it built, '
+             'finish the remaining steps, then write result.json.']
+    if written:
+        lines.append('Files written so far: ' + ', '.join(written[:15]) + (' ...' if len(written) > 15 else ''))
+    handoff = work / 'handoff.md'
+    if handoff.is_file():
+        lines.append('Its handoff.md ends: ' + ' '.join(handoff.read_text(errors='replace')[-500:].split()))
+    actions = last_actions(attempt['log']) if attempt.get('log') else []
+    if actions:
+        lines.append('Its last actions: ' + ' | '.join(actions))
+    note = '\n'.join(lines)[:1400]
+    if task.get('assignment'):
+        note += '\nThe original notes for this task follow.\n' + task['assignment']
+    return note
 
 
 def agent_deadline(config, stage):
@@ -81,6 +107,11 @@ class Engine:
                 problems = self.preflight(state['config'])
                 if problems:
                     raise ContractError('Missing dependencies (fix, then resume): ' + '; '.join(problems))
+                warnings = reconcile_sources(state['config'])
+                if warnings:
+                    state.setdefault('source_warnings', []).extend(warnings)
+                    self.store.save(state, 'sources_reconciled', {'warnings': warnings})
+                self.reconcile_cast(state)
                 if not state.get('sources_ready'):
                     state['sources'] = snapshot(state['config'], root/'sources')
                     state['sources_ready'] = True
@@ -90,6 +121,7 @@ class Engine:
                     self.store.save(state, 'models_resolved')
                 else:
                     self.refresh_unavailable_codex(state)
+                state['error'] = ''
                 steps = 0
                 while max_steps is None or steps < max_steps:
                     action = self.store.control_value(run_id)
@@ -174,6 +206,22 @@ class Engine:
             if task['status']=='succeeded':
                 verify_accepted(task['result'])
 
+    def reconcile_cast(self, state):
+        """A resumed plan must not bring retired characters back into production."""
+        library = state['config']['sources']['characters']
+        for task in state['tasks']:
+            if task['stage'] != 'direct' or task['status'] != 'succeeded':
+                continue
+            cast = task['result']['direction'].get('cast', [])
+            retired = [c.get('model') for c in cast if
+                       (c.get('model') and archived_asset(c['model'])) or
+                       (library and c.get('model') not in library)]
+            if retired:
+                self.rewind(state, task['ad'], 'direct',
+                            f'The accepted cast is retired or no longer approved: {retired}. '
+                            'Replan with the configured active sources.characters; never use archived models.')
+                self.store.save(state, 'cast_replanned', {'ad': task['ad'], 'retired': retired})
+
     def prepare_retry(self, run_id, task_id):
         with self.store.worker_lock():
             state=self.store.get(run_id)
@@ -235,6 +283,23 @@ class Engine:
             inputs['selected_script'] = next(s for s in scripts if s['id'] == selection['selected'][task['ad']])
         return inputs
 
+    def contract_retry_available(self, state, task, route, routes):
+        """One bounded format correction after ordinary provider fallback is spent.
+
+        This cannot authorize bad media, choose scripts, or bypass a review. Quota
+        interruptions do not spend the correction, and the budget survives resume.
+        """
+        attempts = [a for a in task['attempts'] if a['revision'] == task['revision']
+                    and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'auth', 'model',
+                                              'permission', 'dependency', None)]
+        if not attempts or attempts[-1].get('failure_phase') != 'contract':
+            return False
+        used = sum(bool(a.get('contract_repair')) for a in attempts)
+        if used >= state['config']['limits'].get('contract_repairs', 1):
+            return False
+        return not any(not p.get('unavailable') and not self.store.cooldown(p['provider'])
+                       for p in routes[route + 1:])
+
     def agent_task(self, state, task, root):
         c = state['config']; work = root/'workspaces'/task['id']; work.mkdir(parents=True, exist_ok=True)
         context = {'count': c['count']}
@@ -248,7 +313,7 @@ class Engine:
         # Saved runs from before the dedicated animator role keep their routes.
         routes = (workers.get(role, workers['director']) if role == 'reviewer' else
                   workers.get(role, workers['producer']) if role in ('animator', 'editor') else workers[role])
-        unavailable = []; last_failure = None
+        unavailable = []; blocked_routes = set(); last_failure = None
         # A cheap stage's single retry normally comes from the next provider. When every
         # other route is cooled down or unavailable, the usable route keeps that retry.
         usable = sum(not p.get('unavailable') and not self.store.cooldown(p['provider']) for p in routes)
@@ -266,6 +331,7 @@ class Engine:
                 # any real auth error, rather than silently disabling the route.
             if reason:
                 unavailable.append(f'{provider} ({profile.get("model")}): {reason}')
+                blocked_routes.add(route)
                 continue
             # Attempts are durable. Resume cannot silently reset a consumed budget.
             # Budgets are per route; attempts from before routes were recorded count against
@@ -280,13 +346,25 @@ class Engine:
             attempt_cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
                            else 1 if usable > 1 else 2)
             remaining = max(0, attempt_cap - used)
+            repairing_contract = remaining == 0 and self.contract_retry_available(state, task, route, routes)
+            if repairing_contract:
+                remaining = 1
+                prior_error = next(a['detail'] for a in reversed(task['attempts'])
+                                   if a['revision'] == task['revision'] and a.get('failure_phase') == 'contract')
+                task['feedback'] = f'Correct the previous result format: {prior_error}\n' + task['feedback']
             while remaining > 0:
                 remaining -= 1
                 if self.store.control_value(state['id']) == 'cancel':
                     task['status'] = 'cancelled'; return
                 number = len(task['attempts']) + 1
+                if not any(a['revision'] == task['revision'] for a in task['attempts']):
+                    # Repair findings for this revision; failure notes replace feedback later.
+                    task['assignment'] = task['feedback']
                 attempt = {'number': number, 'route': route, 'provider': provider, 'model': profile['model'],
                            'effort': profile.get('effort'), 'revision': task['revision'], 'started': time.time()}
+                if repairing_contract:
+                    attempt['contract_repair'] = True
+                    repairing_contract = False
                 task['attempts'].append(attempt)
                 result_file = work/'result.json'
                 if result_file.exists():
@@ -328,11 +406,14 @@ class Engine:
                 # salvage it rather than discarding good work. Partial text isn't
                 # accepted: the same contract/media checks still apply.
                 if outcome['kind'] in ('ok', 'timeout', 'idle_timeout') and result_file.is_file():
+                    phase = 'contract'
                     try:
                         if not result_file.is_file() or result_file.stat().st_size > 2 * 1024 * 1024:
                             raise ContractError('Missing result.json or result larger than 2 MB')
                         data = validate(task['stage'], json.loads(result_file.read_text()), work, context)
+                        phase = 'media'
                         self.validate_media(task, data, work, c, state)
+                        phase = 'promote'
                         task['result'] = promote(data, work, root/'artifacts'/task['id']/f'attempt-{number}')
                         task['status'] = 'succeeded'
                         if outcome['kind'] != 'ok':
@@ -343,10 +424,16 @@ class Engine:
                         # Keep the timeout classification and switch routes promptly.
                         if outcome['kind'] == 'ok':
                             attempt['kind'] = 'invalid'
+                            attempt['failure_phase'] = phase
                         attempt['detail'] = str(e) if isinstance(e, ValueError) else f'{type(e).__name__}: {e}'
                 task['feedback'] = last_failure = (
                     f'Previous {provider} attempt: {attempt["kind"]}. {attempt.get("detail", "")[-4000:]}')
+                if attempt['kind'] in INTERRUPTIONS:
+                    task['feedback'] = last_failure = continuation_note(task, attempt, work)
                 self.store.save(state, 'attempt_failed', {'task': task['id'], 'kind': attempt['kind']})
+                if remaining == 0 and self.contract_retry_available(state, task, route, routes):
+                    remaining = 1
+                    repairing_contract = True
                 if attempt['kind'] == 'cancelled':
                     task['status'] = 'cancelled'; return
                 if attempt['kind'] == 'quota':
@@ -370,15 +457,34 @@ class Engine:
                 if attempt['kind'] in ('timeout', 'idle_timeout', 'log_limit'):
                     break
                 if attempt['kind'] in ('quota', 'capacity', 'auth', 'model', 'permission', 'dependency'):
+                    blocked_routes.add(route)
                     unavailable.append(task['feedback']); break
-        task['status'] = 'waiting_provider' if unavailable and all(
-            a.get('kind') in ('quota', 'capacity', 'auth', 'model', 'permission', 'dependency', None)
-            for a in task['attempts'] if a['revision'] == task['revision']) else 'failed'
+        # An earlier malformed result must not turn a later quota interruption
+        # into a terminal failure. Wait only if a blocked route still has work
+        # allowance; exhausted routes cannot keep a broken task waiting forever.
+        current_attempts = [a for a in task['attempts'] if a['revision'] == task['revision']]
+        transient = ('quota', 'capacity', 'auth', 'model', 'permission', 'dependency')
+        # A merely skipped cooldown must not hide a subsequent real failure on
+        # the usable route (such as never writing result.json).
+        waiting_routes = blocked_routes if not current_attempts or current_attempts[-1].get('kind') in transient else ()
+        can_wait = False
+        for route in waiting_routes:
+            provider = routes[route]['provider']
+            first = next(i for i, p in enumerate(routes) if p['provider'] == provider)
+            spent = sum(a.get('route', first if a['provider'] == provider else -1) == route
+                        and a['revision'] == task['revision']
+                        and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'model', None)
+                        for a in task['attempts'])
+            cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
+                   else 1 if usable > 1 else 2)
+            can_wait |= spent < cap or self.contract_retry_available(state, task, route, routes)
+        task['status'] = 'waiting_provider' if can_wait else 'failed'
         if task['status'] == 'failed' and last_failure:
             # Lead with the error that actually failed; skipped routes are context, not the cause.
             task['feedback'] = '\n'.join([last_failure, *(u for u in unavailable if u != last_failure)])
         else:
-            task['feedback'] = '\n'.join(unavailable) or task['feedback']
+            # A handoff leads so the brief's repair budget never truncates it away.
+            task['feedback'] = '\n'.join(sorted(unavailable, key=lambda u: not u.startswith('HANDOFF'))) or task['feedback']
         self.store.save(state, 'task_stopped', {'task': task['id'], 'status': task['status'], 'reason': task['feedback']})
 
     def direction(self, state, ad):

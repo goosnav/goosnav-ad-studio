@@ -16,8 +16,8 @@ per requested ad, and ONE selection/story-coherence review. Per ad: director,
 assets, local neural audio, heavy Blender animation, ONE video editor that plans and
 performs the conform, Goosnav Frame CTA, deterministic technical QA, a short final
 creative review and packaging. Redundant model-based review stages are removed. Each creative step is a long, tool-using `codex exec`
-or `claude -p` session using your existing subscriptions, with the other CLI as
-backup. Strong models write, cheap models critique. Animation starts with Claude
+or `claude -p` session using your existing subscriptions: Claude first, Codex as
+backup, which continues an interrupted worker's partial work. Strong models write, cheap models critique. Animation starts with Claude
 Opus, with Codex as fallback. Scripts default to simple spoken scenes; a shared
 Blender helper reuses idle/gesture clips and drives mouths from the measured
 dialogue, rather than rebuilding body animation for each ad. Static characters and products

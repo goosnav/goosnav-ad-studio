@@ -153,6 +153,40 @@ def session_metadata(path):
     return {'observed_models':sorted(models),'session_id':session_id,'usage':usage,'terminal_errors':errors}
 
 
+def last_actions(path, limit=5):
+    """The final messages and commands of a worker session, oldest first (Claude or Codex logs)."""
+    actions = []
+    try:
+        f = Path(path).open(errors='replace')
+    except OSError:
+        return actions
+    with f:
+        for line in iter(lambda: f.readline(1024 * 1024), ''):
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(d, dict):
+                continue
+            item = d.get('item') if d.get('type') == 'item.completed' else None
+            if isinstance(item, dict) and item.get('type') == 'agent_message':
+                actions.append(item.get('text'))
+            elif isinstance(item, dict) and item.get('type') == 'command_execution':
+                actions.append(f"$ {item.get('command')}")
+            message = d.get('message')
+            content = message.get('content') if d.get('type') == 'assistant' and isinstance(message, dict) else None
+            for part in content if isinstance(content, list) else []:
+                if not isinstance(part, dict):
+                    continue
+                if part.get('type') == 'text':
+                    actions.append(part.get('text'))
+                elif part.get('type') == 'tool_use':
+                    i = part.get('input') if isinstance(part.get('input'), dict) else {}
+                    actions.append(f"{part.get('name')}: {i.get('command') or i.get('file_path') or i.get('description') or ''}")
+            actions = [a for a in actions if isinstance(a, str) and a.strip()][-limit:]
+    return [' '.join(a.split())[:200] for a in actions]
+
+
 def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, started=None,
               idle_timeout=None):
     start = time.monotonic()

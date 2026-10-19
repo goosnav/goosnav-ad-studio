@@ -8,6 +8,62 @@ from xml.etree import ElementTree
 from .contracts import digest, ContractError
 
 
+def archived_asset(path):
+    return any(part.lower() in ('archive', 'archives', 'archived')
+               for part in Path(path).resolve().parts)
+
+
+def reconcile_sources(config):
+    """Recover unambiguous moves inside configured libraries; retain an audit trail.
+
+    Inspiration is optional. Brand/script documents and asset-library roots remain
+    required. Never pick a different character version or an archived substitute.
+    """
+    sources = config['sources']
+    roots = [Path(value) for value in sources['assets']]
+    for root in roots:
+        if not root.is_dir():
+            raise ContractError(f'Missing asset library: {root}')
+    index = None
+    warnings = []
+    for group in ('inspiration', 'characters'):
+        available = []
+        for value in sources[group]:
+            if group == 'inspiration' and value.startswith(('https://', 'http://')):
+                available.append(value)
+                continue
+            original = Path(value)
+            if archived_asset(original):
+                warnings.append({'kind': 'unavailable', 'group': group, 'source': value,
+                                 'reason': 'archived asset excluded'})
+                continue
+            if original.is_file():
+                available.append(value)
+                continue
+            if index is None:
+                index = {}
+                for root in roots:
+                    for path in root.rglob('*'):
+                        if path.is_file() and not archived_asset(path):
+                            index.setdefault(path.name, set()).add(path.resolve())
+            candidates = index.get(original.name, set())
+            # A README basename alone says nothing about which document it is.
+            if original.stem.lower() == 'readme':
+                candidates = {p for p in candidates if p.parts[-2:] == original.parts[-2:]}
+            if len(candidates) == 1:
+                replacement = str(next(iter(candidates)))
+                available.append(replacement)
+                warnings.append({'kind': 'relocated', 'group': group, 'source': value, 'replacement': replacement})
+            else:
+                warnings.append({'kind': 'unavailable', 'group': group, 'source': value,
+                                 'reason': 'ambiguous replacement' if candidates else 'file missing'})
+        if group == 'characters' and sources[group] and not available:
+            raise ContractError('No usable configured characters; update sources.characters to current .blend '
+                                'paths. Missing/ambiguous: ' + ', '.join(sources[group]))
+        sources[group] = list(dict.fromkeys(available))
+    return warnings
+
+
 def extract(path):
     p = Path(path)
     if p.stat().st_size > 30 * 1024 * 1024:

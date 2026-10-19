@@ -75,6 +75,27 @@ def test_empty_result_cannot_pass(tmp_path):
         validate('animate', {'summary': 'done', 'files': []}, tmp_path, {})
 
 
+def test_empty_diagnostic_log_can_be_promoted_and_verified(tmp_path):
+    from harness.contracts import promote, verify_accepted
+    work = tmp_path / 'work'; work.mkdir()
+    (work / 'freeze_black.log').touch()  # FFmpeg emits nothing when there are no detections.
+    data = validate('research', {'summary': 'checked', 'brand_brief': 'brand',
+        'creative_directions': 'direction', 'references': [],
+        'files': [{'path': 'freeze_black.log', 'kind': 'notes'}]}, work, {})
+    accepted = promote(data, work, tmp_path / 'accepted')
+    verify_accepted(accepted)
+    assert accepted['files'][0]['bytes'] == 0
+    assert Path(accepted['files'][0]['path']).is_file()
+
+
+@pytest.mark.parametrize('path,kind', [('preview.mp4', 'video'), ('mix.wav', 'audio'),
+                                      ('source.py', 'source'), ('scene.blend', 'source')])
+def test_empty_production_artifacts_are_still_rejected(tmp_path, path, kind):
+    (tmp_path / path).touch()
+    with pytest.raises(ContractError, match='Missing/empty artifact'):
+        validate('research', {'summary': 'checked', 'files': [{'path': path, 'kind': kind}]}, tmp_path, {})
+
+
 def test_virtualenv_interpreter_symlink_is_preserved(tmp_path):
     venv=tmp_path/'venv/bin';venv.mkdir(parents=True)
     (venv/'python').symlink_to('/usr/bin/python3')
