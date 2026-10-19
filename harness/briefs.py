@@ -31,7 +31,8 @@ JOBS = {
  choreography. Respect the provided runtime and reserved Frame end card. Keep dialogue
  natural and short enough to speak. Each script must specify shots, speaker lines with
  approximate timing, basic staging/sound and product CTA. Return scripts:
- [{id,title,premise,script,visual_direction,product,cta}].
+ [{id,title,premise,script,visual_direction,product,cta}]; every field is one plain-text
+ string, so write the shot list inside script as text, not as a JSON list.
  Do not brainstorm more than the required candidates; avoid elaborate writeups.''',
  'critique': '''Act as an independent, skeptical script editor. Read all candidates. Identify what
 is stupid, generic, confusing, unfunny, unearned, irrelevant to the product or impossible to fit
@@ -44,7 +45,7 @@ depends on something too small or too fast to see on a phone.''',
  'revise': '''Revise the candidate scripts against the independent critique. Preserve the strongest
 idea, fix concrete failures, and explain any disagreement in a declared notes file. Keep the
 same number of scripts and stable IDs. Deliver full scripts, not only a change list, using
-scripts: [{id, title, premise, script, visual_direction, product, cta}].''',
+scripts: [{id, title, premise, script, visual_direction, product, cta}], each field one plain-text string.''',
  'critique_final': '''Review the REVISED scripts independently against the critique and factual
 brief. Check whether the original faults were actually fixed, and whether new faults appeared.
 Return verdict pass|revise and findings [{target, severity: blocking|important|minor, problem, fix}].

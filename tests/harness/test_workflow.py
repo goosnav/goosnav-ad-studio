@@ -463,3 +463,30 @@ def test_real_auth_gate_does_not_skip_codex_on_uncertain_status(tmp_path, monkey
     engine.run(run['id'], max_steps=1)
     assert calls == ['codex']
     assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+
+
+def test_only_usable_route_gets_the_fallback_retry_with_the_real_error(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config()); calls = []
+    store.cooldown('codex', 3600)
+    def worker(profile, work, prompt, *args, **kwargs):
+        calls.append(profile['provider'])
+        if len(calls) == 1:
+            return {'kind': 'ok', 'detail': ''}
+        assert 'Missing result.json' in prompt
+        research_result(work)
+        return {'kind': 'ok', 'detail': ''}
+    Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True).run(run['id'], max_steps=1)
+    assert calls == ['claude', 'claude']
+    assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+
+
+def test_failure_reason_reports_the_real_error_not_only_cooled_down_routes(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    store.cooldown('codex', 3600)
+    def worker(profile, work, *args, **kwargs):
+        return {'kind': 'ok', 'detail': ''}
+    Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True).run(run['id'], max_steps=1)
+    task = store.get(run['id'])['tasks'][0]
+    assert task['status'] == 'failed'
+    assert task['feedback'].startswith('Previous claude attempt: invalid. Missing result.json')
+    assert 'codex (test-quality): provider is on usage-limit cooldown' in task['feedback']

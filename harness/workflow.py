@@ -248,7 +248,10 @@ class Engine:
         # Saved runs from before the dedicated animator role keep their routes.
         routes = (workers.get(role, workers['director']) if role == 'reviewer' else
                   workers.get(role, workers['producer']) if role in ('animator', 'editor') else workers[role])
-        unavailable = []
+        unavailable = []; last_failure = None
+        # A cheap stage's single retry normally comes from the next provider. When every
+        # other route is cooled down or unavailable, the usable route keeps that retry.
+        usable = sum(not p.get('unavailable') and not self.store.cooldown(p['provider']) for p in routes)
         for route, profile in enumerate(routes):
             provider = profile['provider']
             reason = profile.get('unavailable')
@@ -273,7 +276,8 @@ class Engine:
                        and a.get('kind') not in ('cancelled', 'quota', 'model', None) for a in task['attempts'])
             # Cheap tasks never retry the same expensive session repeatedly. They may
             # fall back to the next configured provider once.
-            attempt_cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES else 1)
+            attempt_cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
+                           else 1 if usable > 1 else 2)
             remaining = max(0, attempt_cap - used)
             while remaining > 0:
                 remaining -= 1
@@ -339,7 +343,8 @@ class Engine:
                         if outcome['kind'] == 'ok':
                             attempt['kind'] = 'invalid'
                         attempt['detail'] = str(e) if isinstance(e, ValueError) else f'{type(e).__name__}: {e}'
-                task['feedback'] = f'Previous {provider} attempt: {attempt["kind"]}. {attempt.get("detail", "")[-4000:]}'
+                task['feedback'] = last_failure = (
+                    f'Previous {provider} attempt: {attempt["kind"]}. {attempt.get("detail", "")[-4000:]}')
                 self.store.save(state, 'attempt_failed', {'task': task['id'], 'kind': attempt['kind']})
                 if attempt['kind'] == 'cancelled':
                     task['status'] = 'cancelled'; return
@@ -364,7 +369,11 @@ class Engine:
         task['status'] = 'waiting_provider' if unavailable and all(
             a.get('kind') in ('quota', 'auth', 'model', 'permission', 'dependency', None)
             for a in task['attempts'] if a['revision'] == task['revision']) else 'failed'
-        task['feedback'] = '\n'.join(unavailable) or task['feedback']
+        if task['status'] == 'failed' and last_failure:
+            # Lead with the error that actually failed; skipped routes are context, not the cause.
+            task['feedback'] = '\n'.join([last_failure, *(u for u in unavailable if u != last_failure)])
+        else:
+            task['feedback'] = '\n'.join(unavailable) or task['feedback']
         self.store.save(state, 'task_stopped', {'task': task['id'], 'status': task['status'], 'reason': task['feedback']})
 
     def direction(self, state, ad):
