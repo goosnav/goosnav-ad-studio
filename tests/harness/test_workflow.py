@@ -292,7 +292,7 @@ def test_quick_stage_timeout_and_heavy_animation_budget():
     assert agent_deadline(c, 'research') == (180, 180)
     assert agent_deadline(c, 'select') == (240, 240)
     assert agent_deadline(c, 'write') == (600, 300)
-    assert agent_deadline(c, 'direct') == (600, 300)
+    assert agent_deadline(c, 'direct') == (900, 300)
     assert agent_deadline(c, 'animate') == (14400, None)
     assert agent_deadline(c, 'edit') == (14400, None)
     # Old run configurations remain usable after introducing new limits.
@@ -659,3 +659,32 @@ def test_pinning_a_claude_alias_keeps_the_route_index_for_the_contract_retry(tmp
     assert state['error'] == ''
     assert calls == ['haiku', 'test-backup']
     assert state['tasks'][0]['status'] == 'succeeded'
+
+
+def test_direction_plan_errors_get_a_correction_pass_after_the_backup(tmp_path, monkeypatch):
+    import harness.workflow as wf
+    from harness.contracts import ContractError
+    config = load_config()
+    store = Store(tmp_path); state = store.create(config)
+    task = build_tasks(1)[0]; task.update(id='test-direct', stage='direct')
+    state.update(tasks=[task], models={'workers': claude_first(config['workers'])['workers']}, sources={})
+    calls = []; checks = []
+    def worker(profile, work, prompt, *args, **kwargs):
+        calls.append(profile['provider'])
+        if profile['provider'] == 'claude':
+            return {'kind': 'timeout', 'detail': 'test timeout'}
+        if len(calls) == 3:
+            assert 'beats end at 9.0' in prompt
+        (work / 'result.json').write_text(json.dumps({'summary': 'plan', 'files': [], 'direction': {}}))
+        return {'kind': 'ok'}
+    def check(*args):
+        checks.append(1)
+        if len(checks) == 1:
+            raise ContractError('beats end at 9.0; they must end where the end card starts (6.500)')
+    monkeypatch.setattr(wf, 'validate', lambda stage, data, *a: data)
+    engine = Engine(store, execute=worker, auth=lambda _: True)
+    engine.inputs = lambda *a: {}
+    engine.validate_media = check
+    engine.agent_task(state, task, store.path(state['id']))
+    assert calls == ['claude', 'codex', 'codex']
+    assert task['status'] == 'succeeded'

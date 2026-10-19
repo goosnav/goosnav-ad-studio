@@ -56,7 +56,9 @@ def agent_deadline(config, stage):
     limits = config['limits']
     if stage in HEAVY_STAGES:
         return limits['production_timeout_seconds'], None
-    ceilings = {'research': 180, 'select': 240, 'creative_qa': 300, 'direct': 600}
+    # Direction gets the review deadline: a careful plan can outrun 10 minutes while
+    # still streaming, and the idle timeout still catches a real stall.
+    ceilings = {'research': 180, 'select': 240, 'creative_qa': 300}
     if stage in ceilings:
         total = min(ceilings[stage], limits.get('quick_timeout_seconds', 600))
         return total, min(total, limits.get('idle_timeout_seconds', 300))
@@ -411,7 +413,9 @@ class Engine:
                         if not result_file.is_file() or result_file.stat().st_size > 2 * 1024 * 1024:
                             raise ContractError('Missing result.json or result larger than 2 MB')
                         data = validate(task['stage'], json.loads(result_file.read_text()), work, context)
-                        phase = 'media'
+                        # Direction and edit plans are checked here too, but a bad plan is a
+                        # format error the worker can correct, not broken media.
+                        phase = 'contract' if task['stage'] in ('direct', 'edit_plan') else 'media'
                         self.validate_media(task, data, work, c, state)
                         phase = 'promote'
                         task['result'] = promote(data, work, root/'artifacts'/task['id']/f'attempt-{number}')

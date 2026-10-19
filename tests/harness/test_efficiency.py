@@ -126,3 +126,10 @@ def test_select_brief_states_the_exact_number_to_select():
     c = load_config(); c['count'] = 1
     task = next(t for t in build_tasks(1) if t['stage'] == 'select')
     assert 'Select EXACTLY 1 script ID' in brief(task, c, {}, [])
+
+
+def test_direct_brief_states_where_the_beats_must_end():
+    c = load_config()
+    task = next(t for t in build_tasks(1) if t['stage'] == 'direct')
+    o = c['output']
+    assert f"end at {o['target_seconds'] - o['end_card_seconds']:g} s" in brief(task, c, {}, [])

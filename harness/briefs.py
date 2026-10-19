@@ -362,6 +362,10 @@ def brief(task, config, inputs, sources, repair='', previous_runs=''):
             ' Goosnav Frame frames the full ad.' if o['cta'] else '')
     length = (f"\nTARGET LENGTH: {o['target_seconds']} seconds per ad "
               f"(accepted {o['min_seconds']}-{o['max_seconds']}).{card}")
+    if stage == 'direct' and o['cta'] and o['frame'] == 'end_card':
+        length += (f"\nBeats run from 0 and end at {o['target_seconds'] - o['end_card_seconds']:g} s "
+                   f"for a {o['end_card_seconds']:g} s end card: exactly the ad duration minus "
+                   'end_card.seconds. The end card is not a beat.')
     if stage == 'select':
         # The writer may offer candidates for several products; count is still the total.
         length += (f"\nSelect EXACTLY {config['count']} script ID(s) in total, however many "
