@@ -16,6 +16,15 @@ from .store import Busy, Store
 from .workflow import Engine, build_tasks
 from .workers import subscription_status
 
+
+def reopen(state):
+    """Resume continues cancelled tasks and tasks a controller crash marked failed, not real failures."""
+    for task in state['tasks']:
+        crashed = state.get('error') and task['status'] == 'failed' and task['feedback'] == state['error']
+        if task['status'] == 'cancelled' or crashed:
+            task['status'] = 'pending'
+    return state
+
 REPO=Path(__file__).resolve().parents[1]
 
 
@@ -123,9 +132,7 @@ def main(argv=None):
                 if a.steps is not None and a.steps<0:raise ValueError('steps must be nonnegative')
                 if a.cmd=='resume':
                     with store.worker_lock():
-                        result=store.get(a.id)
-                        for task in result['tasks']:
-                            if task['status']=='cancelled':task['status']='pending'
+                        result=reopen(store.get(a.id))
                         store.save(result,'resumed')
                         store.control(a.id,'run')
                 result=drive(Engine(store),store,a.id,not a.no_wait,a.steps)

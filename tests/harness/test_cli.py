@@ -148,3 +148,13 @@ def test_upload_accepts_drive_folder_link_and_uses_folder_id(tmp_path):
     assert calls[0][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
     assert calls[1][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
     assert 'agent-exchange:' + state['id'] in calls[0]
+
+
+def test_resume_reopens_tasks_failed_by_a_controller_crash_but_not_real_failures():
+    from harness.cli import reopen
+    error = "TypeError: unsupported operand type(s) for +: 'dict' and 'int'"
+    state = {'error': error, 'tasks': [
+        {'status': 'failed', 'feedback': error},
+        {'status': 'failed', 'feedback': 'Previous claude attempt: invalid. Missing result.json'},
+        {'status': 'cancelled', 'feedback': ''}]}
+    assert [t['status'] for t in reopen(state)['tasks']] == ['pending', 'failed', 'pending']

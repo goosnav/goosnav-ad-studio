@@ -639,3 +639,23 @@ def test_handoff_survives_waiting_for_a_cooled_down_backup(tmp_path):
     engine.run(run['id'], max_steps=1)
     assert calls == ['claude', 'codex']
     assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
+
+
+def test_pinning_a_claude_alias_keeps_the_route_index_for_the_contract_retry(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config()); calls = []
+    def resolver(workers):
+        return {'workers': {role: [{'provider': 'claude', 'model': 'haiku'},
+                                   {'provider': 'codex', 'model': 'test-backup'}] for role in workers}}
+    def worker(profile, work, *args, **kwargs):
+        calls.append(profile['model'])
+        if len(calls) == 1:
+            (work / 'result.json').write_text(json.dumps({'summary': 's', 'files': [], 'references': [],
+                                                          'brand_brief': 'b'}))
+        else:
+            research_result(work)
+        return {'kind': 'ok', 'detail': '', 'observed_models': ['claude-haiku-4-5-20251001']}
+    Engine(store, execute=worker, resolve=resolver, auth=lambda _: True).run(run['id'], max_steps=1)
+    state = store.get(run['id'])
+    assert state['error'] == ''
+    assert calls == ['haiku', 'test-backup']
+    assert state['tasks'][0]['status'] == 'succeeded'

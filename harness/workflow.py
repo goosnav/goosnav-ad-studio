@@ -395,9 +395,9 @@ class Engine:
                     alias=profile['model']
                     if alias in observed[0]:
                         for profiles in state['models']['workers'].values():
-                            for route in profiles:
-                                if route['provider']=='claude' and route['model']==alias:
-                                    route['model']=observed[0];route['resolved_alias']=alias
+                            for pinned in profiles:
+                                if pinned['provider']=='claude' and pinned['model']==alias:
+                                    pinned['model']=observed[0];pinned['resolved_alias']=alias
                 self.verify_history(state)
                 if outcome['kind'] == 'ok' and not result_file.is_file():
                     attempt['kind'] = 'invalid'
