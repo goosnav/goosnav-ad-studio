@@ -74,6 +74,7 @@ def classify(code, output):
     for kind, words in {
         'quota': ['rate limit', 'rate_limit', 'usage limit', 'usage_limit', 'quota', 'out of credits',
                   'hit your limit', 'session limit', 'too many requests', 'limit reached'],
+        'capacity': ['at capacity', 'overloaded', 'server is busy', 'try a different model'],
         'context': ['context window', 'context_length', 'context limit', 'max_tokens', 'max_turns'],
         'auth': ['authentication', 'unauthorized', 'not logged in', 'login required',
                  'token_expired', 'log in again', 'invalid_api_key', 'invalid login', 'login expired'],

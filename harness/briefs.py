@@ -50,7 +50,7 @@ scripts: [{id, title, premise, script, visual_direction, product, cta}], each fi
 brief. Check whether the original faults were actually fixed, and whether new faults appeared.
 Return verdict pass|revise and findings [{target, severity: blocking|important|minor, problem, fix}].
 Judge specificity, dialogue, visual payoff, timing and product connection. No rubber stamping.''',
- 'script_sense': '''Independent adversarial STORY EDITOR. Do not trust the writer, selector or initial critic. Inspect each SELECTED script's exact dialogue and action. Trace the chain of events: why this situation exists, why each line is said, what changes, why the next line responds, and how the payoff leads to the actual product. Return logic: [{script_id, setup, cause, reaction, payoff, product_connection}] for every chosen script ID, plus verdict pass|revise and findings [{target, severity, problem, fix}]. Each logic field must explain a real event/quote, not a generic reassurance. Reject disconnected slogans, pointlessly cutesy banter, non sequiturs, abstract pretentious dialogue, arbitrary props, sales lines said without a motive, and punchlines with no setup. A stranger must be able to explain what happened and why in one sentence. Static characters are fine. If no selected script works, REJECT all of them and send the writing contest back. Technical feasibility does not excuse meaningless writing.''',
+ 'script_sense': '''Independent adversarial STORY EDITOR. Do not trust the writer, selector or initial critic. Inspect each SELECTED script's exact dialogue and action. Trace the chain of events: why this situation exists, why each line is said, what changes, why the next line responds, and how the payoff leads to the actual product. Return logic: [{script_id, setup, cause, reaction, payoff, product_connection}] for every chosen script ID, plus verdict pass|revise and findings [{target, severity: blocking|important|minor, problem, fix}]. Each logic field must explain a real event/quote, not a generic reassurance. Reject disconnected slogans, pointlessly cutesy banter, non sequiturs, abstract pretentious dialogue, arbitrary props, sales lines said without a motive, and punchlines with no setup. A stranger must be able to explain what happened and why in one sentence. Static characters are fine. If no selected script works, REJECT all of them and send the writing contest back. Technical feasibility does not excuse meaningless writing.''',
 
  'select': '''You are the ONE short independent story check and selector. Spend no time
  researching or rewriting entire scripts. Read the candidate scripts and choose count
@@ -214,14 +214,14 @@ only where they matter.''',
  it. Return plan,
  master and timeline; declare both media files and editable build scripts. Listen
  to the result; do not just approve the animation. Do not burn text or CTA overlays.''',
- 'edit_review': '''Independently watch the finished EDITED video with its audio. Reject bad dialogue, non sequiturs, an irrelevant prop/set, dead pauses, late cuts, poor sound, lost speech, lip-sync errors and arbitrary product CTA, even when technical checks pass. Static talking shots are permitted. Report verdict pass|revise and timecoded findings [{target, severity, problem, fix}]. If revise, choose restart: direct|assets|audio|animate|edit_plan|edit based on the earliest actual cause. A bad story requires upstream repair; do not tell the editor to solve it with fancy transitions. Do not claim inspection unless you actually used audiovisual tools.''',
+ 'edit_review': '''Independently watch the finished EDITED video with its audio. Reject bad dialogue, non sequiturs, an irrelevant prop/set, dead pauses, late cuts, poor sound, lost speech, lip-sync errors and arbitrary product CTA, even when technical checks pass. Static talking shots are permitted. Report verdict pass|revise and timecoded findings [{target, severity: blocking|important|minor, problem, fix}]. If revise, choose restart: direct|assets|audio|animate|edit_plan|edit based on the earliest actual cause. A bad story requires upstream repair; do not tell the editor to solve it with fancy transitions. Do not claim inspection unless you actually used audiovisual tools.''',
 
  'creative_qa': '''Perform the last independent check of the actual finished video, including the
 Frame end card. You are the director signing off the cut. Inspect the final artifact, not only
 an earlier preview. Compare against your plan, the selected script, product facts, technical
 QA and prior feedback. Would a stranger scrolling past get it, hear every line, and know what
 to buy and where? Be specific and avoid cosmetic churn. Save timecoded evidence. Return verdict
-pass|revise and findings [{target, severity, problem, fix}]; with revise, set restart to the
+pass|revise and findings [{target, severity: blocking|important|minor, problem, fix}]; with revise, set restart to the
 earliest stage that is actually wrong (direct, assets, audio, animate or edit). The Frame card
 is generated from your end_card title; a wording fix there means restart direct.''',
 }
@@ -360,6 +360,10 @@ def brief(task, config, inputs, sources, repair='', previous_runs=''):
             ' Goosnav Frame frames the full ad.' if o['cta'] else '')
     length = (f"\nTARGET LENGTH: {o['target_seconds']} seconds per ad "
               f"(accepted {o['min_seconds']}-{o['max_seconds']}).{card}")
+    if stage == 'select':
+        # The writer may offer candidates for several products; count is still the total.
+        length += (f"\nSelect EXACTLY {config['count']} script ID(s) in total, however many "
+                   'products or candidates there are.')
     project = {'stage': stage, 'ad': task['ad'],
                'config': scoped_config(config, stage),
                'accepted_inputs': scoped_inputs(inputs, stage),

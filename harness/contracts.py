@@ -37,6 +37,10 @@ def contained(workspace, value):
     return p
 
 
+SEVERITY_SYNONYMS = {'critical': 'blocking', 'blocker': 'blocking', 'major': 'important',
+                     'moderate': 'important', 'medium': 'important', 'low': 'minor', 'nit': 'minor'}
+
+
 def text(d, key):
     if not isinstance(d.get(key), str) or not d[key].strip():
         raise ContractError(f'Missing text field: {key}')
@@ -84,6 +88,8 @@ def validate(stage, data, workspace, context):
         for f in data['findings']:
             for key in ('target', 'problem', 'fix', 'severity'):
                 text(f, key)
+            severity = f['severity'].strip().lower()
+            f['severity'] = SEVERITY_SYNONYMS.get(severity, severity)
             if f['severity'] not in ('blocking', 'important', 'minor'):
                 raise ContractError('Unknown finding severity')
         if data['verdict'] == 'pass' and any(f['severity'] == 'blocking' for f in data['findings']):

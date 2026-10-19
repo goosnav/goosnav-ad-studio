@@ -115,3 +115,9 @@ def test_cli_default_codex_preserves_chatgpt_auth_without_pinning_model(tmp_path
     assert '--json' in argv
     assert '-m' not in argv
     assert 'model_reasoning_effort' not in str(argv)
+
+
+def test_model_capacity_is_transient_provider_capacity_not_a_crash():
+    event = '{"type":"turn.failed","error":{"message":"Selected model is at capacity. Please try a different model."}}'
+    assert classify(1, event) == 'capacity'
+    assert classify(1, 'API Error: 529 Overloaded') == 'capacity'

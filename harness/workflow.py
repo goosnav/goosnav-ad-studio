@@ -273,7 +273,8 @@ class Engine:
             first = next(i for i, r in enumerate(routes) if r['provider'] == provider)
             used = sum(a.get('route', first if a['provider'] == provider else -1) == route
                        and a['revision'] == task['revision']
-                       and a.get('kind') not in ('cancelled', 'quota', 'model', None) for a in task['attempts'])
+                       and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'model', None)
+                       for a in task['attempts'])
             # Cheap tasks never retry the same expensive session repeatedly. They may
             # fall back to the next configured provider once.
             attempt_cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
@@ -351,6 +352,10 @@ class Engine:
                 if attempt['kind'] == 'quota':
                     self.store.cooldown(provider, reset_delay(attempt.get('detail', ''))
                                         or c['limits']['provider_cooldown_seconds'])
+                if attempt['kind'] == 'capacity':
+                    # Server-side overload clears in minutes; a short cooldown lets the
+                    # waiting loop retry instead of the run failing outright.
+                    self.store.cooldown(provider, c['limits'].get('capacity_cooldown_seconds', 300))
                 if provider == 'codex' and attempt['kind'] == 'model' and profile['model'] != CODEX_CLI_DEFAULT:
                     # A pinned model may have disappeared after the run was created.
                     # A model-not-found error is not a creative repair; retry this
@@ -364,10 +369,10 @@ class Engine:
                 # provider or cheaper route while retaining workspace notes.
                 if attempt['kind'] in ('timeout', 'idle_timeout', 'log_limit'):
                     break
-                if attempt['kind'] in ('quota', 'auth', 'model', 'permission', 'dependency'):
+                if attempt['kind'] in ('quota', 'capacity', 'auth', 'model', 'permission', 'dependency'):
                     unavailable.append(task['feedback']); break
         task['status'] = 'waiting_provider' if unavailable and all(
-            a.get('kind') in ('quota', 'auth', 'model', 'permission', 'dependency', None)
+            a.get('kind') in ('quota', 'capacity', 'auth', 'model', 'permission', 'dependency', None)
             for a in task['attempts'] if a['revision'] == task['revision']) else 'failed'
         if task['status'] == 'failed' and last_failure:
             # Lead with the error that actually failed; skipped routes are context, not the cause.

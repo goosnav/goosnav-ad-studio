@@ -109,3 +109,20 @@ def test_quick_invalid_worker_tries_only_one_time_per_route(tmp_path):
     Engine(store, execute=run_worker, resolve=resolver, auth=lambda _:True,
            preflight=lambda _:[]).run(state['id'], max_steps=1)
     assert calls == ['fixture-a', 'fixture-b']
+
+
+def test_review_severity_synonyms_are_normalized_and_unknown_still_rejected(tmp_path):
+    def review(severity):
+        return {'summary': 's', 'files': [], 'verdict': 'revise',
+                'findings': [{'target': 'beat 2', 'severity': severity, 'problem': 'p', 'fix': 'f'}]}
+    data = validate('creative_qa', review('Major'), tmp_path, {})
+    assert data['findings'][0]['severity'] == 'important'
+    assert validate('creative_qa', review('critical'), tmp_path, {})['findings'][0]['severity'] == 'blocking'
+    with pytest.raises(ContractError, match='Unknown finding severity'):
+        validate('creative_qa', review('spicy'), tmp_path, {})
+
+
+def test_select_brief_states_the_exact_number_to_select():
+    c = load_config(); c['count'] = 1
+    task = next(t for t in build_tasks(1) if t['stage'] == 'select')
+    assert 'Select EXACTLY 1 script ID' in brief(task, c, {}, [])

@@ -490,3 +490,14 @@ def test_failure_reason_reports_the_real_error_not_only_cooled_down_routes(tmp_p
     assert task['status'] == 'failed'
     assert task['feedback'].startswith('Previous claude attempt: invalid. Missing result.json')
     assert 'codex (test-quality): provider is on usage-limit cooldown' in task['feedback']
+
+
+def test_model_capacity_then_quota_waits_for_providers_instead_of_failing(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    def worker(profile, *args, **kwargs):
+        if profile['provider'] == 'codex':
+            return {'kind': 'capacity', 'detail': 'Selected model is at capacity.'}
+        return {'kind': 'quota', 'detail': 'usage limit'}
+    Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True).run(run['id'], max_steps=1)
+    assert store.get(run['id'])['tasks'][0]['status'] == 'waiting_provider'
+    assert 0 < store.cooldown('codex') <= 300

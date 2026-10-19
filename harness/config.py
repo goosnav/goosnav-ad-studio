@@ -40,7 +40,7 @@ DEFAULTS = {
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
                'idle_timeout_seconds': 300,
-               'repairs': 1, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
+               'repairs': 1, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'capacity_cooldown_seconds': 300, 'log_mb': 32},
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},
