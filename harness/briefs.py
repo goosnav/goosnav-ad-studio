@@ -31,7 +31,12 @@ JOBS = {
  trends, characters or the previous-runs directory. No exploratory browsing. No speculative
  promises/prices. Output a brand_brief under 120 words and creative_directions under 100
  words containing 1-2 feasible premises. references can be empty or at most 2 verified
- entries [{url, observation, application}]. No notes file is required.''',
+ entries [{url, observation, application}]. No notes file is required.
+ brand_brief and creative_directions must each be a plain-text string, NOT an
+ object, array, or {text:...} wrapper. Complete result schema:
+ {summary: string, files: [], brand_brief: string, creative_directions: string,
+ references: [{url: string, observation: string, application: string}]}.
+ Put multiple premises into the one creative_directions string.''',
  'write': '''Create TWO distinct, short candidate scripts per requested ad, not an
  exhaustive idea dump. Write a concrete setup -> causally connected action or dialogue ->
  clear turn/payoff. No forced cute banter, disconnected slogans, or unrelated product mention.
@@ -327,7 +332,7 @@ again. Fixing only an artifact or replying that it is fixed is not a submission.
 '''
 
 
-def scoped_inputs(inputs, stage):
+def scoped_inputs(inputs, stage, *, compact=False):
     """Pass only the upstream contracts a stage actually needs, never the entire history."""
     keep = {
         'write': ('campaign-research',),
@@ -351,6 +356,15 @@ def scoped_inputs(inputs, stage):
     if stage == 'direct':
         # Only the selected script matters; a whole campaign draft pool is redundant.
         output.pop('campaign-write', None)
+    if compact and stage == 'assets':
+        # The authoritative accepted manifests remain in RUN CONTEXT. Scene builders
+        # need the plan and measured-media paths, not each raw take/hash/source listing.
+        fields = {'direct': ('summary', 'direction', 'scratch_takes'),
+                  'audio': ('summary', 'mix', 'timeline', 'dialogue_stem', 'mouths')}
+        for label, result in output.items():
+            role = label.rsplit('-', 1)[-1]
+            if label.startswith('ad-') and role in fields:
+                output[label] = {k: result[k] for k in fields[role] if k in result}
     return output
 
 
@@ -442,7 +456,7 @@ def brief(task, config, inputs, sources, repair='', previous_runs='', modern=Fal
                    'products or candidates there are.')
     project = {'stage': stage, 'ad': task['ad'],
                'config': scoped_config(config, stage),
-               'accepted_inputs': scoped_inputs(inputs, stage),
+               'accepted_inputs': scoped_inputs(inputs, stage, compact=modern),
                'repo_read_only': str(REPO), 'controller_python': sys.executable,
                'workspace': (str(Path(workspace).resolve()) if workspace is not None else
                              'The absolute directory containing this stage TASK.md')}

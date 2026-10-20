@@ -32,9 +32,9 @@ The live happy path remains under validation; test fixtures are not proof of cre
   red mesas/pyramids and nested brain `ae51`. Active inventory is hydrated in the clean
   checked-in submodule; the dirty artist checkout remains untouched/adoption pending.
 - Creative briefs, product-scoped feedback/reuse and metrics: implemented, not model training.
-- Technical docs: reviewed against current module/CLI interfaces. End-to-end benchmarks,
-  final integrated verification and release approval remain pending; main's full suite
-  is running; v3 medium-fast, medium and high have resumed with the corrected catalog.
+- Technical docs: reviewed against current module/CLI interfaces. Initial implementation
+  and submodule pins were pushed as studio `daa767e`. End-to-end creative acceptance
+  remains pending; follow-up handoff fixes are verified and v3 high is running.
 
 ## Decisions
 
@@ -47,9 +47,10 @@ The live happy path remains under validation; test fixtures are not proof of cre
 
 ## Verification
 
-Final main integrated suite: **519 passed, 7 skipped in 236.01 seconds**
+Final main integrated suite: **539 passed, 7 skipped in 247.05 seconds**
 (`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q`). Independent review also
-passed 153 targeted tests and reported no outstanding findings. These overlapping
+passed 153 targeted tests on the initial implementation and all 20 follow-up
+submission/schema tests after the final path fix, with no outstanding findings. These overlapping
 counts are not additive and do not establish end-to-end creative acceptance.
 The audit collector ran three available checks; eleven were skipped because tools
 were unavailable or checks were opt-in. Dedicated security/dependency scanners
@@ -78,14 +79,33 @@ some concurrent tests, so they are failure evidence, not controlled comparisons.
 Low failed at `board_review` after five unsafe-path rounds: referenced accepted
 inputs were incorrectly listed as output `files`. Common instructions and review
 error feedback now explain `files: []` for reviews without new outputs; cite inputs
-in `findings.target` instead. The remaining medium-fast, medium and high runs have
-resumed with the corrected catalog and are still in progress. No successful v3
-full-ad timing or final creative approval is established here.
+in `findings.target` instead. Medium-fast then reached its 750-second cap during
+real scene/framing repairs and unfinished asset submission. Read-only Blender
+inspection reproduced correct placement-root rotation, not an importer defect;
+one worker incorrectly assumed +X forward for a saved actor facing -Y.
+Normal medium failed research in 60 seconds: three submissions represented
+creative_directions as an object instead of a string. The original validation
+message did not explain the type, and the retries repeated that error.
+High is still in progress. No successful v3 full-ad timing or final creative
+approval is established here.
 Direction now requests a 90/120/180-second attempt floor for low/medium/high,
 including fast mode, still limited by the stage ceiling and remaining global
 budget. This preserves the hard cap while allowing mandatory local synthesis and
 measured-plan assembly. Scene assembly/animation similarly allow 120/180/300
 seconds per attempt, still bounded by the same configured/global ceilings.
+
+Follow-up repairs from those live failures: research now receives the complete
+plain-string schema, and text-contract errors include an explicit JSON example.
+The new `harness.submission` helper stages only explicitly authored existing
+scene/board/source/provenance artifacts, refuses unsafe paths and overwrites,
+and keeps canonical references synchronized through promotion. It does not open
+Blender, inspect images, infer rights/dependencies, or approve the scene.
+The assets quickstart requests complete submission before optional polish and
+avoids unrelated guide material. Modern assets prompts retain direction and
+measured audio paths instead of redundant upstream file/hash inventories;
+the inspected trial's upstream JSON shrank from 16,802 to 6,248 characters.
+Complete accepted manifests remain authoritative on disk. This is measured
+context reduction, not a measured runtime improvement. Quality gates remain intact.
 
 The 10/20/40-minute normal and 5/10/20-minute fast targets are policy budgets, not
 measured performance claims. Isolated voice/world/render measurements and temporary

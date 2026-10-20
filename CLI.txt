@@ -278,6 +278,7 @@ untouched and show adoption/pin pending; retry after your other edits are settle
 Local production helpers (use the configured audio interpreter for voice):
   /path/to/audio-python -m harness.voice REQUEST.json TAKES_DIRECTORY --summary
   python3 -m harness.creative submit-direction plan.json takes/manifest.json --workspace workspace --output direct-result.json --direction-md direction.md
+  python3 -m harness.submission asset-plan.json --workspace workspace --output result.json
   python3 -m harness.mix DIRECT_RESULT.json workspace/audio --no-bed --stage-result workspace/result.json
   python3 -m harness.mix DIRECT_RESULT.json workspace/audio-with-bed --bed BED.wav --bed-gain-db -30
   python3 -m harness.mix --request workspace/audio/request.json workspace/replayed-audio
@@ -292,6 +293,14 @@ validation is still mandatory. Every planned line slot MUST fit the full selecte
 polished WAV, including pauses/tails, plus planned reply/reaction gaps. Active
 speech bounds are not a substitute. Shorten/re-record or revise timing if it cannot
 fit; never falsify measurements or rely on the mixer's silence trim to pass direction.
+Scene submission takes an authored asset-plan.json with summary, assets, boards,
+used_asset_ids, scene (.blend), source (rebuild script), manifest (provenance file),
+and optional files:[{path,kind}] for additional required dependencies. Artifact
+paths are workspace-relative. It declares only those existing local artifacts,
+rejects traversal/symlinks/overwrites, and writes a new result.json. No source
+discovery, image/Blender inspection, invented rights or creative approval occurs.
+The controller still checks the boards, active asset identities and quality.
+Submit complete scene work before optional polish; a checkpoint is not approval.
 Mix output must be new/empty; --stage-result writes a NEW sibling result file
 with artifact paths prefixed for the worker workspace. It refuses overwrites.
 Choose --no-bed or a supplied PCM16 WAV bed; no synthesized/looped bed is invented.

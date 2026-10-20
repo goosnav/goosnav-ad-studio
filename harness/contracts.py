@@ -43,7 +43,8 @@ SEVERITY_SYNONYMS = {'critical': 'blocking', 'blocker': 'blocking', 'major': 'im
 
 def text(d, key):
     if not isinstance(d.get(key), str) or not d[key].strip():
-        raise ContractError(f'Missing text field: {key}')
+        raise ContractError(f'{key} must be a nonempty plain-text string, not an object or list. '
+                            f'Use "{key}": "your text", not "{key}": {{"text": "..."}}.')
 
 
 def validate(stage, data, workspace, context):

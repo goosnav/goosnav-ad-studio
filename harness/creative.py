@@ -81,7 +81,27 @@ Use RUN CONTEXT.publication_id for the manifest and provenance run_id.
 the controller alone validates, promotes and publishes them after final approval.
 Return assets:[{name,source,rights,proxy:false}], boards:[{beat:index or "end_card",image:path}],
 used_asset_ids:[catalog IDs actually reused], and declare the manifest, boards, scene and source
-files. No unresolved proxies. Copy the exact catalogue IDs; do not invent IDs for new assets.'''
+files. No unresolved proxies. Copy the exact catalogue IDs; do not invent IDs for new assets.
+
+ASSETS QUICKSTART
+PROJECT.accepted_inputs contains the plan and measured-media paths; the complete authoritative
+results remain at RUN CONTEXT.accepted_manifests. Read them only when more detail is needed.
+Read only the relevant staging/world helper documentation. Do not read the entire worker guide
+or unrelated audio/publication internals. Author the scene, render the required boards, then
+submit before optional polish so a timeout does not lose a complete handoff. This does NOT
+waive board review: report known defects honestly, never label unfinished proxies complete.
+Write asset-plan.json containing summary, assets, boards, used_asset_ids, scene (local .blend),
+source (local rebuild script), manifest (local authored provenance file), and optional files
+[{path,kind}] for additional required local dependencies. All artifact paths are relative to
+PROJECT.workspace. Do not invent rights, capabilities or observations. Optional candidate_manifest
+must also be local and all of its dependencies explicitly listed in files.
+With REPO=PROJECT.repo_read_only and CONTROLLER_PYTHON=PROJECT.controller_python, run from
+PROJECT.workspace:
+env PYTHONPATH="$REPO" "$CONTROLLER_PYTHON" -m harness.submission asset-plan.json --output result.json
+The helper only verifies/declaratively stages existing local artifacts; it does not inspect
+images, open Blender, discover undeclared dependencies, approve quality, or change the plan.
+On repair preserve the prior result and submit to a fresh filename; only the completed
+current submission should become result.json. Keep all controller/board-review gates.'''
     if stage == 'audio':
         return '''Produce sound from the director's accepted, measured takes. Preserve exact cast,
 words and planned starts; dialogue stays the lead. Do not regenerate accepted speech or
