@@ -85,6 +85,9 @@ def summary(run_id):
                 print(f'  {publication[key]}')
         if publication['status'] == 'pending' or publication.get('adoption_status') == 'pending' or publication.get('parent_status') == 'pending':
             print(f'  Retry publication: ./ad publish {run_id}')
+    for ad, fallback in s.get('fallbacks', {}).items():
+        print(f"  Ad {int(ad)+1:02}: product-only fallback {fallback['status']} | "
+              f"{fallback.get('error') or fallback.get('reason', '')}")
     if current and current['status'] == 'waiting_provider':
         print(f'  Provider blockers: {current.get("feedback", "No provider accepted this task")[:1200]}')
         print(f'  After fixing providers: ./ad resume {run_id}')

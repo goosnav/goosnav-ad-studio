@@ -8,11 +8,11 @@ import time
 import uuid
 
 from .briefs import brief
-from .contracts import ContractError, validate, promote, verify_accepted, digest
+from .contracts import ContractError, validate, promote, verify_accepted, digest, copy_checked
 from .models import resolve_workers
 from .sources import archived_asset, reconcile_sources, snapshot
 from .workers import CODEX_CLI_DEFAULT, command, last_actions, reset_delay, subscription_status, supervise
-from .execution import Budget, BudgetExceeded, deadline
+from .execution import Budget, BudgetExceeded, FinishRequired, deadline, bounded_timeout
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'script_sense': 'director',
@@ -107,6 +107,7 @@ class Engine:
             state = self.store.get(run_id); root = self.store.path(run_id)
             self.budget = Budget(state, self.store.save)
             try:
+                self.reconcile(state)
                 self.deliver_finished(state)
                 if state['tasks'] and self.aggregate(state) == 'complete':
                     return state
@@ -114,7 +115,6 @@ class Engine:
                 if not state['tasks']:
                     state['tasks'] = build_tasks(state['config']['count'], modern=bool(state.get('execution')))
                     self.store.save(state, 'planned')
-                self.reconcile(state)
                 self.resume_reviews(state)
                 if state.get('execution') and state.get('config_path') and Path(state['config_path']).is_file():
                     from .config import load_config
@@ -123,6 +123,8 @@ class Engine:
                         state['config']['sources'][key] = current['sources'][key]
                     for key in ('root', 'catalog'):
                         state['config']['library'][key] = current['library'][key]
+                    for key in ('end_card_library', 'end_card_clips'):
+                        state['config']['output'][key] = current['output'][key]
                     # A config may still spell a path that this run already relocated.
                     # Recover that recorded identity before considering any basename.
                     for warning in state.get('source_warnings', []):
@@ -130,6 +132,7 @@ class Engine:
                             state['config']['sources']['characters'] = [
                                 warning['replacement'] if p == warning['source'] else p
                                 for p in state['config']['sources']['characters']]
+                self.budget.check_production()
                 problems = self.preflight(state['config'])
                 if problems:
                     raise ContractError('Missing dependencies (fix, then resume): ' + '; '.join(problems))
@@ -175,41 +178,58 @@ class Engine:
                         state['status'] = 'paused' if action == 'pause' else 'cancelled'; break
                     task = self.next_task(state)
                     if task is None:
-                        state['status'] = self.aggregate(state); break
-                    self.budget.check()
+                        if state.get('execution') and self.aggregate(state) != 'complete':
+                            self.finish_pending(state, 'Creative repair allowance exhausted; finishing without further model calls.')
+                        else:
+                            state['status'] = self.aggregate(state)
+                        break
+                    self.budget.check_production()
                     self.budget.simplify()
                     self.verify_history(state)
                     state['status'] = 'running'; task['status'] = 'running'
                     self.store.save(state, 'task_started', {'task': task['id']})
                     stage_started = time.monotonic()
-                    with deadline(self.budget.remaining()):
-                        if task['stage'] in ROLES:
-                            self.agent_task(state, task, root)
-                        else:
-                            self.builtin_task(state, task, root)
-                    task['wall_seconds'] = task.get('wall_seconds', 0) + time.monotonic() - stage_started
+                    try:
+                        with deadline(min(self.budget.remaining(), self.budget.production_remaining())):
+                            if task['stage'] in ROLES:
+                                self.agent_task(state, task, root)
+                            else:
+                                self.builtin_task(state, task, root)
+                    finally:
+                        task['wall_seconds'] = task.get('wall_seconds', 0) + time.monotonic() - stage_started
                     self.budget.tick(True)
                     # The controller owns the snapshot during generation. Check
                     # due deliveries at every boundary, not just the last ad.
                     self.deliver_finished(state)
-                    self.budget.check()
+                    if self.aggregate(state) != 'complete':
+                        self.budget.check_production()
                     steps += 1
                     if task['status'] in ('waiting_provider', 'cancelled'):
                         state['status'] = task['status']; break
                     if task['status'] == 'succeeded':
                         self.review_transition(state, task)
                     if task['ad'] is None and task['status'] in ('failed', 'needs_review'):
-                        state['status'] = task['status']; break
+                        if state.get('execution'):
+                            self.finish_pending(state, 'Campaign stage failed; finishing without further model calls.')
+                        else:
+                            state['status'] = task['status']
+                        break
                 else:
                     state['status'] = 'ready'
                 self.deliver_finished(state)
                 self.store.save(state, 'run_status', {'status': state['status']})
-            except BudgetExceeded as e:
-                state['status'] = 'budget_exhausted'; state['error'] = str(e)
-                for t in state['tasks']:
-                    if t['status'] == 'running':
-                        t['status'] = 'pending'
-                self.store.save(state, 'budget_exhausted', {'error': str(e)})
+            except (FinishRequired, BudgetExceeded) as e:
+                if self.budget.remaining() > 0:
+                    self.finish_pending(state, str(e))
+                    state['status'] = self.aggregate(state) if self.store.control_value(run_id) == 'run' else (
+                        'cancelled' if self.store.control_value(run_id) == 'cancel' else 'paused')
+                    self.store.save(state, 'run_status', {'status': state['status']})
+                else:
+                    state['status'] = 'budget_exhausted'; state['error'] = str(e)
+                    for t in state['tasks']:
+                        if t['status'] == 'running':
+                            t['status'] = 'pending'
+                    self.store.save(state, 'budget_exhausted', {'error': str(e)})
             except (KeyboardInterrupt, SystemExit):
                 state['status'] = 'interrupted'
                 self.store.save(state, 'interrupted')
@@ -223,6 +243,113 @@ class Engine:
             finally:
                 self.budget.tick(True)
             return state
+
+    def finish_pending(self, state, reason):
+        """Produce independent fallbacks, preserving originals and per-ad delivery."""
+        from .finishing import product_film
+        from .media import package
+        checkpoint = lambda: self.finishing_checkpoint(state)
+        pending = [t for t in state['tasks'] if t['stage'] == 'package' and t['status'] != 'succeeded']
+        for index, task in enumerate(pending):
+            action = self.store.control_value(state['id'])
+            if action != 'run':
+                state['status'] = 'cancelled' if action == 'cancel' else 'paused'
+                return
+            ad = task['ad']
+            for current in state['tasks']:
+                if current['ad'] == ad and current['status'] == 'running':
+                    current['status'] = 'pending'  # supervised worker is already stopped
+            stages = {t['stage']: t for t in state['tasks'] if t['ad'] == ad}
+            review = stages.get('creative_qa', {})
+            if (all(stages.get(s, {}).get('status') == 'succeeded' for s in ('frame', 'qa', 'creative_qa'))
+                    and (review['result'].get('verdict') == 'pass' or review['result'].get('accepted_with_notes'))):
+                # An already approved film only needs packaging; don't replace it
+                # with a simpler ad just because the deadline fell at the boundary.
+                try:
+                    with deadline(self.budget.remaining() / (len(pending) - index)):
+                        self.builtin_task(state, task, self.store.path(state['id']), final_only=True)
+                except (BudgetExceeded, FinishRequired, ContractError, OSError) as exc:
+                    task.update(status='failed', feedback=str(exc))
+                if task['status'] == 'succeeded':
+                    self.store.save(state, 'approved_film_finished', {'ad': ad})
+                    self.deliver_finished(state)
+                    continue
+            if not state['config']['output'].get('end_card_clips'):
+                # No finishing source was configured: retain the original failed
+                # stage and pending graph, rather than pretending packaging ran.
+                state.setdefault('fallbacks', {})[str(ad)] = {
+                    'status': 'failed', 'mode': 'product_only', 'reason': reason,
+                    'error': 'No approved configured product footage; configure output.end_card_clips.'}
+                self.store.save(state, 'finishing_unavailable', {'ad': ad})
+                continue
+            info = state.setdefault('fallbacks', {}).setdefault(str(ad), {})
+            info.update(status='finishing', mode='product_only', reason=reason)
+            state['status'] = 'finishing'
+            self.store.save(state, 'finishing_started', {'ad': ad, **info})
+            work = self.store.path(state['id'])/'workspaces'/f'ad-{ad+1:02}-fallback'
+            work.mkdir(parents=True, exist_ok=True)
+            try:
+                self.budget.check()
+                with deadline(self.budget.remaining() / (len(pending) - index)):
+                    self.verify_history(state, checkpoint=checkpoint)
+                    try:
+                        script = self.inputs(state, task)['selected_script']
+                    except (KeyError, StopIteration, IndexError, TypeError):
+                        clips = state['config']['output'].get('end_card_clips', [])
+                        if not clips:
+                            raise ContractError('No configured product footage for deadline fallback')
+                        script = {'product': clips[ad % len(clips)]['product']}
+                    cancelled = lambda: self.store.control_value(state['id']) != 'run'
+                    data = product_film(script, state['config'], work, cancelled)
+                    if cancelled():
+                        raise ContractError('Finishing cancelled or paused')
+                    destination = self.store.path(state['id'])/'artifacts'/f'ad-{ad+1:02}-fallback'/str(time.time_ns())
+                    film = promote(data, work, destination, checkpoint=checkpoint)
+                    packed = package({'product_only_fallback': film, 'fallback_reason': reason}, state, work, checkpoint=checkpoint)
+                    packed['files'].append({'path': 'final.mp4', 'kind': 'video'})
+                    packed.update(delivery_mode='product_only', master='final.mp4')
+                    packaged = promote(packed, work, destination/'package', checkpoint=checkpoint)
+                    if cancelled():
+                        raise ContractError('Finishing cancelled or paused')
+                    folder = state['config']['output'].get('folder')
+                    if folder:
+                        out = Path(folder)/state['id']; out.mkdir(parents=True, exist_ok=True)
+                        copy_checked(film['master'], out/f'ad-{ad+1:02}.mp4', checkpoint)
+                        copy_checked(work/'ad.zip', out/f'ad-{ad+1:02}.zip', checkpoint)
+                    checkpoint()
+                    # Keep genuine story rejections, attempts and previous files;
+                    # skipping is not a fabricated passing creative review.
+                    for current in state['tasks']:
+                        if current['ad'] == ad and current['status'] != 'succeeded':
+                            current['status'] = 'skipped'
+                            current['feedback'] = 'Replaced by product-only fallback: ' + reason
+                    task.update(status='succeeded', result=packaged,
+                                accepted_manifest=str(destination/'package/accepted.json'),
+                                accepted_manifest_sha256=digest(destination/'package/accepted.json'))
+                    info.update(status='complete', master=film['master'], source_asset=data.get('source_asset'))
+                    info.pop('error', None)
+                    self.store.save(state, 'finishing_complete', {'ad': ad, **info})
+                self.budget.tick(True)
+                self.deliver_finished(state)
+            except (KeyboardInterrupt, SystemExit):
+                state['status'] = 'interrupted'
+                self.store.save(state, 'finishing_interrupted', {'ad': ad})
+                raise
+            except Exception as exc:
+                info.update(status='failed', error=f'{type(exc).__name__}: {exc}')
+                task.update(status='failed', feedback=info['error'])
+                state['error'] = 'Product-only finishing failed: ' + info['error']
+                self.store.save(state, 'finishing_failed', {'ad': ad, **info})
+        if self.aggregate(state) == 'complete':
+            state['error'] = ''
+        action = self.store.control_value(state['id'])
+        state['status'] = self.aggregate(state) if action == 'run' else ('paused' if action == 'pause' else 'cancelled')
+
+    def finishing_checkpoint(self, state):
+        self.budget.check()
+        bounded_timeout(600)  # respect both per-ad finishing and global deadlines
+        if self.store.control_value(state['id']) != 'run':
+            raise ContractError('Finishing paused or cancelled; no new output accepted')
 
     def deliver_finished(self, state):
         if self.store.control_value(state['id']) != 'run':
@@ -291,7 +418,6 @@ class Engine:
         self.store.save(state, 'model_routes_refreshed', {'count': len(stale)})
 
     def reconcile(self, state):
-        self.verify_history(state)
         for task in state['tasks']:
             if task['status'] == 'running':
                 for attempt in task['attempts']:
@@ -303,17 +429,24 @@ class Engine:
                             pass
                 task['status'] = 'pending'
                 task['feedback'] = 'Controller interrupted. Inspect checkpoint/handoff and complete the task; no output was accepted.'
+        self.verify_history(state)
         for record in state.get('sources', []):
             if 'text' in record:
                 from .contracts import digest
                 if digest(record['text']) != record['sha256']:
                     raise ContractError('Source snapshot changed; create a new run')
 
-    def verify_history(self, state):
+    def verify_history(self, state, checkpoint=None):
+        if checkpoint is None and getattr(self, 'budget', None) and self.aggregate(state) != 'complete':
+            def checkpoint():
+                self.budget.check()
+                bounded_timeout(600)
         for task in state['tasks']:
             if task['status']=='succeeded':
-                verify_accepted(task['result'])
-                if task.get('accepted_manifest_sha256') and digest(task['accepted_manifest']) != task['accepted_manifest_sha256']:
+                if checkpoint:
+                    checkpoint()
+                verify_accepted(task['result'], checkpoint=checkpoint)
+                if task.get('accepted_manifest_sha256') and digest(task['accepted_manifest'], checkpoint) != task['accepted_manifest_sha256']:
                     raise ContractError('Accepted manifest changed: ' + task['accepted_manifest'])
 
     def reconcile_cast(self, state):
@@ -509,7 +642,7 @@ class Engine:
                 task['feedback'] = f'Correct the previous result format: {prior_error}\n' + task['feedback']
             while remaining > 0:
                 if budget:
-                    budget.check()
+                    budget.check_production()
                     budget.simplify()
                 remaining -= 1
                 if self.store.control_value(state['id']) == 'cancel':
@@ -567,12 +700,17 @@ class Engine:
                 def cancelled():
                     if budget:
                         budget.tick()
+                        budget.check_production()
                     return self.store.control_value(state['id']) == 'cancel'
                 try:
                     outcome = self.execute({**profile, 'log_mb': c['limits']['log_mb'],
                                             'idle_timeout': idle}, work, prompt, log,
                         cancelled=cancelled,
                         timeout=timeout, started=started)
+                except (FinishRequired, BudgetExceeded):
+                    attempt.update(kind='finishing', detail='Creative deadline reached; controller finishing', ended=time.time())
+                    attempt.pop('pid', None); attempt.pop('identity', None)
+                    raise
                 except Exception as exc:
                     # Unexpected provider/CLI failures are an attempt failure,
                     # not a crash of the entire state machine.
@@ -923,10 +1061,11 @@ class Engine:
                 current['rounds'] = 0
         self.store.save(state, 'autonomous_replan', {'task': task['id'], 'round': used + 1})
 
-    def builtin_task(self, state, task, root):
+    def builtin_task(self, state, task, root, final_only=False):
         from .media import finish_frame, check_video, package
         work = root/'workspaces'/task['id']; work.mkdir(parents=True, exist_ok=True)
         inputs = self.inputs(state, task); ad = task['ad']
+        checkpoint = lambda: self.finishing_checkpoint(state) if getattr(self, 'budget', None) else None
         def result(stage):
             return next(t['result'] for t in state['tasks'] if t['ad'] == ad and t['stage'] == stage)
         try:
@@ -956,23 +1095,29 @@ class Engine:
                 (work/'qa.json').write_text(json.dumps(report, indent=2))
                 data = {'summary': 'Encoded media passed technical checks', 'files': [{'path':'qa.json','kind':'notes'}]}
             else:
-                data = package(inputs, state, work)
-            self.verify_history(state)
+                if final_only:
+                    # Delivery of an approved film must not wait for recompressing
+                    # every large .blend/source artifact in the finishing reserve.
+                    inputs = {key: value for key, value in inputs.items()
+                              if key in (f'ad-{ad+1:02}-frame', f'ad-{ad+1:02}-qa', 'selected_script')}
+                data = package(inputs, state, work, checkpoint=checkpoint)
+            self.verify_history(state, checkpoint=checkpoint)
             if task['stage'] == 'package' and state['config']['output'].get('folder'):
                 # Convenience copies for people; the accepted artifacts remain the record.
                 out = Path(state['config']['output']['folder']) / state['id']; out.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(result('frame')['master'], out / f'ad-{ad+1:02}.mp4')
-                shutil.copy2(work / 'ad.zip', out / f'ad-{ad+1:02}.zip')
+                copy_checked(result('frame')['master'], out / f'ad-{ad+1:02}.mp4', checkpoint)
+                copy_checked(work / 'ad.zip', out / f'ad-{ad+1:02}.zip', checkpoint)
             destination = root/'artifacts'/task['id']/f'revision-{task["revision"]}-{time.time_ns()}'
-            task['result'] = promote(data, work, destination)
+            task['result'] = promote(data, work, destination, checkpoint=checkpoint)
             task['accepted_manifest'] = str(destination/'accepted.json')
             task['accepted_manifest_sha256'] = digest(destination/'accepted.json')
+            checkpoint()
             task['status'] = 'succeeded'
         except BudgetExceeded:
             raise
         except Exception as e:
             if getattr(self, 'budget', None):
-                self.budget.check()
+                self.budget.check_production()
             task['feedback'] = f'{type(e).__name__}: {e}'
             task['status'] = 'cancelled' if self.store.control_value(state['id']) == 'cancel' else 'failed'
         self.store.save(state, 'builtin_finished', {'task': task['id'], 'status': task['status']})

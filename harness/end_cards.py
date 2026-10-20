@@ -33,7 +33,7 @@ def prepare_clip(script, direction, config, work, seconds):
              '-map', '0:v:0', '-an', '-vf', f"fps={config['output']['fps']}",
              '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '17', '-pix_fmt', 'yuv420p',
              str(output)], timeout=120)
-        return {'mode': 'library_clip', 'asset_id': entry['id'], 'sha256': entry['sha256'],
+        return {'mode': 'library_clip', 'product': chosen['product'], 'asset_id': entry['id'], 'sha256': entry['sha256'],
                 'start': chosen.get('start', 0), 'path': output.name}
     except (ContractError, OSError, ValueError) as exc:
         output.unlink(missing_ok=True)

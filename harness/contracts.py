@@ -17,10 +17,12 @@ RESTARTS = {'board_review': ('direct', 'assets', 'audio'),
             'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit', 'frame')}
 
 
-def digest(path):
+def digest(path, checkpoint=None):
     h = hashlib.sha256()
     with Path(path).open('rb') as f:
         for block in iter(lambda: f.read(1024 * 1024), b''):
+            if checkpoint:
+                checkpoint()
             h.update(block)
     return h.hexdigest()
 
@@ -207,7 +209,18 @@ def validate(stage, data, workspace, context):
     return data
 
 
-def promote(data, workspace, destination):
+def copy_checked(source, target, checkpoint):
+    """Cooperative deadline/control checks for controller-owned artifact copies."""
+    checkpoint()
+    with Path(source).open('rb') as src, Path(target).open('wb') as dst:
+        for block in iter(lambda: src.read(1024 * 1024), b''):
+            checkpoint()
+            dst.write(block)
+    shutil.copystat(source, target)
+    checkpoint()
+
+
+def promote(data, workspace, destination, checkpoint=None):
     """Copy declared files; accepted artifacts never share a writable worker directory."""
     destination = Path(destination)
     if destination.exists():
@@ -216,13 +229,18 @@ def promote(data, workspace, destination):
     accepted = json.loads(json.dumps(data))
     mapping = {}
     for f in accepted['files']:
+        if checkpoint:
+            checkpoint()
         source = contained(workspace, f['path'],
                            allow_empty=f['kind'] == 'notes' and Path(f['path']).suffix.lower() == '.log')
         target = destination / f['path']; target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        if checkpoint:
+            copy_checked(source, target, checkpoint)
+        else:
+            shutil.copy2(source, target)
         target.chmod(0o444)
         mapping[f['path']] = str(target)
-        f.update(path=str(target), sha256=digest(target), bytes=target.stat().st_size)
+        f.update(path=str(target), sha256=digest(target, checkpoint), bytes=target.stat().st_size)
     def remap(value):
         # Any declared relative path, wherever it appears (scene, source lists, board images...).
         if isinstance(value, str):
@@ -235,12 +253,16 @@ def promote(data, workspace, destination):
     for key in list(accepted):
         if key not in ('summary', 'files'):
             accepted[key] = remap(accepted[key])
+    if checkpoint:
+        checkpoint()
     (destination / 'accepted.json').write_text(json.dumps(accepted, indent=2))
     return accepted
 
 
-def verify_accepted(result):
+def verify_accepted(result, checkpoint=None):
     for f in result.get('files', []):
+        if checkpoint:
+            checkpoint()
         p = Path(f['path'])
-        if not p.is_file() or digest(p) != f['sha256']:
+        if not p.is_file() or digest(p, checkpoint) != f['sha256']:
             raise ContractError(f'Accepted artifact changed or disappeared: {p}')

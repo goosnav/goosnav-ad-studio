@@ -8,6 +8,10 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
+class FinishRequired(RuntimeError):
+    """Stop creative work while a bounded finishing reserve is still available."""
+
+
 _deadline = ContextVar('production_deadline', default=None)
 
 
@@ -95,6 +99,26 @@ class Budget:
             self.tick(True)
             raise BudgetExceeded('Active execution budget including 25% overtime exhausted; '
                                  'work is checkpointed. Resume requires an explicit --extra-minutes allowance.')
+
+    def production_remaining(self):
+        if not self.data:
+            return float('inf')
+        count = self.state['config']['count']
+        target = self.data['target_seconds']
+        reserve = min(target * .4, max(120 * count, min(300 * count, target * .2)))
+        # Don't handicap a real animation that needs editing/QA. Unrendered
+        # repair loops must stop earlier, before they eat the finishing reserve.
+        unfinished = {t['ad'] for t in self.state['tasks'] if t['stage'] == 'package'
+                      and t['status'] != 'succeeded'}
+        has_cut = any(t['stage'] in ('animate', 'edit') and t['status'] == 'succeeded'
+                      and t['ad'] in unfinished for t in self.state['tasks'])
+        cutoff = (self.data['hard_seconds'] if has_cut else target) - reserve
+        return max(0, cutoff - self.spent())
+
+    def check_production(self):
+        self.check()
+        if self.data and self.production_remaining() <= 0:
+            raise FinishRequired('Creative deadline reached; finishing from approved reusable product footage.')
 
     def simplify(self):
         if self.data and self.spent() >= self.data['target_seconds'] * .75 and self.data['mode'] != 'recovery':

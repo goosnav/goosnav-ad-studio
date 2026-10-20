@@ -4,6 +4,19 @@ Updated: 2026-10-16 (fourth session)
 
 ## Current position
 
+2026-10-20 deadline recovery: a medium 9-second run spent ~15 minutes in asset/board
+loops, then replanned with too little time and hit its 25-minute ceiling before
+animation. The former recovery policy was only a prompt/model-route change.
+Creative deadlines now stop workers and protect model-free finishing: preserve
+approved films or generate a labelled, technically checked product-only fallback
+from active catalogued floating-item footage. No abandoned story dialogue, no
+fake creative-review pass, no archived assets. Each deliverable uses the normal
+incremental Drive retry queue. High with animation retains longer editing time.
+Live recovery evidence: `20261020-103250-e80725ff` was given an explicit three-minute
+finishing allowance (its old ceiling was already spent), produced a checked 9-second
+1080x1350 product-only film in 36.4 seconds with zero new model attempts, and
+completed a verified MP4-only Drive upload. The original rejected scene was not passed.
+
 2026-10-20 end-card policy update: the owner's early-web-2002 direction supersedes
 the historical clean black Helvetica URL notes below. New cards use a blue,
 underlined Times New Roman URL (bundled Times-compatible fallback), steady aliased

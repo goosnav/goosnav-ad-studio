@@ -308,9 +308,33 @@ resolved before production; initial downloads are not a useful speed benchmark.
 
 At 75% of the target the controller requests simpler staging/reuse and enables
 cheaper dynamically resolved recovery models. Provider failures continue the same
-workspace with another eligible route. Up to 25% overtime is allowed. At the
-ceiling a run is budget_exhausted, with its files retained; failed checks never
-become a successful ad just to meet the deadline. Resume does not reset spending.
+workspace with another eligible route. Finishing time is now ENFORCED, not just a
+prompt: an unrendered story stops creative workers/retries before the target,
+reserving roughly 2–5 minutes per ad (scaled for short/fast jobs). A normal medium
+9-second ad with no animation switches at 16 minutes instead of spending the
+entire 25-minute ceiling on board repairs. A real animation gets the overtime
+window for editing/QA, with finishing time still protected; high keeps its larger
+creative budget. Finished approved films are delivered as-is, with a lean local
+video/QA package; deadline recovery does not rearchive large scene/source files.
+
+If there is no approved film (or creative repairs fail before the deadline),
+the controller automatically makes a PRODUCT-ONLY
+FALLBACK from the selected product's active catalogued floating-item video:
+real moving product, exact configured name, shop link, intentional silence.
+It omits abandoned story dialogue/claims and requires no new models or approval.
+This uses output.end_card_library / end_card_clips (stable asset IDs), never an
+archived model or hardcoded asset path. Fallbacks pass encoding/motion/picture
+checks, are labelled in status/manifests, and upload individually using the same
+durable Drive queue. Rejected story stages are skipped, not falsely passed.
+Already completed ads are preserved; one missing clip does not block the others.
+
+Fallback still needs valid approved product footage and working FFmpeg/Frame.
+Missing/corrupt/retired footage or a finishing failure is reported explicitly;
+the harness cannot promise output when its source media/tools are unavailable.
+The hard ceiling still applies (up to 25% overtime), checkpoints are retained,
+and resume does not reset spending. An older run that already spent its whole
+budget needs an explicit finishing allowance; it does NOT start over:
+  ./ad resume RUN_ID --extra-minutes 3
 An explicit operator extension is available:
   ./ad resume RUN_ID --extra-minutes 10
 

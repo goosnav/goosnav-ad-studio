@@ -1,5 +1,6 @@
 """Deterministic media checks and finishing; creative work stays with workers."""
 import array
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -244,7 +245,7 @@ def _gray(path, t, tools, size=(54, 68)):
     return r.stdout
 
 
-def check_picture(path, config, story_end, master=None, check_freeze=True):
+def check_picture(path, config, story_end, master=None, check_freeze=True, check_contrast=True):
     """Bad animation and unreadable pictures, measured on the encoded video.
 
     Story (before story_end): no long frozen stretch, no black gap, no washed-out stretch.
@@ -269,7 +270,7 @@ def check_picture(path, config, story_end, master=None, check_freeze=True):
     for lo, hi in zip(lows, highs):
         run_flat = run_flat + 1 if hi - lo < MIN_CONTRAST else 0
         longest = max(longest, run_flat)
-    if longest / 4 >= FLAT_SECONDS:
+    if check_contrast and longest / 4 >= FLAT_SECONDS:
         problems.append(f'washed-out, low-contrast picture for {longest / 4:.1f} s (luma range under '
                         f'{MIN_CONTRAST}): subjects will not read on a phone')
     card = None
@@ -299,7 +300,9 @@ def check_final_mix(path, timeline, config, work):
         wav.unlink(missing_ok=True)
 
 
-def package(inputs, state, work):
+def package(inputs, state, work, checkpoint=None):
+    checkpoint = checkpoint or (lambda: bounded_timeout(600))
+    checkpoint()
     work=Path(work)
     manifest={'run':state['id'],'config':state['config'],'models':state['models'],
               'inputs':inputs, 'sources':state.get('sources',[])}
@@ -310,11 +313,18 @@ def package(inputs, state, work):
             if not isinstance(result,dict):continue
             for index,f in enumerate(result.get('files',[])):
                 p=Path(f['path'])
-                if digest(p) != f['sha256']:
+                # Hash the actual bytes being archived; chunk checks make large
+                # source bundles cancellable instead of blocking the finish path.
+                checksum = hashlib.sha256()
+                with p.open('rb') as src, z.open(f'artifacts/{task_id}/{index:03d}-{p.name}', 'w', force_zip64=True) as dst:
+                    for block in iter(lambda: src.read(1024 * 1024), b''):
+                        checkpoint()
+                        checksum.update(block); dst.write(block)
+                if checksum.hexdigest() != f['sha256']:
                     raise ContractError(f'Artifact changed before packaging: {p}')
-                z.write(p,f'artifacts/{task_id}/{index:03d}-{p.name}')
         z.writestr('README.txt','Run manifest contains original paths, model routing, scripts and source evidence.\n'
                    'artifacts/ contains accepted production files. See worker source/notes for render commands.\n'
                    'This package is a local review/export, not proof of publication.\n')
+    checkpoint()
     return {'summary':'Local delivery package ready', 'files':[{'path':'ad.zip','kind':'package'},
             {'path':'manifest.json','kind':'manifest'}]}
