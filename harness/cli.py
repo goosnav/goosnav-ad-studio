@@ -77,11 +77,21 @@ def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
             return result
         print(f'All providers are at their usage limits; waiting {delay/60:.0f} min, then continuing '
               f'(pause/cancel still work).',file=sys.stderr,flush=True)
+        waited = time.monotonic()
         while delay>0:
             if store.control_value(run_id)!='run':
                 return store.get(run_id)
             # A bulk cancel should wake quota-waiting controllers promptly.
             step=min(1,delay);sleep(step);delay-=step
+        # Never overwrite a newer controller snapshot with a stale wait record.
+        try:
+            with store.worker_lock():
+                state = store.get(run_id)
+                if state.get('execution'):
+                    state['execution']['waiting_seconds'] += time.monotonic() - waited
+                    store.save(state, 'provider_wait_finished')
+        except Busy:
+            pass  # telemetry may be incomplete; production state is authoritative
 
 
 def main(argv=None):
@@ -97,14 +107,21 @@ def main(argv=None):
         q.add_argument('--no-wait',action='store_true',help='Stop instead of waiting out provider usage limits')
     for name in ('run','resume'):
         q=sub.add_parser(name);q.add_argument('id');q.add_argument('--steps',type=int)
+        q.add_argument('--extra-minutes', type=int, default=0,
+                       help='explicit additional active-time allowance for a checkpointed run')
         q.add_argument('--no-wait',action='store_true',help='Stop instead of waiting out provider usage limits')
-    for name in ('status','events','pause'):
+    for name in ('status','events','pause','metrics'):
         q=sub.add_parser(name);q.add_argument('id')
+    q=sub.add_parser('feedback', help='Teach future runs from your assessment of an ad')
+    q.add_argument('id'); q.add_argument('--rating', choices=('good','okay','bad'), required=True)
+    q.add_argument('--note', default='')
     q=sub.add_parser('cancel',help='Cancel one run or every unfinished run')
     q.add_argument('id',nargs='?')
     q.add_argument('-a','--all',action='store_true',help='Cancel all active, queued, and paused runs')
     q=sub.add_parser('retry');q.add_argument('id');q.add_argument('--task',required=True)
     q=sub.add_parser('upload',help='Upload packaged ads to configured Drive (or retry a failed upload)')
+    q.add_argument('id')
+    q=sub.add_parser('publish',help='Retry validated reusable asset publication without rerendering')
     q.add_argument('id')
     q=sub.add_parser('cooldown',help='Inspect or clear cached provider quota cooldowns')
     q.add_argument('action',choices=('status','clear'))
@@ -134,13 +151,22 @@ def main(argv=None):
                 overrides={k:getattr(a,k) for k in ('concept','website','count') if getattr(a,k) is not None}
                 overrides.update(model_overrides(a))
                 if a.seconds is not None:overrides['output']={'target_seconds':a.seconds}
-                result=store.create(load_config(a.config,overrides));result['tasks']=build_tasks(result['config']['count'])
+                result=store.create(load_config(a.config,overrides));result['tasks']=build_tasks(result['config']['count'], modern=True)
+                result['config_path'] = str(Path(a.config).resolve()) if a.config else None
                 store.save(result,'planned')
                 if a.cmd=='make' and not a.plan:
                     print(f'Run {result["id"]} — inspect with: python -m harness --home {str(store.root)!r} status {result["id"]}',file=sys.stderr,flush=True)
                     result=drive(Engine(store),store,result['id'],not a.no_wait)
             elif a.cmd in ('run','resume'):
                 if a.steps is not None and a.steps<0:raise ValueError('steps must be nonnegative')
+                if not 0 <= a.extra_minutes <= 240:raise ValueError('extra-minutes must be 0..240')
+                if a.extra_minutes:
+                    with store.worker_lock():
+                        result = store.get(a.id)
+                        if not result.get('execution'):raise ValueError('Legacy run has no execution budget')
+                        result['execution']['hard_seconds'] += a.extra_minutes * 60
+                        result['execution']['changes'].append({'extra_minutes': a.extra_minutes, 'reason': 'operator allowance'})
+                        store.save(result, 'budget_extended')
                 if a.cmd=='resume':
                     with store.worker_lock():
                         result=reopen(store.get(a.id))
@@ -162,6 +188,10 @@ def main(argv=None):
                 result=store.get(a.id) if cancelled else drive(Engine(store),store,a.id)
             elif a.cmd=='upload':
                 result=upload_run(store,store.get(a.id))
+            elif a.cmd=='publish':
+                from .publication import publish_run
+                with store.worker_lock():
+                    result=publish_run(store,store.get(a.id))
             elif a.cmd=='cooldown':
                 if a.action=='clear':
                     store.clear_cooldowns(None if a.provider=='all' else a.provider)
@@ -182,10 +212,24 @@ def main(argv=None):
             elif a.cmd=='pause':
                 store.control(a.id,'pause');result={'id':a.id,'requested':'pause'}
             elif a.cmd=='status':result=store.get(a.id)
+            elif a.cmd=='feedback':
+                from .learning import feedback
+                result=feedback(store,a.id,a.rating,a.note)
+            elif a.cmd=='metrics':
+                from .learning import metrics
+                result=metrics(store.get(a.id))
             elif a.cmd=='events':result=store.events(a.id)
             else:result=[{'id':r['id'],'status':r['status'],'created':r['created']} for r in store.list()]
             # Delivery is a post-render side effect. A Drive outage must never
             # turn a successfully rendered ad into a failed render.
+            if a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial'):
+                from .publication import publish_run
+                try:
+                    with store.worker_lock():
+                        result=publish_run(store,store.get(result['id']))
+                except Busy:
+                    print('Asset publication deferred: another run is active. Retry: ./ad publish ' + result['id'],
+                          file=sys.stderr, flush=True)
             if (a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial')
                     and result['config'].get('delivery', {}).get('drive')):
                 result=upload_run(store,result)
@@ -196,7 +240,7 @@ def main(argv=None):
         print(json.dumps(result,indent=2))
         if a.cmd=='upload' and result['delivery']['status']!='uploaded':
             return 1
-        if isinstance(result,dict) and result.get('status') in ('failed','partial','needs_review','waiting_provider','cancelled','interrupted'):
+        if isinstance(result,dict) and result.get('status') in ('failed','partial','needs_review','waiting_provider','cancelled','interrupted','budget_exhausted'):
             return 1
         return 0
     except KeyboardInterrupt:

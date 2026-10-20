@@ -5,12 +5,84 @@ reviews kept missing: buried dialogue, a voice cast against its character,
 lines crammed faster than anyone can hear them, and beats too short to read.
 """
 import array
+import json
 import math
+from pathlib import Path
 import re
 import wave
 
 from .contracts import ContractError
 from .sources import archived_asset
+
+
+def check_scratch_takes(data, workspace):
+    """Require portable measured speech, not merely promised timings, on modern jobs."""
+    from .contracts import contained
+    from .voice import verify_take
+    direction = data['direction']
+    lines = direction.get('lines', [])
+    if not lines:
+        return []  # silent visual comedy has no voice audition requirement
+    declared = {f['path'] for f in data['files']}
+    path = data.get('scratch_takes')
+    if path not in declared:
+        raise ContractError('scratch_takes must name a declared harness.voice manifest')
+    manifest_path = contained(workspace, path)
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        if manifest.get('schema') != 1 or manifest.get('sample_rate') != 48000:
+            raise ContractError('Unsupported scratch_takes manifest')
+        entries = manifest.get('lines', [])
+        if len({entry['id'] for entry in entries}) != len(entries):
+            raise ContractError('Duplicate scratch line IDs')
+        voices = {}
+        for character in direction['cast']:
+            if character['speaker'] in voices:
+                raise ContractError('Duplicate cast speaker')
+            voices[character['speaker']] = character['voice']
+        normal = lambda text: ' '.join(text.split())
+        measured, used = [], set()
+        for line in lines:
+            voice = voices.get(line['speaker'])
+            if not voice or ('voice' in line and line['voice'] != voice):
+                raise ContractError('Line voice must match the stable cast mapping')
+            # Match the mixer's unused-entry selection, including optional authored
+            # IDs: repeated words may deliberately use different measured takes.
+            choices = [(index, entry) for index, entry in enumerate(entries)
+                       if index not in used and entry['speaker'] == line['speaker']
+                       and normal(entry['text']) == normal(line['text'])
+                       and entry['voice'] == voice
+                       and ('id' not in line or entry['id'] == line['id'])]
+            if not choices:
+                raise ContractError('No unused scratch line matches direction id/speaker/text/voice')
+            index, entry = choices[0]
+            used.add(index)
+            takes = [take for take in entry['takes'] if take['id'] == entry['selected_take_id']]
+            if len(takes) != 1:
+                raise ContractError('Each scratch line must select exactly one take')
+            take = takes[0]
+            if (normal(take['settings']['text']) != normal(line['text']) or
+                    take['settings']['voice'] != voice):
+                raise ContractError('Selected take must match directed text and voice')
+            for kind in ('raw', 'polished'):
+                relative = (Path(path).parent / take[kind]['path']).as_posix()
+                contained(workspace, relative)
+                if relative not in declared:
+                    raise ContractError('Selected raw and polished scratch audio must be declared files')
+            verify_take(take, manifest_path.parent)
+            record = take['polished']
+            # Use the mixer's exact integer-sample slot, not thresholded activity
+            # bounds or a grace period: quiet nonzero tails are still real audio.
+            start = round(_num(line, 'start', 'line') * 48000)
+            end = round(_num(line, 'end', 'line') * 48000)
+            if record['frames'] > end - start:
+                raise ContractError(f'Full measured WAV does not fit {line["speaker"]} line window; shorten text or restage')
+            measured.append({'speaker':line['speaker'], 'take_id':take['id'],
+                             'duration_seconds':record['frames'] / 48000,
+                             'active_seconds':(record['active_end_sample'] - record['active_start_sample']) / 48000})
+        return measured
+    except (OSError, ValueError, KeyError, TypeError, StopIteration) as exc:
+        raise ContractError(f'Invalid scratch_takes: {exc}') from exc
 
 GENDERS = ('male', 'female', 'neutral')
 MAX_WORDS_PER_SECOND = 3.0   # spoken English is ~2.5 w/s; above 3 an ad feels gabbled
@@ -185,9 +257,12 @@ def _db(samples):
     return 10 * math.log10(power / 32768 ** 2 + 1e-12)
 
 
-def mix_levels(path, dialogue):
-    """Speech, bed and loudest-effect levels (dBFS) of a mix with timed dialogue."""
-    rate, x = _mono(path)
+def speech_levels(x, rate, dialogue):
+    """Controller speech metric: loud half of 50 ms windows in mono PCM units.
+
+    Accepts unbounded numeric samples as well as PCM16, so assembly can choose
+    gain before quantization without copying or approximating the gate's metric.
+    """
     step = rate // 20  # 50 ms
     speech = []
     for line in dialogue:
@@ -196,6 +271,13 @@ def mix_levels(path, dialogue):
         loud = frames[:max(1, len(frames) // 2)]
         speech.append({'text': line['text'], 'speaker': line['speaker'],
                        'db': 10 * math.log10(sum(10 ** (f / 10) for f in loud) / len(loud))})
+    return speech
+
+
+def mix_levels(path, dialogue):
+    """Speech, bed and loudest-effect levels (dBFS) of a mix with timed dialogue."""
+    rate, x = _mono(path)
+    speech = speech_levels(x, rate, dialogue)
     inside = bytearray(len(x))
     for line in dialogue:
         inside[line['start_sample']:line['end_sample']] = b'\x01' * (min(line['end_sample'], len(x)) - line['start_sample'])

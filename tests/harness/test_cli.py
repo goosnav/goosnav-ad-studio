@@ -17,7 +17,7 @@ def test_cli_minimal_plan_and_status(tmp_path):
     r=cli(tmp_path,'make','--config',str(cfg),'--website','example.com','--count','2','--plan')
     assert r.returncode==0,r.stderr
     d=json.loads(r.stdout)
-    assert d['status']=='ready' and len(d['tasks'])==21
+    assert d['status']=='ready' and len(d['tasks'])==23
     s=cli(tmp_path,'status',d['id'])
     assert json.loads(s.stdout)['config']['website']=='https://example.com'
 

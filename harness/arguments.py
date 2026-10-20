@@ -22,6 +22,8 @@ class HelpfulParser(argparse.ArgumentParser):
 
 
 def add_model_options(parser):
+    parser.add_argument('--fast', action='store_true', default=None,
+                        help='halve production time target by prioritizing reuse (keeps selected model tier)')
     parser.add_argument('-e', '--effort', '-effort', choices=EFFORTS, type=str.lower,
                         help='model intensity preset (default medium): low, medium, high')
     parser.add_argument('-p', '--provider', '-provider', choices=PROVIDERS, type=str.lower,
@@ -29,5 +31,5 @@ def add_model_options(parser):
 
 
 def model_overrides(args):
-    selected = {key: getattr(args, key) for key in ('effort', 'provider') if getattr(args, key, None) is not None}
+    selected = {key: getattr(args, key) for key in ('effort', 'provider', 'fast') if getattr(args, key, None) is not None}
     return {'generation': selected} if selected else {}

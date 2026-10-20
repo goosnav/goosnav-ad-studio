@@ -5,11 +5,13 @@ Full guide: README.md and dev/OPERATIONS.md
 
 ONE-TIME SETUP (ON THE RENDER COMPUTER)
   git submodule update --init --recursive
-  git -C assets/goosnav-3D-assets lfs pull   # requires Git LFS
+  git -C /absolute/configured/asset-repo lfs pull   # replace path; requires Git LFS
   cp harness.example.json harness.local.json  # if not already configured
   # Edit harness.local.json: brand sources, products, 3D paths under
   # sources.assets / sources.characters, audio.python, tools.frame_*,
   # and output.folder (ABSOLUTE local directory for finished files).
+  # Asset sources may be an external repository, not this repo's submodule.
+  # Use their configured Git top-level; do not assume a particular asset layout.
   # OPTIONAL: set delivery.drive to "agent-exchange:deliverables/ad-studio"
   # for automatic Drive upload after a completed or partially completed run.
   # Leave delivery.drive empty for local-only operation (the default).
@@ -208,3 +210,127 @@ NOTES
   - harness.local.json and studio.local.json are separate configs.
   - A completed pipeline does not guarantee an aesthetically good ad;
     review the MP4 before publishing.
+PRODUCTION SPEED, WORLDS AND REUSE (execution policy v1)
+------------------------------------------------------
+  ./ad "A character comedy in a strange outpost" -s 9 -e high
+  ./ad "A character comedy in a strange outpost" -s 9 -e high --fast
+  ./ad "A quick Goosklerf exchange" -s 9 -e low --fast
+
+Normal targets for ONE 9-second ad: low 10 min, medium 20 min, high 40 min.
+--fast halves those targets to 5 / 10 / 20 minutes. It keeps the selected
+model tier/provider; it reduces optional construction, auditions and revisions.
+Budgets scale with duration/count. These are production targets, not measured
+speed guarantees. Initialization, rendering and verification consume active time.
+Provider waiting is shown separately. Missing tool/model installations must be
+resolved before production; initial downloads are not a useful speed benchmark.
+
+At 75% of the target the controller requests simpler staging/reuse and enables
+cheaper dynamically resolved recovery models. Provider failures continue the same
+workspace with another eligible route. Up to 25% overtime is allowed. At the
+ceiling a run is budget_exhausted, with its files retained; failed checks never
+become a successful ad just to meet the deadline. Resume does not reset spending.
+An explicit operator extension is available:
+  ./ad resume RUN_ID --extra-minutes 10
+
+New jobs use measured audio before storyboard approval and animation. Low favors
+tested sets/performances; medium permits a meaningful variation; high permits
+distinctive environments, supported actions and motivated camera moves.
+output.look: retro_world (new default), ps1, or clean. retro_world uses original
+early-3D-world detail, shadows, texture and atmosphere; it does not force extreme
+pixelation or photorealism. Existing saved jobs retain their prior graph and look.
+The local project configuration can explicitly override the look.
+
+  ./ad feedback RUN_ID --rating good --note "Great reaction timing; reuse this set"
+  ./ad feedback RUN_ID --rating bad --note "The answer came too late"
+  ./ad metrics RUN_ID
+Ratings are good / okay / bad. Feedback is product-scoped, traced to its run, and
+provided to future writing/direction. Technical success alone is not a quality
+rating. Metrics report stage time, attempts, models and usage when CLI logs provide
+it. Dollar cost is unavailable for subscription CLIs; no fabricated cost estimate.
+
+ASSET PATHS AND PUBLICATION
+library.root may name the asset repository, or be empty to discover it from
+sources.assets. library.catalog defaults to asset-catalog.json RELATIVE to that
+root. No fixed asset directory hierarchy is required. Entries have stable IDs,
+content hashes and relative paths. Moves resolve only to unambiguous matching
+content; retired/archive entries and path escapes are excluded.
+First-catalog publication preserves committed active .blend inventory using LFS
+content OIDs even before hydration. Pointer text is never usable geometry: hydrate
+the required active paths in the configured repository, excluding archives, before
+catalog reads/use. Existing catalogs remain authoritative; bootstrap does not repair
+an already incomplete catalog. See docs/library.md.
+
+New jobs record the source configuration location. Resume reloads its asset roots
+and approved character paths, while preserving the run's model/output policy.
+Only the configured active characters may be cast. A different model with the
+same filename cannot silently replace a recorded identity.
+
+Reusable asset candidates remain in the job workspace until validation. With
+library.publish:true, validated candidates can be committed in an isolated asset
+worktree and pushed; the artist's checkout is not overwritten. Publication errors
+are retained for retry independently of the finished video. See docs/library.md
+for manifests, retirement and the submodule push/pin protocol.
+  ./ad publish RUN_ID
+This retries publication without rendering. The asset commit/LFS objects are
+pushed before the matching parent gitlink. Dirty asset or parent checkouts stay
+untouched and show adoption/pin pending; retry after your other edits are settled.
+
+Local production helpers (use the configured audio interpreter for voice):
+  /path/to/audio-python -m harness.voice REQUEST.json TAKES_DIRECTORY --summary
+  python3 -m harness.creative submit-direction plan.json takes/manifest.json --workspace workspace --output direct-result.json --direction-md direction.md
+  python3 -m harness.mix DIRECT_RESULT.json workspace/audio --no-bed --stage-result workspace/result.json
+  python3 -m harness.mix DIRECT_RESULT.json workspace/audio-with-bed --bed BED.wav --bed-gain-db -30
+  python3 -m harness.mix --request workspace/audio/request.json workspace/replayed-audio
+  python3 -m harness.render --scene scene.blend --audio mix.wav --output preview.mp4 --seconds 9 --effort low --fast
+Replace placeholders; run from this repository so harness modules are importable.
+DIRECT_RESULT is accepted direction with its declared scratch-take manifest.
+submit-direction reads an authored plan (summary and direction) and verified local
+WAVs, then writes a new result with declared dependencies. Its input/output paths
+are workspace-relative; omit --direction-md if no authored notes file exists.
+It does not rewrite timings, generate speech or approve the plan: controller
+validation is still mandatory. Every planned line slot MUST fit the full selected
+polished WAV, including pauses/tails, plus planned reply/reaction gaps. Active
+speech bounds are not a substitute. Shorten/re-record or revise timing if it cannot
+fit; never falsify measurements or rely on the mixer's silence trim to pass direction.
+Mix output must be new/empty; --stage-result writes a NEW sibling result file
+with artifact paths prefixed for the worker workspace. It refuses overwrites.
+Choose --no-bed or a supplied PCM16 WAV bed; no synthesized/looped bed is invented.
+Replay uses saved options and verified inputs, with no overrides or voice synthesis.
+Mix writes mix.wav, dialogue.wav, timeline.json, audit.json, request.json and
+result.json. It trims only exact digital-zero edges when needed, never active
+speech or time-stretching. A line that cannot fit requires revised direction.
+Quiet dialogue receives one measured uniform gain (target -21 dBFS, at most
++18 dB), with peak protection. Timing and source takes are unchanged. audit.json
+records the gain and final measurements; unsafe/unreachable speech levels block
+assembly instead of clipping or quietly weakening the controller's checks.
+Helpers do not replace the controller's contract, speech and creative checks.
+In worker results, files lists NEW workspace outputs only. Reviews normally use
+files: []; cite accepted input boards/media in findings.target, not files.
+
+The voice batch measures takes and verifies cached audio before reuse. Delivery
+notes do not magically give Kokoro emotional control. Audition/listen where tools
+allow, preserve chosen takes, and time shots against real speech. Chatterbox is
+optional and never silently substituted or installed; it is absent from the
+current validation setup. Normal audition caps are 1/2/3 for low/medium/high;
+fast caps all tiers at one, plus at most one explicitly configured defect retry.
+Selection is initially provisional; neither voice nor mix runs ASR or certifies
+emotional quality. See README.md and dev/WORKER_GUIDE.md for request/selection usage.
+
+Inside Blender Python, blender.staging exposes import_actor, world_bounds and
+frame_subjects. Use explicit catalog-resolved paths; multi-rig actors require
+rig_name. Framing checks the current pose's projected bounds, not face visibility,
+occlusion or an entire animation. Render/review boards. See docs/worlds.md.
+The render helper packs no assets itself: provide a self-contained scene. It
+revalidates dependencies even on cache hits, reuses only hash-verified completed
+frames after interruptions, and encodes picture/audio with FFmpeg. It rejects
+external/unsupported media and simulation caches; it is not a creative QA pass.
+
+For actual six-preset benchmarks (uses model quota, separate job state):
+  python3 tools/benchmark_production.py --config harness.local.json --home .local/benchmarks/my-run
+Benchmark publication and Drive upload are disabled. Inspect results.json and
+finished videos; blocked/failed runs are not successful timing measurements.
+
+VALIDATION
+Production budgets are targets, not guaranteed completion times or creative quality.
+Current test evidence, live-run outcomes and limitations are maintained in
+docs/production-upgrade-progress.md.

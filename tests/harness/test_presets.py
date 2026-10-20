@@ -52,7 +52,7 @@ def test_default_is_medium_and_keeps_explicit_json_worker_overrides(tmp_path):
     custom = [{'provider': 'claude', 'model': 'custom-pinned-model'}]
     path.write_text(json.dumps({'workers': {'writer': custom}}))
     assert load_config(path)['workers']['writer'] == custom
-    assert load_config()['generation'] == {'effort': 'medium', 'provider': 'auto'}
+    assert load_config()['generation'] == {'effort': 'medium', 'provider': 'auto', 'fast': False}
     # A CLI selection deliberately replaces old routes for this run only.
     high = load_config(path, {'generation': {'effort': 'high', 'provider': 'openai'}})
     assert high['workers']['writer'][0]['model'] == 'auto:quality'
@@ -76,7 +76,7 @@ def test_shortcut_forwards_model_flags_without_starting_workers(tmp_path, effort
         cwd=ROOT, env=env, capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
     state = json.loads(result.stdout)
-    assert state['config']['generation'] == {'effort': 'high', 'provider': 'openai'}
+    assert state['config']['generation'] == {'effort': 'high', 'provider': 'openai', 'fast': False}
     assert state['config']['output']['target_seconds'] == 9
     assert state['models'] == {} and state['status'] == 'ready'
     assert state['config']['workers']['animator'][0] == {

@@ -34,7 +34,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
         if stage=='research':d.update(brand_brief='fictional',creative_directions='object comedy',references=[])
         elif stage in ('write','revise'):
             d['scripts']=[dict(id=str(i),title='fixture',premise='test',script='test',visual_direction='motion',product='demo',cta='none') for i in range(6)]
-        elif stage=='creative_qa':
+        elif stage in ('creative_qa', 'board_review'):
             d.update(verdict='pass', findings=[])
         elif stage=='select':
             d.update(selected=['0','1'],reason='causal scripts',verdict='pass',findings=[],
@@ -79,7 +79,7 @@ def test_two_ads_repair_and_package_with_real_media(tmp_path):
     assert state['status']=='complete',state.get('error') or [(t['id'],t['status'],t['feedback']) for t in state['tasks']]
     assert len([t for t in state['tasks'] if t['stage']=='package' and t['status']=='succeeded'])==2
     assert calls.count('ad-01-animate')==1 and calls.count('ad-01-direct')==1
-    assert 'campaign-critique' not in calls and 'ad-01-board_review' not in calls
+    assert 'campaign-critique' not in calls and calls.count('ad-01-board_review') == 1
     assert calls.count('ad-01-edit')==1
     out=tmp_path/'delivered'/s['id']
     assert sorted(f.name for f in out.iterdir())==['ad-01.mp4','ad-01.zip','ad-02.mp4','ad-02.zip']

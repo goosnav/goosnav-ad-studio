@@ -37,9 +37,12 @@ class Store:
         return self.root / 'runs' / run_id
 
     def create(self, config):
+        from .execution import policy
         run_id = time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8]
         state = {'id': run_id, 'config': json.loads(json.dumps(config)), 'status': 'ready',
-                 'tasks': [], 'created': time.time(), 'models': {}, 'error': ''}
+                    'tasks': [], 'created': time.time(), 'models': {}, 'error': ''}
+        if config.get('generation') and config.get('output', {}).get('target_seconds'):
+            state['execution'] = policy(config)
         with self.connect() as db:
             db.execute('INSERT INTO runs(id,state) VALUES (?,?)', (run_id, json.dumps(state)))
             self._event(db, run_id, 'created', {})

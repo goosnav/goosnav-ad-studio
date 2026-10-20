@@ -19,8 +19,8 @@ from harness.arguments import HelpfulParser, add_model_options
 
 REPO = Path(__file__).resolve().parent
 HOME = Path(os.environ.get('STUDIO_HARNESS_HOME', Path.home() / '.local/share/goosnav-ad-studio'))
-COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'cooldown', 'gui', 'doctor', 'models')
-DONE = ('complete', 'partial', 'failed', 'needs_review', 'waiting_provider', 'cancelled', 'interrupted', 'paused')
+COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'publish', 'cooldown', 'gui', 'doctor', 'models', 'feedback', 'metrics')
+DONE = ('complete', 'partial', 'failed', 'needs_review', 'waiting_provider', 'cancelled', 'interrupted', 'paused', 'budget_exhausted')
 
 
 def harness(*args, capture=True):
@@ -46,6 +46,12 @@ def summary(run_id):
     current = next((t for t in s['tasks'] if t['status'] in ('running', 'waiting_provider', 'failed', 'needs_review')), None)
     where = f" | {current['id']} {current['status']}" if current else ''
     print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
+    if s.get('execution'):
+        b = s['execution']
+        print(f"  Budget: {b['active_seconds']/60:.1f}/{b['target_seconds']/60:g} min active "
+              f"(ceiling {b['hard_seconds']/60:g}) | {b['mode']} | waiting {b['waiting_seconds']/60:.1f} min")
+        if s['status'] == 'budget_exhausted':
+            print(f"  {s.get('error', '')}")
     if current and current['status'] == 'running' and current['attempts']:
         attempt = current['attempts'][-1]
         seconds = max(0, int(time.time() - attempt['started']))
@@ -60,6 +66,13 @@ def summary(run_id):
             print(f'Drive: {d["remote"]}')
         elif d['status'] == 'failed':
             print(f'Drive delivery failed: {d.get("error", "unknown error")[:240]}\nRetry: ./ad upload {run_id}')
+    for publication in s.get('asset_publications', {}).values():
+        print(f"  Assets: {publication['status']} | {publication.get('error') or publication.get('commit', '')}")
+        for key in ('adoption_error', 'parent_error'):
+            if publication.get(key):
+                print(f'  {publication[key]}')
+        if publication['status'] == 'pending' or publication.get('adoption_status') == 'pending' or publication.get('parent_status') == 'pending':
+            print(f'  Retry publication: ./ad publish {run_id}')
     if current and current['status'] == 'waiting_provider':
         print(f'  Provider blockers: {current.get("feedback", "No provider accepted this task")[:1200]}')
         print(f'  After fixing providers: ./ad resume {run_id}')
@@ -95,6 +108,11 @@ def main():
             parser.add_argument('run_id', nargs='?', help='run ID (defaults to latest)')
             if command == 'cancel':
                 parser.add_argument('-a', '--all', action='store_true', help='cancel all unfinished runs')
+            if command == 'resume':
+                parser.add_argument('--extra-minutes', type=int, default=0, help='explicit added active-time allowance')
+            if command == 'feedback':
+                parser.add_argument('--rating', choices=('good', 'okay', 'bad'), required=True)
+                parser.add_argument('--note', default='')
         options = parser.parse_args(rest)
         if command == 'cancel' and options.all and options.run_id is not None:
             parser.error('Use cancel --all OR cancel RUN_ID, not both')
@@ -115,6 +133,12 @@ def main():
         run_id = None if command == 'cooldown' else options.run_id or latest()
         if command == 'status':
             summary(run_id); return 0
+        if command == 'metrics':
+            return harness('metrics', run_id, capture=False).returncode
+        if command == 'publish':
+            return harness('publish', run_id, capture=False).returncode
+        if command == 'feedback':
+            return harness('feedback', run_id, '--rating', options.rating, '--note', options.note, capture=False).returncode
         if command == 'upload':
             result = harness('upload', run_id)
             if not isinstance(result, dict):
@@ -142,7 +166,7 @@ def main():
                 time.sleep(60)
             return 0
         if command == 'resume':
-            start('resume', run_id); return 0
+            start('resume', run_id, '--extra-minutes', str(options.extra_minutes)); return 0
         harness(command, run_id); print(f'{command} requested for {run_id}'); return 0
     p = HelpfulParser(prog='./ad', description='Make animated ads. See CLI.txt.',
                       epilog='Controls: ' + ', '.join(COMMANDS) + '. Use ./ad COMMAND --help for command options.')
@@ -166,7 +190,9 @@ def main():
         if getattr(a, key) is not None:
             args += ['--' + key, getattr(a, key)]
     if a.plan:
-        return harness(*args, '--plan', capture=False).returncode
+        return harness(*args, *(['--fast'] if a.fast else []), '--plan', capture=False).returncode
+    if a.fast:
+        args.append('--fast')
     start(*args)
     return 0
 

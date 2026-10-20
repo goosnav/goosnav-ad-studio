@@ -19,7 +19,8 @@ def profiles(tier):
 
 DEFAULTS = {
     'website': '', 'products': [], 'concept': '', 'count': 1,
-    'generation': {'effort': 'medium', 'provider': 'auto'},
+    'generation': {'effort': 'medium', 'provider': 'auto', 'fast': False},
+    'library': {'root': '', 'catalog': 'asset-catalog.json', 'publish': True},
     'brand': {'name': '', 'direction': '', 'documents': []},
     'sources': {'assets': [], 'scripts': [], 'inspiration': [], 'characters': []},
     # min/max 0 = derive an accepted range around the target (80-130 %).
@@ -29,7 +30,7 @@ DEFAULTS = {
                # (title, picture, link); full: the whole ad is framed like a Frame post.
                'frame': 'end_card', 'end_card_seconds': 2.5,
                # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
-               'look': 'clean', 'loudness': -14},
+               'look': 'retro_world', 'loudness': -14},
     'workers': worker_presets(),
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
@@ -85,10 +86,12 @@ def load_config(path=None, overrides=None):
     for key, choices in (('effort', EFFORTS), ('provider', PROVIDERS)):
         if c['generation'][key] not in choices:
             raise ConfigError(f'generation.{key} must be one of: {", ".join(choices)}')
-    c['workers'] = worker_presets(**c['generation'])
+    if type(c['generation']['fast']) is not bool or type(c['library']['publish']) is not bool:
+        raise ConfigError('generation.fast and library.publish must be booleans')
+    c['workers'] = worker_presets(c['generation']['effort'], c['generation']['provider'])
     # Existing custom JSON routes still work. An explicit per-run preset takes
     # precedence over those routes, without modifying the source configuration.
-    if not overrides or 'generation' not in overrides:
+    if not overrides or not {'effort', 'provider'} & overrides.get('generation', {}).keys():
         merge(c['workers'], saved.get('workers', {}), 'workers.')
     if overrides:
         merge(c['workers'], overrides.get('workers', {}), 'workers.')
@@ -129,8 +132,8 @@ def load_config(path=None, overrides=None):
         raise ConfigError('output.loudness is integrated LUFS between -24 and -9 (social video: -14)')
     if not isinstance(c['audio']['asr_model'], str) or not c['audio']['asr_model']:
         raise ConfigError('audio.asr_model must name a Hugging Face speech-recognition model')
-    if o['look'] not in ('clean', 'ps1'):
-        raise ConfigError('output.look must be clean or ps1')
+    if o['look'] not in ('clean', 'ps1', 'retro_world'):
+        raise ConfigError('output.look must be clean, ps1 or retro_world')
     if o['frame'] not in ('end_card', 'full'):
         raise ConfigError('output.frame must be end_card or full')
     if type(o['end_card_seconds']) not in (int, float) or not 0.5 <= o['end_card_seconds'] <= 30:
@@ -163,7 +166,7 @@ def load_config(path=None, overrides=None):
         for key in keys:
             if not isinstance(c[group][key], str):
                 raise ConfigError(f'{group}.{key} must be text')
-    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python'), ('output', 'folder')]:
+    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python'), ('output', 'folder'), ('library', 'root')]:
         value = c[group][key]
         if not isinstance(value, str):
             raise ConfigError(f'{group}.{key} must be a path string')

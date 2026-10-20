@@ -11,10 +11,10 @@ class ContractError(ValueError):
 
 # Where a review may send an ad back to. The reviewer picks the earliest stage that is
 # actually wrong, so a bad cut does not re-render the animation and a bad mix does not re-cast.
-RESTARTS = {'board_review': ('direct', 'assets'),
+RESTARTS = {'board_review': ('direct', 'assets', 'audio'),
             'review': ('direct', 'assets', 'audio', 'animate'),
             'edit_review': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit'),
-            'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit')}
+            'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit', 'frame')}
 
 
 def digest(path):
@@ -62,7 +62,15 @@ def validate(stage, data, workspace, context):
         paths.add(f['path'])
         # Silence from a diagnostic command (e.g. FFmpeg black/freeze detection)
         # can mean no defects. Only notes logs may be empty, never production media.
-        contained(workspace, f['path'], allow_empty=f['kind'] == 'notes' and Path(f['path']).suffix.lower() == '.log')
+        try:
+            contained(workspace, f['path'], allow_empty=f['kind'] == 'notes' and Path(f['path']).suffix.lower() == '.log')
+        except ContractError as exc:
+            if stage in ('select', 'critique', 'critique_final', 'script_sense', 'board_review',
+                         'review', 'edit_review', 'creative_qa'):
+                raise ContractError(f'{exc}. For a review, use files: [] unless you wrote new local '
+                                    'review artifacts. Cite accepted input images in findings.target, '
+                                    'not files; do not invent relative paths or copy input media.') from exc
+            raise
     if stage == 'research':
         for key in ('brand_brief', 'creative_directions'):
             text(data, key)
@@ -97,9 +105,11 @@ def validate(stage, data, workspace, context):
                 raise ContractError('Unknown finding severity')
         if data['verdict'] == 'pass' and any(f['severity'] == 'blocking' for f in data['findings']):
             raise ContractError('Review cannot pass unresolved blockers')
-        if stage in ('script_sense', 'edit_review') and data['verdict'] == 'pass' and any(
+        strict = stage in ('script_sense', 'edit_review') or (
+            context.get('strict_review') and stage in ('board_review', 'creative_qa'))
+        if strict and data['verdict'] == 'pass' and any(
                 f['severity'] == 'important' for f in data['findings']):
-            raise ContractError('Story and edit reviews cannot pass unresolved important problems')
+            raise ContractError('Review cannot pass unresolved important problems')
         if data['verdict'] == 'revise' and not data['findings']:
             raise ContractError('Revision needs actionable findings')
         if stage == 'script_sense':

@@ -120,6 +120,24 @@ def test_accepted_output_tampering_is_detected(tmp_path):
     assert 'changed' in store.get(r['id'])['error']
 
 
+def test_accepted_manifest_tampering_is_detected(tmp_path):
+    store = Store(tmp_path); run = store.create(load_config())
+    def worker(profile, work, *args, **kwargs):
+        research_result(work)
+        return {'kind': 'ok'}
+    engine = Engine(store, execute=worker, resolve=fake_models, auth=lambda _: True)
+    engine.run(run['id'], max_steps=1)
+    task = store.get(run['id'])['tasks'][0]
+    manifest = Path(task['accepted_manifest'])
+    assert task['accepted_manifest_sha256']
+    manifest.chmod(0o644)
+    manifest.write_text('{}')
+    engine.run(run['id'], max_steps=0)
+    state = store.get(run['id'])
+    assert state['status'] == 'failed'
+    assert 'Accepted manifest changed' in state['error']
+
+
 def test_mid_run_tampering_rejects_next_result(tmp_path):
     store=Store(tmp_path);r=store.create(load_config())
     counter=[0]
@@ -314,7 +332,8 @@ def test_idle_research_falls_back_without_repeating_same_model(tmp_path):
     e = Engine(store, execute=worker, resolve=routes, auth=lambda _: True)
     e.run(run['id'], max_steps=1)
     assert store.get(run['id'])['tasks'][0]['status'] == 'succeeded'
-    assert calls == [('first', 180, 180), ('fallback', 180, 180)]
+    assert [c[0] for c in calls] == ['first', 'fallback']
+    assert all(0 < timeout <= 180 and idle <= timeout for _, timeout, idle in calls)
     assert store.get(run['id'])['tasks'][0]['attempts'][0]['kind'] == 'idle_timeout'
 
 

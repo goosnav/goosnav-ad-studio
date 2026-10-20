@@ -12,11 +12,12 @@ import zipfile
 from .contracts import ContractError, digest
 from .speech import normalize_loudness
 from .workers import supervise
+from .execution import bounded_timeout
 
 
 def run(argv, timeout=600):
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=bounded_timeout(timeout))
     except (OSError, subprocess.TimeoutExpired) as e:
         raise ContractError(f'Media tool unavailable or timed out: {e}') from e
     if r.returncode:
@@ -154,7 +155,7 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
     o=config['output']; look=o.get('look','clean')
     title=end_text(script, direction)
     enabled=o['cta'] and config['website'] and title and not title.lower().startswith('none')
-    if not enabled and look=='clean':
+    if not enabled:
         shutil.copy2(master,destination)
         level=normalize_loudness(destination,config)
         return {'summary':f'CTA skipped by project/script policy; loudness {level["integrated"]} LUFS',
@@ -194,7 +195,7 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
         'scale':o['width']/1080,'jobs':jobs},indent=2))
     runner=Path(__file__).with_name('frame_runner.py')
     r=supervise([python,str(runner),str(request)],cwd=work,prompt='',log=work/'frame.log',
-                timeout=config['limits']['production_timeout_seconds'],cancelled=cancelled)
+                timeout=bounded_timeout(config['limits']['production_timeout_seconds']),cancelled=cancelled)
     if r['kind'] != 'ok':
         raise ContractError(f'Frame failed ({r["kind"]}): {r["detail"][-1000:]}')
     inputs=[]
@@ -228,7 +229,7 @@ FLAT_SECONDS = 1.0
 def _gray(path, t, tools, size=(54, 68)):
     r = subprocess.run([tools['ffmpeg'], '-v', 'error', '-ss', f'{t:.3f}', '-i', str(path), '-frames:v', '1',
                         '-vf', f'scale={size[0]}:{size[1]}', '-pix_fmt', 'gray', '-f', 'rawvideo', '-'],
-                       capture_output=True, timeout=120)
+                       capture_output=True, timeout=bounded_timeout(120))
     if r.returncode or len(r.stdout) != size[0] * size[1]:
         raise ContractError(f'Could not read a frame at {t:.2f} s of {path}')
     return r.stdout
@@ -244,7 +245,7 @@ def check_picture(path, config, story_end, master=None, check_freeze=True):
     r = subprocess.run([tools['ffmpeg'], '-nostats', '-t', f'{story_end:.3f}', '-i', str(path), '-an', '-vf',
                         f'freezedetect=n=-60dB:d={MAX_FREEZE},blackdetect=d={MAX_BLACK}:pix_th=0.1,'
                         'fps=4,signalstats,metadata=print:file=-', '-f', 'null', '-'],
-                       capture_output=True, text=True, timeout=600)
+                       capture_output=True, text=True, timeout=bounded_timeout(600))
     log = r.stdout + r.stderr
     starts = [float(v) for v in re.findall(r'freeze_start: ([\d.]+)', log)]
     lengths = [float(v) for v in re.findall(r'freeze_duration: ([\d.]+)', log)]
