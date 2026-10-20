@@ -107,7 +107,7 @@ def test_engine_uploads_first_package_before_starting_the_second(tmp_path, monke
             events.append(('upload', snapshot['tasks'][1]['status']))
             names.add(target.rsplit('/', 1)[-1])
         return SimpleNamespace(stdout='\n'.join(names))
-    monkeypatch.setattr(delivery.subprocess, 'run', remote)
+    monkeypatch.setattr(delivery, '_bounded_run', remote)
     monkeypatch.setattr(delivery.shutil, 'which', lambda _: 'rclone')
     engine = Engine(store, resolve=fake_models, auth=lambda _: True, preflight=lambda _: [])
     def produce(snapshot, task, root):

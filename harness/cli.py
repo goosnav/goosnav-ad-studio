@@ -53,12 +53,15 @@ def doctor(config):
     from .preflight import check_dependencies
     checks['run_blockers']=check_dependencies(config) or 'none'
     checks['drive']={'destination':config['delivery']['drive'] or 'disabled (local-only)',
-                     'rclone':shutil.which('rclone') or 'MISSING (only needed if Drive is enabled)'}
+                     'rclone':shutil.which('rclone') or 'MISSING (only needed if Drive is enabled)',
+                     'deadline_guard':shutil.which('timeout') or 'MISSING: install GNU coreutils for Drive delivery'}
     return checks
 
 
 def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
     """Run; while every provider is cooling down, sleep to the earliest reset and continue."""
+    from .delivery_queue import recover_worker
+    recover_worker(store)
     queued=False
     while True:
         try:
@@ -190,7 +193,12 @@ def main(argv=None):
                 # The controller owns a full snapshot while rendering. Serialize
                 # manual uploads so an older receipt save cannot erase its progress.
                 with store.worker_lock():
-                    result=upload_run(store,store.get(a.id))
+                    from .streaming import deliver_ready
+                    result=deliver_ready(store,store.get(a.id))
+                    if not result.get('delivery'):
+                        result=upload_run(store,result)  # Explain missing config/package preconditions.
+                from .delivery_queue import recover_worker
+                recover_worker(store)
             elif a.cmd=='publish':
                 from .publication import publish_run
                 with store.worker_lock():
@@ -214,7 +222,10 @@ def main(argv=None):
                     raise ValueError('Supply RUN_ID or use cancel --all')
             elif a.cmd=='pause':
                 store.control(a.id,'pause');result={'id':a.id,'requested':'pause'}
-            elif a.cmd=='status':result=store.get(a.id)
+            elif a.cmd=='status':
+                from .delivery_queue import recover_worker
+                recover_worker(store)
+                result=store.get(a.id)
             elif a.cmd=='feedback':
                 from .learning import feedback
                 result=feedback(store,a.id,a.rating,a.note)
@@ -235,11 +246,10 @@ def main(argv=None):
                           file=sys.stderr, flush=True)
             if (a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial')
                     and result['config'].get('delivery', {}).get('drive')):
-                # Engine already delivers at each package checkpoint, then retries
-                # outstanding deliveries once on exit. Do not recopy the whole run.
-                if result.get('delivery', {}).get('status')=='failed':
-                    print('Drive delivery failed (local videos remain safe): '
-                          + result['delivery']['error'] + '\nRetry: ./ad upload ' + result['id'],
+                if result.get('delivery', {}).get('status') in ('failed','retrying'):
+                    from .delivery_queue import describe
+                    print('Drive delivery pending (background retries continue; local videos remain safe):\n'
+                          + describe(store, result),
                           file=sys.stderr,flush=True)
         print(json.dumps(result,indent=2))
         if a.cmd=='upload' and result['delivery']['status']!='uploaded':

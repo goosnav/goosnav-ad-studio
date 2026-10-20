@@ -189,8 +189,9 @@ class Engine:
                             self.builtin_task(state, task, root)
                     task['wall_seconds'] = task.get('wall_seconds', 0) + time.monotonic() - stage_started
                     self.budget.tick(True)
-                    if task['stage'] == 'package' and task['status'] == 'succeeded':
-                        self.deliver_finished(state)
+                    # The controller owns the snapshot during generation. Check
+                    # due deliveries at every boundary, not just the last ad.
+                    self.deliver_finished(state)
                     self.budget.check()
                     steps += 1
                     if task['status'] in ('waiting_provider', 'cancelled'):
@@ -224,6 +225,8 @@ class Engine:
             return state
 
     def deliver_finished(self, state):
+        if self.store.control_value(state['id']) != 'run':
+            return
         if not state['config'].get('delivery', {}).get('drive') or not any(
                 t['stage'] == 'package' and t['status'] == 'succeeded' for t in state['tasks']):
             return

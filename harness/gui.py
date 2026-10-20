@@ -149,10 +149,12 @@ class Handler(BaseHTTPRequestHandler):
         return str(LOCAL_CONFIG) if LOCAL_CONFIG.exists() else None
 
     def index(self):
+        from .delivery_queue import describe
         rows = ''.join(
             f'<tr><td><a href="/run/{quote(r["id"])}">{esc(r["id"])}</a></td><td class="{esc(r["status"])}">{esc(r["status"])}</td>'
             f'<td>{esc(r["config"]["concept"] or "(open brief)")}</td><td>{r["config"]["count"]}</td>'
-            f'<td>{sum(t["stage"] == "package" and t["status"] == "succeeded" for t in r["tasks"])}</td></tr>'
+            f'<td>{sum(t["stage"] == "package" and t["status"] == "succeeded" for t in r["tasks"])}</td>'
+            f'<td>{esc(describe(self.store, r)) if r.get("delivery") else "—"}</td></tr>'
             for r in self.store.list())
         target = load_config(self.config_path())['output']['target_seconds']
         return page('Ad Studio', '''<form method="post" action="/make">
@@ -161,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
 <label>Target seconds <input name="seconds" type="number" min="1" max="300" value="''' + str(target) + '''"></label>
 <label>Website override <input name="website" placeholder="from config"></label></p>
 <p><button>Make ads</button> Research, writing contest and production run unattended.</p></form>
-<h2>Runs</h2><table><tr><th>Run</th><th>Status</th><th>Concept</th><th>Ads</th><th>Delivered</th></tr>''' + rows + '</table>',
+<h2>Runs</h2><table><tr><th>Run</th><th>Status</th><th>Concept</th><th>Ads</th><th>Packaged</th><th>Drive delivery</th></tr>''' + rows + '</table>',
                     refresh=True)
 
     def run_page(self, run_id):
@@ -189,8 +191,11 @@ class Handler(BaseHTTPRequestHandler):
         choice = f'<h2>Selected scripts</h2><pre>{esc(json.dumps(selected, indent=2))}</pre>' if selected else ''
         events = ''.join(f'<li>{time.strftime("%H:%M:%S", time.localtime(e["at"]))} {esc(e["kind"])} {esc(json.dumps(e["data"])[:200])}</li>'
                          for e in self.store.events(run_id)[-25:])
+        from .delivery_queue import describe
+        delivery = (f'<h2>Drive delivery</h2><pre>{esc(describe(self.store, s))}</pre>'
+                    if s.get('delivery') else '')
         return page(f'Run {run_id}', f'<p>Status: <b class="{esc(s["status"])}">{esc(s["status"])}</b> {esc(s.get("error", ""))}</p>'
-                    f'<p>{controls}</p><p>Files: <code>{esc(self.store.root / "runs" / run_id)}</code></p>{media}{choice}'
+                    f'<p>{controls}</p>{delivery}<p>Files: <code>{esc(self.store.root / "runs" / run_id)}</code></p>{media}{choice}'
                     f'<h2>Tasks</h2><table><tr><th>Task</th><th>Status</th><th>Attempts</th><th>Worker</th><th>Result / feedback</th></tr>{rows}</table>'
                     f'<h2>Recent events</h2><ul>{events}</ul>', refresh=True)
 
@@ -241,6 +246,8 @@ def lan_addresses():
 
 
 def serve(home, host='0.0.0.0', port=8788, browser=True):
+    from .delivery_queue import recover_worker
+    recover_worker(Store(home))
     server, url = start(home, host, port)
     print(f'Ad Studio GUI: {url}' + ('  (already running)' if not server else
           '  (Ctrl+C to stop; runs continue in the background)'), file=sys.stderr, flush=True)

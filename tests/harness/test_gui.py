@@ -86,3 +86,17 @@ def test_start_reuses_running_studio_or_moves_off_busy_port(tmp_path, monkeypatc
         moved.shutdown(); moved.server_close()
     finally:
         blocker.close()
+
+
+def test_run_page_shows_pending_delivery_instead_of_silent_render_success(server):
+    import time
+    base, run, _ = server
+    saved = gui.Handler.store.get(run['id'])
+    saved['delivery'] = {'status': 'retrying', 'attempts': 2, 'next_retry_at': time.time() + 120,
+                         'error': 'rateLimitExceeded', 'verified': {}}
+    gui.Handler.store.save(saved, 'fixture')
+    body = get(base + f'/run/{run["id"]}')[1]
+    assert 'Drive delivery' in body
+    assert 'automatic retry' in body.lower()
+    assert 'rateLimitExceeded' in body
+    assert 'automatic retry' in get(base + '/')[1].lower()

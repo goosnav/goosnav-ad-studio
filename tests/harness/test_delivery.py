@@ -12,7 +12,8 @@ from harness.store import Store
 from harness.workflow import build_tasks
 
 
-NETWORK_FLAGS = ['--retries', '1', '--low-level-retries', '1', '--contimeout', '10s', '--timeout', '30s']
+NETWORK_FLAGS = ['--retries', '1', '--low-level-retries', '1', '--contimeout', '10s', '--timeout', '30s',
+                 '--tpslimit', '1', '--tpslimit-burst', '1', '--transfers', '1', '--checkers', '1']
 
 
 def fixture(tmp_path, count=1):

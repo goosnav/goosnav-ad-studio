@@ -15,6 +15,7 @@ class Busy(RuntimeError):
 class Store:
     def __init__(self, root):
         self.root = Path(root).expanduser().resolve()
+        self.worker_lock_fd = None
         self.root.mkdir(parents=True, exist_ok=True)
         self.db = self.root / 'state.sqlite3'
         with self.connect() as db:
@@ -93,11 +94,13 @@ class Store:
         cancelled = []
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            for run_id, raw in db.execute('SELECT id, state FROM runs ORDER BY id DESC').fetchall():
+            for run_id, raw, control in db.execute('SELECT id, state, control FROM runs ORDER BY id DESC').fetchall():
                 state = json.loads(raw)
-                if state['status'] in terminal:
+                delivery_pending = (state.get('delivery') or {}).get('status') in ('retrying', 'uploading', 'failed')
+                if state['status'] in terminal and (not delivery_pending or control == 'cancel'):
                     continue
-                state['status'] = 'cancelled'
+                if state['status'] not in terminal:
+                    state['status'] = 'cancelled'
                 db.execute('UPDATE runs SET control=?, state=? WHERE id=?',
                            ('cancel', json.dumps(state), run_id))
                 self._event(db, run_id, 'cancel_requested', {'all': True})
@@ -130,7 +133,9 @@ class Store:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as e:
                 raise Busy('Another controller owns this workspace; status/pause/cancel still work') from e
+            self.worker_lock_fd = lock.fileno()
             try:
                 yield
             finally:
+                self.worker_lock_fd = None
                 fcntl.flock(lock, fcntl.LOCK_UN)

@@ -69,6 +69,10 @@ def summary(run_id):
             print(f'Drive: {uploaded}/{s["config"]["count"]} videos uploaded | {d["remote"]}')
         elif d['status'] == 'uploading':
             print(f'Drive: {uploaded}/{s["config"]["count"]} videos verified | uploading finished ads')
+        elif d['status'] == 'retrying':
+            from harness.delivery_queue import describe
+            from harness.store import Store
+            print('Drive: ' + describe(Store(HOME), s))
         elif d['status'] == 'failed':
             print(f'Drive: {uploaded}/{s["config"]["count"]} videos verified | '
                   f'delivery pending: {d.get("error", "unknown error")[:240]}')
@@ -93,6 +97,11 @@ def summary(run_id):
                   f"python3 -m harness retry {run_id} --task {current['id']})")
         elif s['status'] in ('failed', 'needs_review') and s.get('error'):
             print(f"Why: {s['error'][:600]}\nThen: fix the source/configuration issue and ./ad resume {run_id}")
+    from harness.delivery_queue import _pending
+    from harness.store import Store
+    if (s['status'] in DONE and s['status'] not in ('paused', 'cancelled') and _pending(s)
+            and Store(HOME).control_value(run_id) == 'run'):
+        return 'waiting_delivery'
     return s['status']
 
 
@@ -154,7 +163,12 @@ def main():
                 return 1
             d = result.get('delivery', {})
             if d.get('status') != 'uploaded':
-                print(f'Drive upload failed: {d.get("error", "unknown error")}', file=sys.stderr)
+                if d.get('status') == 'retrying':
+                    print('Drive upload queued for automatic retry; no re-render needed.\n'
+                          f'Last error: {d.get("error", "unknown error")}\n'
+                          f'Follow: ./ad watch {run_id}', file=sys.stderr)
+                else:
+                    print(f'Drive upload failed: {d.get("error", "unknown error")}', file=sys.stderr)
                 return 1
             print(f'Uploaded to Drive: {d["remote"]}')
             return 0

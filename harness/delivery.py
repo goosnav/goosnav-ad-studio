@@ -7,15 +7,19 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
+import os
 import re
 import shutil
+import signal
 import subprocess
 import unicodedata
 from urllib.parse import urlparse
 
 
 _NETWORK_FLAGS = ['--retries', '1', '--low-level-retries', '1',
-                  '--contimeout', '10s', '--timeout', '30s']
+                  '--contimeout', '10s', '--timeout', '30s',
+                  '--tpslimit', '1', '--tpslimit-burst', '1',
+                  '--transfers', '1', '--checkers', '1']
 
 
 def _destination(value, run_id=None):
@@ -110,6 +114,44 @@ def _error(exc):
     return detail.strip()[-700:] or type(exc).__name__
 
 
+def _rate_limited(error):
+    detail = str(getattr(error, 'stderr', None) or error).lower()
+    return any(marker in detail for marker in (
+        'ratelimitexceeded', 'rate_limit_exceeded', 'rate limit exceeded',
+        'quota exceeded', 'userratelimitexceeded', 'too many requests', '429'))
+
+
+def _bounded_run(command, **kwargs):
+    """An independent watchdog keeps the deadline after controller death.
+
+    GNU timeout owns a separate process group, including the inherited lock.
+    Its TERM/KILL deadlines both precede the Python parent's outer deadline.
+    Rclone's own --timeout is only an idle timeout, not an absolute deadline.
+    """
+    seconds = kwargs.pop('timeout')
+    check = kwargs.pop('check', False)
+    if kwargs.pop('capture_output', False):
+        kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    guarded = ['timeout', '--signal=TERM', f'--kill-after={seconds * 0.05:g}s',
+               f'{seconds * 0.9:g}s', *command]
+    with subprocess.Popen(guarded, start_new_session=True, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=seconds)
+        except BaseException:
+            # A graceful Ctrl+C must kill the entire upload group before the
+            # controller releases its lock, not just kill the watchdog itself.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            raise
+        result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        if check:
+            result.check_returncode()
+        return result
+
+
 def upload_run(store, state, *, run=None, which=None):
     """Deliver finished MP4s, durably acknowledging each successful copy.
 
@@ -117,7 +159,7 @@ def upload_run(store, state, *, run=None, which=None):
     listing was interrupted is listed again before any retry copies it.
     Production callers must hold store.worker_lock(); Engine and CLI do so.
     """
-    run = subprocess.run if run is None else run
+    run = _bounded_run if run is None else run
     which = shutil.which if which is None else which
     previous = state.get('delivery', {})
     # Preserve plans and successful receipts even on a preflight failure.
@@ -166,10 +208,14 @@ def upload_run(store, state, *, run=None, which=None):
         if len(verified) < len(receipts) and not which('rclone'):
             raise RuntimeError('rclone not found; install it and run rclone config')
         command = ['rclone', *drive_flags, *_NETWORK_FLAGS]
+        # If the controller dies mid-copy, its uploader must retain exclusion
+        # until it exits. Otherwise a restarted worker can overlap that copy.
+        lock_fd = store.worker_lock_fd
+        inheritance = {'pass_fds': (lock_fd,)} if lock_fd is not None else {}
 
         def verify(candidates):
             result = run([*command, 'lsf', '--max-depth', '1', remote, '--files-only'],
-                         check=True, capture_output=True, text=True, timeout=60)
+                         check=True, capture_output=True, text=True, timeout=60, **inheritance)
             found = set(result.stdout.splitlines())
             for local in candidates:
                 if receipts[local]['name'] in found:
@@ -186,8 +232,12 @@ def upload_run(store, state, *, run=None, which=None):
             receipt = receipts[local]
             try:
                 run([*command, '--ignore-times', 'copyto', str(folder / local), prefix + receipt['name']],
-                    check=True, capture_output=True, text=True, timeout=120)
+                    check=True, capture_output=True, text=True, timeout=120, **inheritance)
             except Exception as exc:
+                # A shared-project quota applies to the whole batch, not one
+                # file. Stop here so the queue can cool down before any more I/O.
+                if _rate_limited(exc):
+                    raise RuntimeError(_error(exc)) from exc
                 errors.append(local + ': ' + _error(exc))
                 return
             acknowledged[local] = receipt

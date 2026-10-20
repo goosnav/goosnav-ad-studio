@@ -109,7 +109,7 @@ STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   # Stops running agents via their existing cancellation checks, within seconds.
   # Queued jobs exit promptly instead of waiting a 30-second queue interval.
   # No unrelated processes are killed; no finished MP4s or state are deleted.
-  ./ad upload [RUN_ID]         retry Drive upload of packaged MP4s/ZIPs; no re-render
+  ./ad upload [RUN_ID]         attempt/queue Drive upload of packaged MP4s only; no re-render
   ./ad cooldown status         show cached quota cooldowns
   ./ad cooldown clear          clear all cached cooldowns and let the next run retry providers
   ./ad cooldown clear codex    clear only that provider (also accepts claude)
@@ -145,6 +145,7 @@ WHERE THE OUTPUT GOES
 
 GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # 1. Install rclone and authorize a Google Drive remote on the render PC:
+  #    Linux/WSL also needs GNU coreutils' timeout (normally already installed).
   rclone config
   rclone lsd agent-exchange:             # replace with your actual remote name
   # 2. In harness.local.json, set delivery.drive to an rclone path or a
@@ -155,17 +156,44 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   #    finished videos ONLY into the configured Drive folder automatically.
   #    Names use the selected script title, a UTC date/time stamp, run suffix
   #    and ad index. Retry keeps the same name. MP4/ZIP source packages stay local.
-  # 4. Check ./ad status to see the upload outcome. If it fails:
-  ./ad upload [RUN_ID]                  # upload again, no re-render
+  # 4. Upload outages recover automatically; no manual resume/approval is needed.
+  ./ad status [RUN_ID]                  # verified count, last error, retry time, worker health
+  ./ad watch [RUN_ID]                   # keep watching through queued uploads, not just rendering
+  ./ad upload [RUN_ID]                  # explicit upload request; honors saved cooldowns
   # Status shows the verified video count independently of generation progress.
-  # Automatic delivery skips already-verified video bytes and retries pending
-  # uploads at the next completion/run exit. Manual upload is serialized with
-  # an active controller so it cannot overwrite newer generation state.
+  # Failures enter a durable queue. Retries start after 60-75 seconds, then
+  # back off exponentially with random jitter, capped at 30 minutes between
+  # attempts. There is NO attempt limit: queued videos keep retrying until
+  # verified uploaded, or until you explicitly pause/cancel the run or disable
+  # that run's saved Drive destination.
+  # A detached, single-worker queue keeps running after the render/controller
+  # exits or you close the terminal. Startup of make/run/resume/upload/status
+  # or the GUI recovers saved pending uploads if the worker was stopped.
+  # A powered-off computer cannot upload; reopen the CLI/GUI after a reboot.
+  # The worker log is delivery-worker.log under the harness home (the same
+  # STUDIO_HARNESS_HOME used by generation); the queue/receipts live in state.sqlite3.
+  # Copies are sequential, with one rclone API transaction per second and a
+  # burst size of one. A quota response stops the batch and sets a shared
+  # cooldown for other runs, instead of immediately trying every remaining ad.
+  # Automatic delivery skips already-verified video bytes. A copied video
+  # awaiting verification is listed again before recopying. All attempts use
+  # the controller lock, so a stale delivery snapshot cannot overwrite rendering.
+  # Production checks due retries at each stage boundary while it owns that lock.
   # Drive I/O has bounded timeouts and is excluded from the generation budget.
+  # An independent timeout watchdog kills a stalled uploader even if its
+  # controller dies; the uploader retains the lock until it exits so recovery
+  # cannot launch an overlapping copy or hold generation hostage indefinitely.
   # The rclone copy never deletes files on Drive. If Drive is down, the
-  # local MP4/ZIP remain intact and the render is still marked successful.
+  # local MP4/ZIP remain intact and the render is still marked successful,
+  # but delivery is explicitly marked RETRYING, not successfully delivered.
+  # Authentication/configuration/storage errors remain visible and queued too;
+  # retries cannot repair revoked credentials or a permanently full Drive.
+  # Prefer your own Google Drive client ID instead of rclone's shared API project:
+  # https://rclone.org/drive/#making-your-own-client-id
   # Partial runs with some packaged ads upload the successfully packaged ads.
-  # To disable upload, leave delivery.drive blank or remove the delivery key.
+  # To disable upload for NEW runs, leave delivery.drive blank or remove the
+  # delivery key. To stop a saved pending queue entry, ./ad pause RUN_ID or
+  # ./ad cancel RUN_ID (cancel all also stops pending deliveries).
   # You can also upload a prior local-only run by setting the delivery.drive
   # of that run using the saved run config, or by running rclone copy manually.
 

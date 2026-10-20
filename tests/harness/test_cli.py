@@ -185,3 +185,53 @@ def test_explicit_resume_reopens_failures_but_preserves_success_and_review_gates
     assert [t['status'] for t in reopen(state)['tasks']] == [
         'pending', 'pending', 'pending', 'succeeded', 'needs_review']
     assert state['tasks'][1]['revision'] == 1
+
+
+def test_render_controller_starts_detached_delivery_worker(tmp_path, monkeypatch):
+    from harness import delivery_queue
+    from harness.cli import drive
+    from tests.harness.test_delivery import fixture
+    store, state, _ = fixture(tmp_path)
+    started = []
+    monkeypatch.setattr(delivery_queue, 'ensure_worker', lambda s: started.append(s.root))
+    class Finished:
+        def run(self, run_id, max_steps=None):
+            assert started == [store.root]  # Worker is armed before rendering can finish or crash.
+            return store.get(run_id)
+    store.save(state, 'fixture')
+    drive(Finished(), store, state['id'])
+
+
+def test_status_reports_retry_time_error_and_worker_health(tmp_path, capsys, monkeypatch):
+    import runpy
+    import time
+    from harness import delivery_queue
+    from tests.harness.test_delivery import fixture
+    store, state, _ = fixture(tmp_path)
+    state.update(status='complete', delivery={'status': 'retrying', 'attempts': 3,
+                 'next_retry_at': time.time() + 120, 'error': 'rateLimitExceeded'})
+    module = runpy.run_path(str(ROOT / 'ad'))
+    summary = module['summary']
+    monkeypatch.setitem(summary.__globals__, 'harness', lambda *args: state)
+    monkeypatch.setitem(summary.__globals__, 'HOME', store.root)
+    monkeypatch.setattr(delivery_queue, 'worker_running', lambda _: True)
+    assert summary(state['id']) == 'waiting_delivery'  # watch must not stop at render completion.
+    output = capsys.readouterr().out
+    assert 'automatic retry' in output.lower()
+    assert 'attempt 3' in output.lower()
+    assert 'rateLimitExceeded' in output
+    assert 'worker running' in output.lower()
+    store.control(state['id'], 'pause')
+    assert summary(state['id']) == 'complete'
+    assert 'retries paused' in capsys.readouterr().out.lower()
+
+
+def test_watch_does_not_exit_while_background_attempt_is_uploading(tmp_path, monkeypatch):
+    import runpy
+    from tests.harness.test_delivery import fixture
+    store, state, _ = fixture(tmp_path)
+    state.update(status='complete', delivery={'status': 'uploading', 'verified': {}})
+    summary = runpy.run_path(str(ROOT / 'ad'))['summary']
+    monkeypatch.setitem(summary.__globals__, 'harness', lambda *args: state)
+    monkeypatch.setitem(summary.__globals__, 'HOME', store.root)
+    assert summary(state['id']) == 'waiting_delivery'
