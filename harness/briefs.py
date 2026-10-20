@@ -372,6 +372,8 @@ def scoped_config(config, stage):
     """Workers never need routes, retry budgets or delivery internals in their prompts."""
     keys = ('website', 'products', 'concept', 'brand', 'output')
     minimal = {key: config[key] for key in keys}
+    if stage in ('write', 'revise', 'select'):
+        minimal['count'] = config['count']
     if stage in ('research', 'write', 'direct', 'assets', 'audio', 'animate', 'edit'):
         minimal['sources'] = config['sources']
     if stage in ('direct', 'audio', 'animate', 'edit'):
@@ -454,6 +456,12 @@ def brief(task, config, inputs, sources, repair='', previous_runs='', modern=Fal
         # The writer may offer candidates for several products; count is still the total.
         length += (f"\nSelect EXACTLY {config['count']} script ID(s) in total, however many "
                    'products or candidates there are.')
+    if stage in ('write', 'revise'):
+        length += (f"\nCAMPAIGN SIZE: {config['count']} ads; return at least "
+                   f"{config['count'] * 2} candidate scripts in total (two per requested ad). "
+                   'The ad count is independent of the number of products. '
+                   'Give every candidate a unique ID and a distinct premise. On repair, preserve '
+                   'existing valid candidates and add the missing ones; resubmit the complete scripts array.')
     project = {'stage': stage, 'ad': task['ad'],
                'config': scoped_config(config, stage),
                'accepted_inputs': scoped_inputs(inputs, stage, compact=modern),

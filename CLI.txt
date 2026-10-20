@@ -182,6 +182,15 @@ PROVIDER FAILOVER / WAITING_PROVIDER
   # reviewing its findings). Automatic waiting does not reset attempt budgets.
   # A repair that fixes evidence but forgets to resubmit result.json can reuse
   # that revision's prior manifest ONLY if every contract/media check now passes.
+  # Campaign writing uses the requested AD count, not the number of products:
+  # 3 ads require at least 6 distinct candidate scripts. Writers receive both
+  # numbers explicitly. Short batches report expected/received/missing counts
+  # and instruct the next attempt to preserve valid candidates and add missing
+  # ones, then resubmit the complete result.json. Malformed script entries
+  # identify the array index/field to fix. Fallback and contract repairs remain
+  # bounded; invalid output never advances to selection.
+  # After pulling this fix, resume an older short-batch failure normally:
+  # it receives the corrected campaign brief and keeps its existing workspace.
   # Note: manual workers profiles with ONLY Claude cannot fall back to Codex.
 
 AGENT STALLS / TIMEOUTS

@@ -82,12 +82,27 @@ def validate(stage, data, workspace, context):
                 text(r, key)
     elif stage in ('write', 'revise'):
         scripts = data.get('scripts')
-        if not isinstance(scripts, list) or len(scripts) < context.get('count', 1) * 2:
-            raise ContractError('Need two distinct candidate scripts per requested ad')
+        count = context.get('count', 1)
+        required = count * 2
+        if not isinstance(scripts, list):
+            raise ContractError(f'scripts must be an array of at least {required} candidate objects '
+                                f'for {count} ads (two per ad), not an object or plain text.')
+        if len(scripts) < required:
+            raise ContractError(f'Need two distinct candidate scripts per requested ad: '
+                                f'{count} ads require at least {required}; received {len(scripts)}. '
+                                f'Preserve existing valid candidates and add {required - len(scripts)} '
+                                'distinct candidates with unique IDs. Ad count is not product count. '
+                                'Resubmit the complete scripts array in result.json.')
         ids = []
-        for script in scripts:
-            for key in ('id', 'title', 'premise', 'script', 'visual_direction', 'product', 'cta'):
-                text(script, key)
+        for index, script in enumerate(scripts):
+            if not isinstance(script, dict):
+                raise ContractError(f'scripts[{index}] must be an object with id, title, premise, '
+                                    'script, visual_direction, product, and cta as plain-text fields.')
+            try:
+                for key in ('id', 'title', 'premise', 'script', 'visual_direction', 'product', 'cta'):
+                    text(script, key)
+            except ContractError as exc:
+                raise ContractError(f'scripts[{index}]: {exc}') from exc
             ids.append(script['id'])
         if len(set(ids)) != len(ids):
             raise ContractError('Script IDs must be unique')
