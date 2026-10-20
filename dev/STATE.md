@@ -4,6 +4,12 @@ Updated: 2026-10-16 (fourth session)
 
 ## Current position
 
+2026-10-20 end-card policy update: the owner's early-web-2002 direction supersedes
+the historical clean black Helvetica URL notes below. New cards use a blue,
+underlined Times New Roman URL (bundled Times-compatible fallback), steady aliased
+type and ordered Bayer dithering on the floating product image. Story picture/audio
+remain untouched; no scanlines, RGB splitting, jitter, cursor or typewriter animation.
+
 **The harness is implemented and usable.** CLI, GUI, state machine, worker
 supervision with provider fallback, contracts, media checks, Frame CTA and
 packaging are built and tested. The first Goosnav MVP video is delivered. Final CTA correction and acceptance

@@ -253,7 +253,8 @@ modern-smooth. Low-poly models, tiny unfiltered textures, hard pixel edges, fog 
 world ends. The look comes from the scene plus the library's own PS1 finish (blender/ps1_finish.py:
 15-bit Bayer dither and a nearest-neighbour upscale, as in the library's character ads). Nothing
 else is added: no scanlines, CRT filters or jitter, and no text in the picture (Goosnav Frame
-sets the end text in clean type and does not post-process the picture).''',
+leaves the story picture untouched and gives only the end card the early-web-2002
+blue underlined Times link, steady pixel type and ordered product-image dither in PROJECT.frame_policy).''',
  'write': 'Write for that world: staging, framing and gags that play like a PS1 cutscene.',
  'direct': '''Direct it like a PS1 cutscene: blocky staging, simple readable silhouettes, stiff
 stepped body motion on twos (but every planned action is seen happening, never a one-frame pop),

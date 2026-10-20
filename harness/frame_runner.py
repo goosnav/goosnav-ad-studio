@@ -13,13 +13,24 @@ GEOMETRY = {'canvas': ('side_margin',), 'title': ('size', 'top'),
             'link': ('size', 'bottom', 'underline_thickness'), 'media': ('gap',)}
 
 
+def link_font(requested, available):
+    """Frame otherwise falls back to Helvetica Bold for an unavailable font ID."""
+    if requested == 'sys-times' and requested not in available:
+        return 'termes-regular'
+    return requested
+
+
 def main():
     request=json.loads(Path(sys.argv[1]).read_text())
     sys.path.insert(0,str(Path(request['root'])/'app/src'))
-    from goosnav_frame.core import export,settings
+    from goosnav_frame.core import export,settings,fonts
     k=request.get('scale',1); d=settings.defaults()
     for job in request['jobs']:
         raw=job['settings']
+        if raw.get('link', {}).get('visible'):
+            requested = raw['link'].get('font', d['link']['font'])
+            raw['link']['font'] = link_font(requested, fonts.available())
+            print(f'End-card link font: {raw["link"]["font"]} (requested {requested})', flush=True)
         for group,keys in GEOMETRY.items():
             for key in keys:
                 raw.setdefault(group,{}).setdefault(key,max(1,round(d[group][key]*k)))

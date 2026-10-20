@@ -200,6 +200,16 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
 FLOATING PRODUCT END CARDS
   # Reuse existing Minecraft-style item-drop videos; Frame trims them to the
   # end-card window, keeps typography steady, and retains the ad's original audio.
+  # The card is an early-web-2002 computer screen: white ground, black bold title,
+  # blue (#0000ee) UNDERLINED Times New Roman URL, steady aliased pixel type and
+  # ordered Bayer dithering on the product picture. No random jitter, blinking
+  # cursor, RGB splitting, scanlines, drop shadows or typewriter animation.
+  # Actual Times New Roman is preferred when installed; the bundled Times-compatible
+  # TeX Gyre Termes is the portable fallback, never Helvetica/sans for the URL.
+  # This treatment applies to end cards for every effort/look; the story and its
+  # audio remain untouched. PROJECT.frame_policy gives reviewers the same contract.
+  # frame: full keeps the same blue Times link and steady pixel type, but does
+  # not dither the story picture. Product-image dithering is closing-card-only.
   # Configure output.end_card_library (relative to the config file, or absolute)
   # when these clips live in a different library from your scene/character assets.
   # Empty uses the normal configured asset library. No asset folder is built into code.

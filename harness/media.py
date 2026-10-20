@@ -141,16 +141,15 @@ def balance(title, longest=16):
     return title[:cut] + '\n' + title[cut + 1:]
 
 
-# Frame never post-processes the picture or animates text (owner, 2026-10-16: no scanlines,
-# crunch, jitter or typewriter). A look only changes how workers build the film itself.
+# The story is untouched. The owner-approved 2002 treatment belongs to the card only.
 CLEAN = {'retro': {'enabled': False}, 'media_fx': {'mode': 'none'}}
 
 
 def finish_frame(master, script, config, work, cancelled, direction=None):
     """Frame writes all end text. end_card: the closing seconds become a native Frame card
     (title above the picture, link below, Frame's own fonts); full: the whole ad is framed.
-    Frame's type is always clean (CLEAN); output.look only affects production. The ad's audio
-    runs straight through."""
+    The closing card uses the shared early-web typography/dither contract, independent
+    of output.look. The story and the ad's audio run straight through."""
     work=Path(work).resolve(); destination=work/'final.mp4'; master=str(Path(master).resolve())
     o=config['output']; look=o.get('look','clean')
     title=end_text(script, direction)
@@ -185,7 +184,8 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
             'media':{'fit':'cover','trim_start':0,'trim_duration':start,'keep_audio':False},
             'export':export_settings,**CLEAN}})
     if enabled:
-        from .frame_policy import LINK
+        from .frame_policy import LINK, CARD
+        treatment = CARD if o['frame'] == 'end_card' else {**CARD, 'media_fx': CLEAN['media_fx']}
         text=balance(title); link=link_text(config['website'])
         if o['frame'] == 'end_card':
             from .end_cards import prepare_clip
@@ -197,7 +197,7 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
             'canvas':{**canvas,'layout':'stacked'},'title':{'visible':True,'text':text},
             'link':{**LINK,'visible':True,'text':link},
             'media':{'fit':'contain','trim_start':0 if clip else start,'keep_audio':False},
-            'export':export_settings,**CLEAN}})
+            'export':export_settings,**treatment}})
     request=work/'frame.json';request.write_text(json.dumps({'root':str(root),'input':master,
         'scale':o['width']/1080,'jobs':jobs},indent=2))
     runner=Path(__file__).with_name('frame_runner.py')

@@ -2,6 +2,9 @@
 
 WORLD = '''LOOK: an inhabited early-3D game world, inspired by the atmosphere and impressionistic
 detail of early Half-Life, Halo and Minecraft, with original Goosnav art and characters.
+It should feel encountered on the internet of 2002: an uncanny little game-world film,
+not a glossy contemporary commercial or a random neon "retro" filter. The deterministic
+end card supplies the blue underlined Times browser link and dithered computer-screen finish.
 Low-poly silhouettes, tactile small textures, a purposeful palette, pools of light, depth,
 and a few specific objects imply a life beyond the camera. Avoid an empty grey studio unless
 the joke requires it. Detail should reward looking without obscuring the face or product.

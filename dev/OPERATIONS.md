@@ -116,16 +116,20 @@ video's audio again.
 `frame`: Goosnav Frame writes all end text. The last `output.end_card_seconds`
 (default 2.5; the director may lengthen it) become a native Frame stacked card:
 the director's title in Frame's bold type over the closing picture, the website as
-black Helvetica Regular without underline, white ground, Frame's own sizes scaled to the canvas.
+blue (#0000ee), underlined Times New Roman (bundled Times-compatible Termes fallback),
+white ground, Frame's own sizes scaled to the canvas. The card uses stable aliased
+pixel type and ordered Bayer product-image dithering: an early-web-2002 screen.
 Everything before it is the edit's picture; the audio runs straight through.
-`output.frame: "full"` frames the whole ad instead.
+`output.frame: "full"` frames the whole ad with the same type but no added media
+dithering, so the story picture isn't crunched by a closing-card effect.
 
 `output.look` sets the visual era of the production. `clean` (the default) is a normal
 render. `ps1` asks every stage for a PS1 cutscene: the library's PS1 models rendered
 natively at 1/5 size with no anti-aliasing, nearest textures, fog and body motion on
-twos, then a 5x nearest upscale. Frame never post-processes the picture or animates
-text for any look (owner decision 2026-10-16: no scanlines, dither, jitter or
-typewriter). All on-screen text is Frame's clean end card; workers bake no text.
+twos, then a 5x nearest upscale. Frame leaves the story picture untouched. The
+owner's 2026-10-20 end-card policy supersedes the older clean-type rule: the card
+has pixel type and ordered picture dither, but no scanlines, RGB split, jitter,
+blinking cursor or typewriter animation. Workers still bake no text into scenes.
 
 A review that says `revise` rewinds to the stage it names in `restart` (scripts go
 back to `revise`; an ad to `direct`, `assets`, `audio`, `animate` or, after the

@@ -182,20 +182,25 @@ dialogue list, sound rationale, and an audio stream.
 Goosnav Frame writes all end text. Never render titles, URLs, captions or end cards
 into the picture. After the edit, the controller hands the last `end_card.seconds` of
 the master to Frame, which lays it out in its stacked format: the director's title in
-Frame's black Helvetica Bold above the picture, the web address in black Helvetica
-Regular without an underline
-below, on white. That window of the master should therefore be a clean product hero
+Frame's black Helvetica Bold above the picture, the web address in blue (#0000ee),
+underlined Times New Roman below, on white. The owner-approved early-web-2002 card
+uses steady aliased pixel type and ordered product-image dithering, not a random
+retro overlay. Bundled Times-compatible Termes is used if Times New Roman is unavailable.
+That window of the master should therefore be a clean product hero
 shot. Prefer an existing floating-item clip: the controller maps `end_card.product`
 (the exact configured product name), or the selected script's product, through
 `output.end_card_clips` and resolves its asset ID in the configured library. It
 trims a video-only excerpt and keeps the ad audio. Do not recreate an available clip.
 For an unmapped product, animate the real model with slow item-style bob/rotation,
 preserving its artwork and silhouette. With `output.frame: full`
-Frame frames the whole ad the same way. The ad's audio runs unchanged under the card.
+Frame frames the whole ad with the same type but keeps media processing clean;
+picture dithering is closing-card-only. The ad's audio runs unchanged under the card.
 `cta: "none"` is supported when an ad should have no CTA. With `output.look: ps1`,
 render at native 1/3 resolution and run `blender/ps1_finish.py` once for the library
-dither and nearest 3x upscale. Frame uses clean typography and leaves the finished
-picture alone. No scanlines, jitter or typewriter effects.
+dither and nearest 3x upscale. Frame leaves the story alone; only the end card
+receives the shared 2002 treatment, regardless of look/effort. No scanlines,
+jitter, RGB splitting, blinking cursor or typewriter effects. PROJECT.frame_policy
+is authoritative if older notes describe a black sans-serif link.
 
 ## The director
 
