@@ -146,12 +146,21 @@ and the [live publication ledger](docs/production-upgrade-progress.md).
 Configure `output.folder` (a local absolute path) and `delivery.drive` (an
 rclone destination such as `agent-exchange:deliverables/ad-studio`) in
 `harness.local.json`, then authorize that remote with `rclone config` on the
-render machine. `./ad "prompt"` now uploads packaged MP4/ZIP files to
-`<delivery.drive>/<RUN_ID>/` after rendering, verifies their names via rclone,
+render machine. `./ad "prompt"` uploads only the finished MP4s to the configured
+folder after rendering, using script-title filenames with stable UTC timestamps
+and run/ad suffixes to avoid collisions. Source ZIPs remain local. It verifies the names via rclone,
 and records the delivery status. Upload errors never delete local renders or
 change a successful render status. Check `./ad status`; retry without
 re-rendering via `./ad upload [RUN_ID]`. Leave `delivery.drive` blank to disable
 Drive delivery entirely. See [`CLI.txt`](CLI.txt).
+
+For floating product end cards, configure `output.end_card_clips` with product
+names and active `end_card_video` catalog IDs. `output.end_card_library` can point
+to the clip library independently of a character-library refactor. The asset
+submodule includes the original Book 2 and Goosklerf pack item-drop videos;
+`harness.example.json` shows the mappings. Frame trims or loops an excerpt to fit
+the ending and preserves the ad audio. A missing clip falls back to the rendered
+hero with a recorded reason; new animation is needed only for unmapped products.
 
 ## Film toolkit
 

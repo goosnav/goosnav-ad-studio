@@ -249,6 +249,20 @@ def _legacy(config, root, *, committed_inventory=False):
     return entries
 
 
+def catalog_file(config, identifier, *, kind=None):
+    """Resolve one active primary file without hydrating unrelated catalog assets.
+
+    Metadata is validated normally. Only the requested file's content is verified;
+    previews are not resolved. Relocation and archive rules match catalog().
+    """
+    root = library_root(config)
+    record = next((e for e in _document(_catalog_path(config, root))['entries']
+                   if e['id'] == identifier and e['status'] == 'active'), None)
+    if record is None or (kind is not None and record['kind'] != kind):
+        raise LibraryError(f'Asset unavailable, retired or wrong kind: {identifier}')
+    return {**record, 'path': str(_resolve(root, record, {}))}
+
+
 def catalog(config):
     """Return active entries with absolute verified paths; never write discovery results.
 

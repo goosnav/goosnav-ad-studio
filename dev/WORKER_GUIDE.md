@@ -184,7 +184,12 @@ into the picture. After the edit, the controller hands the last `end_card.second
 the master to Frame, which lays it out in its stacked format: the director's title in
 Frame's bold type above the picture, the web address in Frame's blue underlined link
 below, on white. That window of the master should therefore be a clean product hero
-shot (the real product model, large and square to camera). With `output.frame: full`
+shot. Prefer an existing floating-item clip: the controller maps `end_card.product`
+(the exact configured product name), or the selected script's product, through
+`output.end_card_clips` and resolves its asset ID in the configured library. It
+trims a video-only excerpt and keeps the ad audio. Do not recreate an available clip.
+For an unmapped product, animate the real model with slow item-style bob/rotation,
+preserving its artwork and silhouette. With `output.frame: full`
 Frame frames the whole ad the same way. The ad's audio runs unchanged under the card.
 `cta: "none"` is supported when an ad should have no CTA. With `output.look: ps1`,
 render at native 1/3 resolution and run `blender/ps1_finish.py` once for the library

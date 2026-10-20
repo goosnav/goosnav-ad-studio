@@ -54,6 +54,10 @@ so a reloaded, stale source configuration cannot select a same-named replacement
 Read operations never rewrite the catalog or configuration. Identity errors raise
 `LibraryError`, a subclass of the harness's `ContractError`. Snapshot identities
 contain exactly `id`, `kind`, and `sha256`; they contain no machine-specific paths.
+`catalog_file(config, asset_id, kind=...)` resolves and verifies only one active
+primary file, with the same relocation and archive rules. It does not resolve
+previews or require unrelated assets to be hydrated. End-card video reuse uses
+this targeted API; catalog metadata still undergoes the normal validation.
 Resume resolution fails explicitly if any saved asset is retired, unavailable,
 ambiguous, or changed. The controller must invalidate affected plans instead of
 silently substituting another asset. This API does not itself modify run state.

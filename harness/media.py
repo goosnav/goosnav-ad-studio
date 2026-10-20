@@ -177,6 +177,7 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
     canvas={'preset':'custom','width':o['width'],'height':o['height'],'background':'#ffffff'}
     export_settings={'format':'mp4','fps':o['fps'],'quality':'high'}
     jobs=[]
+    card_source = {'mode': 'master', 'reason': 'Full-ad framing uses the master'}
     if start>0:
         # The story keeps the edit's picture untouched, never text.
         jobs.append({'output':str(work/'story.mp4'),'settings':{
@@ -185,11 +186,16 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
             'export':export_settings,**CLEAN}})
     if enabled:
         text=balance(title); link=link_text(config['website'])
+        if o['frame'] == 'end_card':
+            from .end_cards import prepare_clip
+            card_source = prepare_clip(script, direction, config, work, duration-start)
+        clip = card_source.get('path')
         jobs.append({'output':str(work/'card.mp4'),'still':str(work/'end_card.png'),
+            **({'input': str(work/clip)} if clip else {}),
             'still_time':min(1.5,(duration-start)*.75),'settings':{
             'canvas':{**canvas,'layout':'stacked'},'title':{'visible':True,'text':text},
             'link':{'visible':True,'text':link},
-            'media':{'fit':'contain','trim_start':start,'keep_audio':False},
+            'media':{'fit':'contain','trim_start':0 if clip else start,'keep_audio':False},
             'export':export_settings,**CLEAN}})
     request=work/'frame.json';request.write_text(json.dumps({'root':str(root),'input':master,
         'scale':o['width']/1080,'jobs':jobs},indent=2))
@@ -214,10 +220,12 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
     files=[{'path':'final.mp4','kind':'video'},{'path':'frame.json','kind':'source'}]
     if enabled:
         files.insert(1,{'path':'end_card.png','kind':'image'})
+    if card_source.get('path'):
+        files.append({'path':card_source['path'],'kind':'video'})
     what=(f'Frame {o["frame"].replace("_"," ")} from {start:.2f} s: "{title}" + {link_text(config["website"])}'
           if enabled else 'CTA skipped by project/script policy')
     return {'summary':f'{what}; {look} look; edit audio at {level["integrated"]} LUFS','master':'final.mp4',
-            'end_card_start':start if enabled else None,'loudness':level,'files':files}
+            'end_card_start':start if enabled else None,'end_card_media':card_source,'loudness':level,'files':files}
 
 
 MAX_FREEZE = 1.9      # s of identical picture in the story (a held beat still has life in it)

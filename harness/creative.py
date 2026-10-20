@@ -157,7 +157,10 @@ It caches verified frames and resumes after interruption; pack resources before 
 Use the finished animatic as the final picture when it already meets delivery requirements;
 do not render twice merely because stages have different names.
 Return scene, rigs:{speaker:armature}, preview, source and files declaring all dependencies.
-No text overlays: the deterministic Frame stage handles them.'''
+No text overlays: the deterministic Frame stage handles them. It reuses a configured product
+item-drop video for the end card when available; do not rebuild that clip. Without a matching
+clip, use the actual product model for a slow bob/rotation in the final hero window. Preserve
+original textures and leave enough air around its silhouette.'''
     if stage == 'board_review':
         return '''Review each storyboard and the measured dialogue performance together, once, before
 animation. Check the causal joke, reaction timing, faces/product at phone size, environment,

@@ -27,10 +27,11 @@ def main():
         if retro.get('enabled'):
             # Frame draws the underline in retro pixels; thinner than one pixel inverts the box.
             raw['link']['underline_thickness']=max(raw['link']['underline_thickness'],retro.get('pixel',d['retro']['pixel']))
-        export.export_mp4(settings.normalize(raw),request['input'],Path(job['output']))
+        source = job.get('input', request['input'])
+        export.export_mp4(settings.normalize(raw),source,Path(job['output']))
         if job.get('still'):
             still=settings.normalize({**raw,'export':{**raw['export'],'time':job['still_time']}})
-            export.export_png(still,request['input'],Path(job['still']))
+            export.export_png(still,source,Path(job['still']))
 
 
 if __name__ == '__main__':main()

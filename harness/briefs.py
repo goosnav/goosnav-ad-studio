@@ -104,10 +104,13 @@ Plan the whole ad second by second against TARGET LENGTH:
   they talk, unobstructed and large enough to see the mouth move; the controller rejects a
   line nobody can be seen saying unless offscreen gives the reason and the visible source. Generate scratch takes with the cast voices through the audio helper and time the
   lines from measured durations; rewrite or cut a line rather than rush it.
-- end_card: {seconds, title, picture}. Goosnav Frame writes the end text, nothing else does:
+- end_card: {seconds, title, picture, product?}. Goosnav Frame writes the end text, nothing else does:
   it puts the title above the closing picture and the web address under it on a white card.
-  title is the CTA copy (short, no URL); picture is the clean product hero shot under it (the
-  real product model large and square to camera, no text in the render). seconds >= the
+  title is the CTA copy (short, no URL); product is the exact configured product name.
+  The controller prefers its configured existing floating-item video, trimmed to this window.
+  picture describes the fallback product hero: gently bobbing/rotating like a Minecraft item,
+  real artwork intact, readable silhouette, no text in the render. Create new motion only when
+  no suitable existing clip applies. seconds >= the
   configured output.end_card_seconds. Dialogue normally ends before the card.
 - mix: direction for sound (dialogue is always the lead; what effects and ambience do, where
   silence is used, music or none).

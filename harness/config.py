@@ -29,6 +29,7 @@ DEFAULTS = {
                # Frame writes the end text. end_card: the last seconds become a Frame card
                # (title, picture, link); full: the whole ad is framed like a Frame post.
                'frame': 'end_card', 'end_card_seconds': 2.5,
+               'end_card_library': '', 'end_card_clips': [],
                # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
                'look': 'retro_world', 'loudness': -14},
     'workers': worker_presets(),
@@ -138,6 +139,21 @@ def load_config(path=None, overrides=None):
         raise ConfigError('output.frame must be end_card or full')
     if type(o['end_card_seconds']) not in (int, float) or not 0.5 <= o['end_card_seconds'] <= 30:
         raise ConfigError('output.end_card_seconds must be from 0.5 to 30 (capped at half the ad)')
+    clips = o['end_card_clips']
+    if not isinstance(clips, list):
+        raise ConfigError('output.end_card_clips must be a list of product/asset_id/start objects')
+    products = set()
+    for clip in clips:
+        if (not isinstance(clip, dict) or set(clip) - {'product', 'asset_id', 'start'}
+                or any(not isinstance(clip.get(k), str) or not clip[k].strip() for k in ('product', 'asset_id'))):
+            raise ConfigError('Each end-card clip needs product and asset_id text, plus optional start seconds')
+        name = clip['product'].strip().casefold()
+        if name in products:
+            raise ConfigError('End-card clip products must be unique')
+        products.add(name)
+        start = clip.get('start', 0)
+        if type(start) not in (int, float) or not 0 <= start <= 3600:
+            raise ConfigError('End-card clip start must be from 0 to 3600 seconds')
     if type(o['cta']) is not bool or type(c['audio']['allow_piper_fallback']) is not bool:
         raise ConfigError('cta and allow_piper_fallback must be booleans')
     for role, routes in c['workers'].items():
@@ -166,7 +182,7 @@ def load_config(path=None, overrides=None):
         for key in keys:
             if not isinstance(c[group][key], str):
                 raise ConfigError(f'{group}.{key} must be text')
-    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python'), ('output', 'folder'), ('library', 'root')]:
+    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python'), ('output', 'folder'), ('output', 'end_card_library'), ('library', 'root')]:
         value = c[group][key]
         if not isinstance(value, str):
             raise ConfigError(f'{group}.{key} must be a path string')

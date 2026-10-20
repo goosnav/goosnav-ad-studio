@@ -151,7 +151,9 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   #    Google Drive folder URL. Folder URLs use the configured agent-exchange remote.
   #    "delivery": {"drive": "https://drive.google.com/drive/folders/FOLDER_ID"}
   # 3. Run ./ad "..." normally. It renders locally first and then uploads
-  #    finished ad-NN.mp4 + ad-NN.zip to <drive>/<RUN_ID>/ automatically.
+  #    finished videos ONLY into the configured Drive folder automatically.
+  #    Names use the selected script title, a UTC date/time stamp, run suffix
+  #    and ad index. Retry keeps the same name. MP4/ZIP source packages stay local.
   # 4. Check ./ad status to see the upload outcome. If it fails:
   ./ad upload [RUN_ID]                  # upload again, no re-render
   # The rclone copy never deletes files on Drive. If Drive is down, the
@@ -160,6 +162,26 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # To disable upload, leave delivery.drive blank or remove the delivery key.
   # You can also upload a prior local-only run by setting the delivery.drive
   # of that run using the saved run config, or by running rclone copy manually.
+
+FLOATING PRODUCT END CARDS
+  # Reuse existing Minecraft-style item-drop videos; Frame trims them to the
+  # end-card window, keeps typography steady, and retains the ad's original audio.
+  # Configure output.end_card_library (relative to the config file, or absolute)
+  # when these clips live in a different library from your scene/character assets.
+  # Empty uses the normal configured asset library. No asset folder is built into code.
+  # Map product names to active catalog IDs in output.end_card_clips, for example:
+  # "end_card_clips": [
+  #   {"product":"Goosnav Book 2","asset_id":"end-card-book2-item","start":0},
+  #   {"product":"Goosklerf","asset_id":"end-card-goosklerf-pack-item","start":0}
+  # ]
+  # See harness.example.json. The bundled asset submodule contains both clips.
+  # end_card.product may specify the exact configured name; otherwise the script's
+  # product field selects the mapping. A short clip loops to fill the window.
+  # Catalog hashes resolve moved clips; archived/retired assets are never used.
+  # A missing, undecodable or ambiguous clip falls back to the rendered hero and
+  # records why in the frame result. Make new item animations when no suitable
+  # existing video applies, preserving the real product art.
+  # New runs capture these settings; existing run snapshots retain their config.
 
 PROVIDER FAILOVER / WAITING_PROVIDER
   # The intensity chooses the primary provider by default; -p changes the

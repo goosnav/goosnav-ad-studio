@@ -139,15 +139,20 @@ def test_upload_accepts_drive_folder_link_and_uses_folder_id(tmp_path):
     (run_folder / 'ad-01.zip').write_bytes(b'zip')
     state['tasks'] = [{'stage': 'package', 'status': 'succeeded', 'ad': 0}]
     calls = []
+    uploaded = []
     def fake_run(args, **kwargs):
         calls.append(args)
-        class Result: stdout = 'ad-01.mp4\nad-01.zip\n'
+        if 'copyto' in args:
+            uploaded.append(args[args.index('copyto') + 2].split(':', 1)[1])
+        class Result: stdout = '\n'.join(uploaded) + '\n'
         return Result()
     result = upload_run(store, state, run=fake_run, which=lambda _: '/usr/bin/rclone')
     assert result['delivery']['status'] == 'uploaded'
     assert calls[0][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
     assert calls[1][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
-    assert 'agent-exchange:' + state['id'] in calls[0]
+    assert calls[0][-1].startswith('agent-exchange:ad-video-')
+    assert calls[0][-1].endswith('-ad-01.mp4')
+    assert calls[1][-2:] == ['agent-exchange:', '--files-only']
 
 
 def test_explicit_resume_reopens_failures_but_preserves_success_and_review_gates():
