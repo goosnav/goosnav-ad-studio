@@ -69,6 +69,10 @@ def test_frame_writes_a_native_end_card_and_keeps_the_audio(tmp_path):
     pcm=subprocess.run(['ffmpeg','-v','error','-ss','3','-i',str(final),'-t','0.5','-vn','-f','s16le','-ac','1','-'],
                        capture_output=True,check=True).stdout
     assert max(abs(int.from_bytes(pcm[i:i+2],'little',signed=True)) for i in range(0,len(pcm),2))>1000
+    rgb=subprocess.run(['ffmpeg','-v','error','-ss','3','-i',str(final),'-frames:v','1',
+                        '-vf','crop=iw:100:0:440','-pix_fmt','rgb24','-f','rawvideo','-'],
+                       capture_output=True,check=True).stdout
+    assert max(rgb[i+2]-rgb[i] for i in range(0,len(rgb),3)) < 20  # black system URL, no blue-link default
 
 
 def test_long_end_titles_break_into_two_big_lines():

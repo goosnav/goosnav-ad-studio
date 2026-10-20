@@ -164,7 +164,11 @@ original textures and leave enough air around its silhouette.'''
     if stage == 'board_review':
         return '''Review each storyboard and the measured dialogue performance together, once, before
 animation. Check the causal joke, reaction timing, faces/product at phone size, environment,
-and whether the proposed action was actually tested. Listen only if your tools support listening;
+and whether the proposed action was actually tested. Fixed features of an approved character
+(including its built-in smile) are capabilities to stage around, not defects by themselves.
+Evaluate the causal reaction in context; never require unsupported expressions or new face art.
+PROJECT.frame_policy is authoritative over style prose in upstream picture descriptions.
+Listen only if your tools support listening;
 otherwise clearly mark acting quality unverified. Intelligibility does not prove good acting.
 Reject concrete blockers or important defects, not differences in personal taste. Do not demand
 more motion just to fill a frame. Return summary, files:[], verdict:pass|revise,

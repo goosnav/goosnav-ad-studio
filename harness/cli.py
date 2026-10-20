@@ -187,7 +187,10 @@ def main(argv=None):
                         time.sleep(1)
                 result=store.get(a.id) if cancelled else drive(Engine(store),store,a.id)
             elif a.cmd=='upload':
-                result=upload_run(store,store.get(a.id))
+                # The controller owns a full snapshot while rendering. Serialize
+                # manual uploads so an older receipt save cannot erase its progress.
+                with store.worker_lock():
+                    result=upload_run(store,store.get(a.id))
             elif a.cmd=='publish':
                 from .publication import publish_run
                 with store.worker_lock():
@@ -232,8 +235,9 @@ def main(argv=None):
                           file=sys.stderr, flush=True)
             if (a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial')
                     and result['config'].get('delivery', {}).get('drive')):
-                result=upload_run(store,result)
-                if result['delivery']['status']=='failed':
+                # Engine already delivers at each package checkpoint, then retries
+                # outstanding deliveries once on exit. Do not recopy the whole run.
+                if result.get('delivery', {}).get('status')=='failed':
                     print('Drive delivery failed (local videos remain safe): '
                           + result['delivery']['error'] + '\nRetry: ./ad upload ' + result['id'],
                           file=sys.stderr,flush=True)

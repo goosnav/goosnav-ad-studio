@@ -12,6 +12,9 @@ from harness.store import Store
 from harness.workflow import build_tasks
 
 
+NETWORK_FLAGS = ['--retries', '1', '--low-level-retries', '1', '--contimeout', '10s', '--timeout', '30s']
+
+
 def fixture(tmp_path, count=1):
     store = Store(tmp_path / 'state')
     output = tmp_path / 'output'
@@ -46,6 +49,8 @@ class Drive:
     def __call__(self, cmd, **kwargs):
         self.calls.append(cmd)
         assert kwargs['check'] and kwargs['capture_output'] and kwargs['text']
+        assert kwargs['timeout'] <= (120 if 'copyto' in cmd else 60)
+        assert all(flag in cmd for flag in NETWORK_FLAGS)
         if 'copyto' in cmd:
             index = cmd.index('copyto')
             source, destination = cmd[index+1:index+3]
@@ -73,8 +78,8 @@ def test_upload_only_video_to_flat_folder_and_persist_names(tmp_path):
     assert receipt['files'] == [name]
     assert receipt['remote'] == 'agent-exchange:deliverables/ad-studio'
     assert drive.calls == [
-        ['rclone', 'copyto', str(folder / 'ad-01.mp4'), receipt['remote'] + '/' + name],
-        ['rclone', 'lsf', receipt['remote'], '--files-only'],
+        ['rclone', *NETWORK_FLAGS, '--ignore-times', 'copyto', str(folder / 'ad-01.mp4'), receipt['remote'] + '/' + name],
+        ['rclone', *NETWORK_FLAGS, 'lsf', '--max-depth', '1', receipt['remote'], '--files-only'],
     ]
     assert drive.files == {'old-upload.zip', 'unrelated.mp4', name}
     assert (folder / 'ad-01.mp4').read_bytes() == b'video'
@@ -97,7 +102,7 @@ def test_missing_rclone_does_not_change_render_status(tmp_path):
     assert 'rclone' in result['delivery']['error']
 
 
-def test_missing_mp4_prevents_any_upload_even_when_other_ads_exist(tmp_path):
+def test_missing_mp4_does_not_block_other_finished_ads(tmp_path):
     store, state, folder = fixture(tmp_path, 2)
     (folder / 'ad-02.mp4').unlink()
     drive = Drive()
@@ -106,7 +111,8 @@ def test_missing_mp4_prevents_any_upload_even_when_other_ads_exist(tmp_path):
     assert result['status'] == 'complete'
     assert result['delivery']['status'] == 'failed'
     assert 'ad-02.mp4' in result['delivery']['error']
-    assert drive.calls == []
+    assert len([c for c in drive.calls if 'copyto' in c]) == 1
+    assert set(result['delivery']['verified']) == {'ad-01.mp4'}
 
 
 def test_remote_listing_must_verify_every_named_video_then_retry_succeeds(tmp_path):
@@ -231,8 +237,10 @@ def test_failed_copy_persists_plan_before_upload_and_retry_keeps_names(tmp_path)
     second = deliver(store, state, drive)
     assert second['delivery']['status'] == 'uploaded'
     assert second['delivery']['names'] == names
-    assert drive.calls[0] == drive.calls[2]
-    assert drive.calls[1] == drive.calls[3]
+    copies = [c for c in drive.calls if 'copyto' in c]
+    assert len(copies) == 3
+    assert copies[1] == copies[2]
+    assert set(second['delivery']['verified']) == {'ad-01.mp4', 'ad-02.mp4'}
 
 
 @pytest.mark.parametrize(('destination', 'remote', 'flags'), [
@@ -250,8 +258,8 @@ def test_destinations_use_configured_folder_without_run_subfolder(tmp_path, dest
     assert receipt['remote'] == remote
     joiner = '' if remote.endswith(':') else '/'
     assert drive.calls == [
-        ['rclone', *flags, 'copyto', str(folder / 'ad-01.mp4'), remote + joiner + receipt['files'][0]],
-        ['rclone', *flags, 'lsf', remote, '--files-only'],
+        ['rclone', *flags, *NETWORK_FLAGS, '--ignore-times', 'copyto', str(folder / 'ad-01.mp4'), remote + joiner + receipt['files'][0]],
+        ['rclone', *flags, *NETWORK_FLAGS, 'lsf', '--max-depth', '1', remote, '--files-only'],
     ]
 
 
@@ -294,3 +302,139 @@ def test_old_uploaded_zip_receipt_does_not_reenable_zip_delivery(tmp_path):
     assert result['delivery']['status'] == 'uploaded'
     assert all(name.endswith('.mp4') for name in result['delivery']['files'])
     assert 'old-upload.zip' in drive.files
+
+
+def test_copy_acknowledgement_is_durable_before_next_remote_call(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    drive = Drive()
+
+    def checked_process(cmd, **kwargs):
+        persisted = store.get(state['id'])['delivery']
+        assert set(persisted['hashes']) == {'ad-01.mp4', 'ad-02.mp4'}
+        if drive.calls:
+            ack = persisted['acknowledged']['ad-01.mp4']
+            assert ack['name'] == persisted['names']['ad-01.mp4']
+            assert len(ack['sha256']) == 64
+        return drive(cmd, **kwargs)
+
+    result = upload_run(store, state, run=checked_process, which=lambda _: 'rclone')
+    assert result['delivery']['status'] == 'uploaded'
+    assert set(store.get(state['id'])['delivery']['verified']) == {'ad-01.mp4', 'ad-02.mp4'}
+
+
+def test_listing_failure_retries_acknowledgements_without_copying_again(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def fail_listing(cmd, **kwargs):
+        if 'lsf' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 60)
+        return drive(cmd, **kwargs)
+
+    first = upload_run(store, state, run=fail_listing, which=lambda _: 'rclone')
+    assert first['delivery']['status'] == 'failed'
+    assert set(store.get(state['id'])['delivery']['acknowledged']) == {'ad-01.mp4'}
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert len([c for c in drive.calls if 'copyto' in c]) == 1
+
+
+def test_failed_first_ad_does_not_block_delivery_of_second(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    drive = Drive()
+    drive.fail_copy = 1
+    result = deliver(store, state, drive)
+    assert result['delivery']['status'] == 'failed'
+    assert set(result['delivery']['verified']) == {'ad-02.mp4'}
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    sources = [Path(c[c.index('copyto') + 1]).name for c in drive.calls if 'copyto' in c]
+    assert sources == ['ad-01.mp4', 'ad-02.mp4', 'ad-01.mp4']
+
+
+def test_legacy_verified_names_are_migrated_by_listing_without_recopy(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    state['delivery'] = {
+        'status': 'uploaded', 'remote': state['config']['delivery']['drive'],
+        'names': {'ad-01.mp4': 'legacy-title.mp4'}, 'files': ['legacy-title.mp4'],
+    }
+    store.save(state, 'legacy_receipt')
+    drive = Drive()
+    drive.files.add('legacy-title.mp4')
+    result = deliver(store, state, drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert set(result['delivery']['verified']) == {'ad-01.mp4'}
+    assert all('copyto' not in c for c in drive.calls)
+
+
+def test_changed_video_reuploads_with_stable_name(tmp_path):
+    store, state, folder = fixture(tmp_path)
+    drive = Drive()
+    first = deliver(store, state, drive)
+    names = dict(first['delivery']['names'])
+    (folder / 'ad-01.mp4').write_bytes(b'revised video')
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert result['delivery']['names'] == names
+    assert len([c for c in drive.calls if 'copyto' in c]) == 2
+
+
+def test_changed_drive_folder_id_invalidates_verification(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    state['config']['delivery']['drive'] = 'https://drive.google.com/drive/folders/first'
+    drive = Drive()
+    deliver(store, state, drive)
+    state = store.get(state['id'])
+    state['config']['delivery']['drive'] = 'https://drive.google.com/drive/folders/second'
+    assert deliver(store, state, drive)['delivery']['status'] == 'uploaded'
+    assert len([c for c in drive.calls if 'copyto' in c]) == 2
+
+
+def test_revised_bytes_are_sent_even_when_rclone_metadata_could_skip_them(tmp_path):
+    store, state, folder = fixture(tmp_path)
+    drive = Drive()
+    remote_bytes = {}
+
+    def metadata_sensitive_copy(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            source, destination = cmd[cmd.index('copyto') + 1:cmd.index('copyto') + 3]
+            data = Path(source).read_bytes()
+            if destination not in remote_bytes or '--ignore-times' in cmd:
+                remote_bytes[destination] = data
+        return result
+
+    upload_run(store, state, run=metadata_sensitive_copy, which=lambda _: 'rclone')
+    (folder / 'ad-01.mp4').write_bytes(b'other')  # Same size as the original video.
+    result = upload_run(store, store.get(state['id']), run=metadata_sensitive_copy, which=lambda _: 'rclone')
+    assert result['delivery']['status'] == 'uploaded'
+    assert list(remote_bytes.values()) == [b'other']
+
+
+def test_missing_acknowledged_remote_video_is_recopied_on_retry(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def fail_listing(cmd, **kwargs):
+        if 'lsf' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 60)
+        return drive(cmd, **kwargs)
+
+    upload_run(store, state, run=fail_listing, which=lambda _: 'rclone')
+    drive.files = set()
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert len([c for c in drive.calls if 'copyto' in c]) == 2
+
+
+def test_legacy_uploaded_receipt_missing_on_remote_is_copied(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    state['delivery'] = {
+        'status': 'uploaded', 'remote': state['config']['delivery']['drive'],
+        'names': {'ad-01.mp4': 'legacy-title.mp4'}, 'files': ['legacy-title.mp4'],
+    }
+    drive = Drive()
+    result = deliver(store, state, drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert result['delivery']['names'] == {'ad-01.mp4': 'legacy-title.mp4'}
+    assert 'legacy-title.mp4' in drive.files

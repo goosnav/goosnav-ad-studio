@@ -107,6 +107,7 @@ class Engine:
             state = self.store.get(run_id); root = self.store.path(run_id)
             self.budget = Budget(state, self.store.save)
             try:
+                self.deliver_finished(state)
                 if state['tasks'] and self.aggregate(state) == 'complete':
                     return state
                 self.budget.check()
@@ -114,6 +115,7 @@ class Engine:
                     state['tasks'] = build_tasks(state['config']['count'], modern=bool(state.get('execution')))
                     self.store.save(state, 'planned')
                 self.reconcile(state)
+                self.resume_reviews(state)
                 if state.get('execution') and state.get('config_path') and Path(state['config_path']).is_file():
                     from .config import load_config
                     current = load_config(state['config_path'])
@@ -187,6 +189,8 @@ class Engine:
                             self.builtin_task(state, task, root)
                     task['wall_seconds'] = task.get('wall_seconds', 0) + time.monotonic() - stage_started
                     self.budget.tick(True)
+                    if task['stage'] == 'package' and task['status'] == 'succeeded':
+                        self.deliver_finished(state)
                     self.budget.check()
                     steps += 1
                     if task['status'] in ('waiting_provider', 'cancelled'):
@@ -197,6 +201,7 @@ class Engine:
                         state['status'] = task['status']; break
                 else:
                     state['status'] = 'ready'
+                self.deliver_finished(state)
                 self.store.save(state, 'run_status', {'status': state['status']})
             except BudgetExceeded as e:
                 state['status'] = 'budget_exhausted'; state['error'] = str(e)
@@ -217,6 +222,27 @@ class Engine:
             finally:
                 self.budget.tick(True)
             return state
+
+    def deliver_finished(self, state):
+        if not state['config'].get('delivery', {}).get('drive') or not any(
+                t['stage'] == 'package' and t['status'] == 'succeeded' for t in state['tasks']):
+            return
+        from .streaming import deliver_ready
+        with self.budget.external('delivery_seconds'):
+            deliver_ready(self.store, state)
+
+    def resume_reviews(self, state):
+        """Migrate persisted operator gates into the same bounded automatic policy."""
+        if not state.get('execution'):
+            return
+        for task in state['tasks']:
+            if task['status'] == 'needs_review' and isinstance(task.get('result'), dict):
+                verify_accepted(task['result'])
+                if task.get('accepted_manifest_sha256') and digest(task['accepted_manifest']) != task['accepted_manifest_sha256']:
+                    raise ContractError('Accepted review manifest changed: ' + task['id'])
+                task['status'] = 'succeeded'
+                self.review_transition(state, task)
+        self.store.save(state, 'autonomous_reviews_resumed')
 
     def refresh_model_routes(self, state):
         """Refresh moving selectors for unfinished work; leave explicit pins and history intact."""
@@ -341,12 +367,16 @@ class Engine:
         failed_ads = {t['ad'] for t in state['tasks'] if t['status'] in ('failed', 'needs_review', 'cancelled')}
         if None in failed_ads:
             return None
+        ready = []
         for index, task in enumerate(state['tasks']):
             if task['status'] in ('pending', 'waiting_provider') and task['ad'] not in failed_ads:
                 prerequisites=[t for t in state['tasks'][:index] if t['ad'] is None or t['ad']==task['ad']]
                 if all(t['status']=='succeeded' for t in prerequisites):
-                    return task
-        return None
+                    if task['ad'] is None:
+                        return task
+                    remaining = sum(1 for t in state['tasks'] if t['ad'] == task['ad'] and t['status'] != 'succeeded')
+                    ready.append((remaining, index, task))
+        return min(ready, key=lambda item: item[:2])[2] if ready else None
 
     def aggregate(self, state):
         complete = sum(t['stage'] == 'package' and t['status'] == 'succeeded' for t in state['tasks'])
@@ -828,15 +858,22 @@ class Engine:
         limits = state['config']['limits']
         budget = limits.get('board_repairs', 4) if task['stage'] == 'board_review' else limits['repairs']
         if state.get('execution'):
-            budget = min(budget, 1)
+            if task['stage'] != 'board_review':
+                budget = limits.get('review_repairs', 2)
+            if state['config'].get('generation', {}).get('fast'):
+                budget = min(budget, 1)
         # Count this review's own requests; upstream rewinds also bump revision and must not spend them.
         if task.get('rounds', 0) >= budget:
-            # Out of repair rounds: only blockers need a human. Other notes travel downstream.
+            # Keep strict quality gates. Modern production recovers automatically;
+            # legacy snapshots without an execution policy retain their old gate.
             if task['stage'] == 'select' or any(f['severity'] == 'blocking' or
                    (f['severity'] == 'important' and (task['stage'] in ('script_sense', 'edit_review') or
                     (state.get('execution') and task['stage'] in ('board_review', 'creative_qa'))))
                    for f in task['result']['findings']):
-                task['status'] = 'needs_review'
+                if state.get('execution'):
+                    self.autonomous_replan(state, task)
+                else:
+                    task['status'] = 'needs_review'
             else:
                 task['result']['accepted_with_notes'] = True
             return
@@ -846,8 +883,11 @@ class Engine:
         if start_stage == 'frame' and task['result'].get('end_card_patch'):
             patch = task['result']['end_card_patch']
             if not isinstance(patch, dict) or set(patch) != {'title'} or not isinstance(patch['title'], str) or not 1 <= len(patch['title']) <= 60:
-                task['status'] = 'needs_review'
                 task['feedback'] = 'Invalid end_card_patch: only a title of 1–60 characters is accepted.'
+                if state.get('execution'):
+                    self.autonomous_replan(state, task)
+                else:
+                    task['status'] = 'needs_review'
                 return
             state.setdefault('frame_overrides', {})[str(task['ad'])] = patch
         # Old persisted reviews may refer to removed stages; avoid a dead-end rewind.
@@ -859,6 +899,26 @@ class Engine:
         self.rewind(state,task['ad'],start_stage,feedback)
         task['rounds'] = rounds
         self.store.save(state, 'revision_requested', {'task': task['id']})
+
+    def autonomous_replan(self, state, task):
+        key = 'campaign' if task['ad'] is None else str(task['ad'])
+        recoveries = state.setdefault('autonomous_recovery', {})
+        used = recoveries.get(key, 0)
+        if used >= state['config']['limits'].get('autonomous_replans', 1):
+            task['status'] = 'failed'
+            task['feedback'] = 'Automatic repair and replan allowance exhausted; rejected output retained. ' + json.dumps(task['result'])
+            self.store.save(state, 'autonomous_recovery_exhausted', {'task': task['id']})
+            return
+        recoveries[key] = used + 1
+        feedback = ('AUTONOMOUS RECOVERY: adapt the failing staging/plan to verified active asset capabilities. '
+                    'Keep the product, causal joke and accepted usable takes where possible. Use a simpler '
+                    'tested setup; do not demand new facial controls, redraw artwork or change Frame policy. '
+                    'Complete the ad without operator approval. Fix these findings: ' + json.dumps(task['result']))
+        self.rewind(state, task['ad'], 'write' if task['ad'] is None else 'direct', feedback)
+        for current in state['tasks']:
+            if current['ad'] == task['ad']:
+                current['rounds'] = 0
+        self.store.save(state, 'autonomous_replan', {'task': task['id'], 'round': used + 1})
 
     def builtin_task(self, state, task, root):
         from .media import finish_frame, check_video, package

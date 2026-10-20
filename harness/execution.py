@@ -73,6 +73,20 @@ class Budget:
     def spent(self):
         return self.data['active_seconds'] + time.monotonic() - self.last if self.data else 0
 
+    @contextmanager
+    def external(self, metric):
+        """Track bounded delivery I/O separately from the generation allowance."""
+        self.tick(True)
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            if self.data:
+                self.data[metric] = self.data.get(metric, 0) + time.monotonic() - started
+            self.last = time.monotonic()
+            if self.data:
+                self.save(self.state, 'external_time', {'metric': metric})
+
     def remaining(self):
         return max(0, self.data['hard_seconds'] - self.spent()) if self.data else float('inf')
 

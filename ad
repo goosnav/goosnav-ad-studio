@@ -62,10 +62,18 @@ def summary(run_id):
               f'elapsed {seconds//60}m {seconds%60}s | {activity}')
     if s.get('delivery'):
         d = s['delivery']
+        uploaded = len(d.get('verified', {}))
+        if not uploaded and d['status'] == 'uploaded':
+            uploaded = sum(name.endswith('.mp4') for name in d.get('files', []))
         if d['status'] == 'uploaded':
-            print(f'Drive: {d["remote"]}')
+            print(f'Drive: {uploaded}/{s["config"]["count"]} videos uploaded | {d["remote"]}')
+        elif d['status'] == 'uploading':
+            print(f'Drive: {uploaded}/{s["config"]["count"]} videos verified | uploading finished ads')
         elif d['status'] == 'failed':
-            print(f'Drive delivery failed: {d.get("error", "unknown error")[:240]}\nRetry: ./ad upload {run_id}')
+            print(f'Drive: {uploaded}/{s["config"]["count"]} videos verified | '
+                  f'delivery pending: {d.get("error", "unknown error")[:240]}')
+            if s['status'] in DONE:
+                print(f'Retry upload: ./ad upload {run_id}')
     for publication in s.get('asset_publications', {}).values():
         print(f"  Assets: {publication['status']} | {publication.get('error') or publication.get('commit', '')}")
         for key in ('adoption_error', 'parent_error'):

@@ -471,6 +471,9 @@ def brief(task, config, inputs, sources, repair='', previous_runs='', modern=Fal
                'repo_read_only': str(REPO), 'controller_python': sys.executable,
                'workspace': (str(Path(workspace).resolve()) if workspace is not None else
                              'The absolute directory containing this stage TASK.md')}
+    if o.get('cta'):
+        from .frame_policy import DESCRIPTION
+        project['frame_policy'] = DESCRIPTION
     if modern and stage == 'write':
         project['config'].pop('sources', None)
         project['config']['brand'] = {k: config['brand'][k] for k in ('name', 'direction')}

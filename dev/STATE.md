@@ -74,7 +74,7 @@ Changes:
   RETURN SLOT mix is a regression test and is rejected.
 - `finish_frame` makes a native Frame stacked end card from the last
   `end_card_seconds` of the master. It uses Frame's fonts and sizes, a balanced
-  two-line title, white ground and the blue link, and saves `end_card.png`.
+  two-line title, white ground and a black Helvetica URL without underline, and saves `end_card.png`.
   `output.frame: full` frames the whole ad.
 - `restart` on review results rewinds only from the named stage.
 - No default voice. Briefs for every stage carry the end-card budget, phone

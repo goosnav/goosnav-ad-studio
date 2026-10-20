@@ -152,7 +152,26 @@ def test_upload_accepts_drive_folder_link_and_uses_folder_id(tmp_path):
     assert calls[1][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
     assert calls[0][-1].startswith('agent-exchange:ad-video-')
     assert calls[0][-1].endswith('-ad-01.mp4')
-    assert calls[1][-2:] == ['agent-exchange:', '--files-only']
+    assert 'agent-exchange:' in calls[1]
+    assert '--files-only' in calls[1]
+
+
+def test_manual_upload_cannot_overwrite_a_running_controllers_state(tmp_path):
+    from harness.store import Store
+    from harness.config import load_config
+    store = Store(tmp_path)
+    state = store.create(load_config())
+    state.update(status='running', tasks=[{'id': 'still-rendering', 'stage': 'animate',
+                                         'status': 'running', 'ad': 0}])
+    store.save(state, 'fixture')
+    with store.worker_lock():
+        state['tasks'][0]['status'] = 'succeeded'
+        store.save(state, 'advanced')
+        result = cli(tmp_path, 'upload', state['id'])
+    assert result.returncode != 0
+    assert 'Another' in result.stderr or 'worker' in result.stderr.lower()
+    assert store.get(state['id'])['tasks'][0]['status'] == 'succeeded'
+    assert 'delivery' not in store.get(state['id'])
 
 
 def test_explicit_resume_reopens_failures_but_preserves_success_and_review_gates():

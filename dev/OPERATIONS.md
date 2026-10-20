@@ -116,7 +116,7 @@ video's audio again.
 `frame`: Goosnav Frame writes all end text. The last `output.end_card_seconds`
 (default 2.5; the director may lengthen it) become a native Frame stacked card:
 the director's title in Frame's bold type over the closing picture, the website as
-Frame's blue underlined link, white ground, Frame's own sizes scaled to the canvas.
+black Helvetica Regular without underline, white ground, Frame's own sizes scaled to the canvas.
 Everything before it is the edit's picture; the audio runs straight through.
 `output.frame: "full"` frames the whole ad instead.
 
@@ -130,9 +130,13 @@ typewriter). All on-screen text is Frame's clean end card; workers bake no text.
 A review that says `revise` rewinds to the stage it names in `restart` (scripts go
 back to `revise`; an ad to `direct`, `assets`, `audio`, `animate` or, after the
 final cut, `edit`; `audio` if unnamed), with its findings as the repair brief, up
-to `limits.repairs` rounds. When the
-rounds run out, non-blocking findings travel on as notes (`accepted_with_notes`)
-and only `blocking` findings stop for a person (`needs_review`).
+to the configured repair allowance. Modern runs honor `board_repairs` and
+`review_repairs`, then use a bounded `autonomous_replans` allowance to adapt the
+affected ad to supported capabilities. They never require operator review for
+ordinary findings. Unresolved important/blocking defects fail that ad after
+automatic recovery is spent; other ads continue. Every successful package is
+uploaded immediately, independently of sibling ads. Verified videos are not
+copied again, and delivery time is tracked outside the generation budget.
 
 ### Models and fallback
 

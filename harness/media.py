@@ -185,6 +185,7 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
             'media':{'fit':'cover','trim_start':0,'trim_duration':start,'keep_audio':False},
             'export':export_settings,**CLEAN}})
     if enabled:
+        from .frame_policy import LINK
         text=balance(title); link=link_text(config['website'])
         if o['frame'] == 'end_card':
             from .end_cards import prepare_clip
@@ -194,7 +195,7 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
             **({'input': str(work/clip)} if clip else {}),
             'still_time':min(1.5,(duration-start)*.75),'settings':{
             'canvas':{**canvas,'layout':'stacked'},'title':{'visible':True,'text':text},
-            'link':{'visible':True,'text':link},
+            'link':{**LINK,'visible':True,'text':link},
             'media':{'fit':'contain','trim_start':0 if clip else start,'keep_audio':False},
             'export':export_settings,**CLEAN}})
     request=work/'frame.json';request.write_text(json.dumps({'root':str(root),'input':master,

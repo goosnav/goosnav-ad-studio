@@ -150,12 +150,18 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # 2. In harness.local.json, set delivery.drive to an rclone path or a
   #    Google Drive folder URL. Folder URLs use the configured agent-exchange remote.
   #    "delivery": {"drive": "https://drive.google.com/drive/folders/FOLDER_ID"}
-  # 3. Run ./ad "..." normally. It renders locally first and then uploads
+  # 3. Run ./ad "..." normally. EACH ad uploads as soon as its package passes;
+  #    it does not wait for other ads in a multi-ad run. It uploads
   #    finished videos ONLY into the configured Drive folder automatically.
   #    Names use the selected script title, a UTC date/time stamp, run suffix
   #    and ad index. Retry keeps the same name. MP4/ZIP source packages stay local.
   # 4. Check ./ad status to see the upload outcome. If it fails:
   ./ad upload [RUN_ID]                  # upload again, no re-render
+  # Status shows the verified video count independently of generation progress.
+  # Automatic delivery skips already-verified video bytes and retries pending
+  # uploads at the next completion/run exit. Manual upload is serialized with
+  # an active controller so it cannot overwrite newer generation state.
+  # Drive I/O has bounded timeouts and is excluded from the generation budget.
   # The rclone copy never deletes files on Drive. If Drive is down, the
   # local MP4/ZIP remain intact and the render is still marked successful.
   # Partial runs with some packaged ads upload the successfully packaged ads.
@@ -200,8 +206,15 @@ PROVIDER FAILOVER / WAITING_PROVIDER
   ./ad resume RUN_ID           retry a previously blocked run after git pull
   # Resume reopens a FAILED stage with a fresh bounded attempt budget, keeping
   # its work, feedback and attempt history; successful stages are not repeated.
-  # A real needs_review verdict stays a review gate (use retry --task after
-  # reviewing its findings). Automatic waiting does not reset attempt budgets.
+  # Modern runs automatically repair review findings and migrate older
+  # needs_review checkpoints on resume. No operator approval is required.
+  # Normal board repairs honor limits.board_repairs (default 4); other review
+  # repairs use limits.review_repairs (default 2). Fast mode uses one per round.
+  # If those repairs fail, one bounded autonomous replan adapts the affected ad
+  # to verified asset capabilities while preserving completed ads. Review and
+  # technical gates still apply. The existing hard time ceiling is unchanged.
+  # Exhausted automatic recovery records a failed ad and continues other ads;
+  # it does not request manual review. Automatic waits never reset budgets.
   # A repair that fixes evidence but forgets to resubmit result.json can reuse
   # that revision's prior manifest ONLY if every contract/media check now passes.
   # Campaign writing uses the requested AD count, not the number of products:

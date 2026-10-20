@@ -182,7 +182,8 @@ dialogue list, sound rationale, and an audio stream.
 Goosnav Frame writes all end text. Never render titles, URLs, captions or end cards
 into the picture. After the edit, the controller hands the last `end_card.seconds` of
 the master to Frame, which lays it out in its stacked format: the director's title in
-Frame's bold type above the picture, the web address in Frame's blue underlined link
+Frame's black Helvetica Bold above the picture, the web address in black Helvetica
+Regular without an underline
 below, on white. That window of the master should therefore be a clean product hero
 shot. Prefer an existing floating-item clip: the controller maps `end_card.product`
 (the exact configured product name), or the selected script's product, through

@@ -147,7 +147,7 @@ Configure `output.folder` (a local absolute path) and `delivery.drive` (an
 rclone destination such as `agent-exchange:deliverables/ad-studio`) in
 `harness.local.json`, then authorize that remote with `rclone config` on the
 render machine. `./ad "prompt"` uploads only the finished MP4s to the configured
-folder after rendering, using script-title filenames with stable UTC timestamps
+folder immediately after each ad finishes packaging, using script-title filenames with stable UTC timestamps
 and run/ad suffixes to avoid collisions. Source ZIPs remain local. It verifies the names via rclone,
 and records the delivery status. Upload errors never delete local renders or
 change a successful render status. Check `./ad status`; retry without
