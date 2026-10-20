@@ -78,7 +78,8 @@ def _names(state, ads):
 
 def _completed_ads(state):
     return sorted({t['ad'] for t in state['tasks']
-                   if t['stage'] == 'package' and t['status'] == 'succeeded'})
+                   if t['stage'] == 'package' and t['status'] == 'succeeded'
+                   and (t.get('result') or {}).get('delivery_mode') != 'product_only'})
 
 
 def _file_receipt(path, name):

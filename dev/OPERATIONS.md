@@ -44,17 +44,17 @@ gui-logs/                     output of controllers started from the GUI
 
 ## Watch and control
 
-Creative budgets now protect a deterministic finishing reserve. For a medium
-9-second ad without animation, model repair loops stop at 16 minutes, before the
-25-minute hard ceiling. Runs with real animation retain more editing/QA time.
-The controller packages an already approved film, or makes a clearly labelled
-product-only fallback from the selected product's active floating-item footage:
-product name and shop link, intentional silence, no unrelated story dialogue.
-Fallbacks undergo media/motion/picture checks and upload individually through the
-normal durable Drive queue. Completed ads are untouched; missing product footage
-is reported, never replaced with an archived model. See CLI.txt for clip mappings.
+Creative budgets protect a finishing reserve. A medium 9-second ad without
+animation enters one FAST STORY FINISH pass at 12 minutes, within the same
+25-minute ceiling. It continues the original script, voices and scene using faster
+rendering and less optional construction. It never replaces the story with a
+full-length floating-item end card. The closing card remains short; QA/packaging
+check that the preceding story picture matches the edited source. Upload/retry
+filters reject the prior product_only package type. Resuming such a run restores
+its skipped story stages, preserving old files/receipts. Completed real ads are
+untouched and upload individually through the normal durable Drive queue.
 Old runs already at their hard ceiling need an explicit finishing allowance:
-`./ad resume RUN_ID --extra-minutes 3`. This preserves checkpoints/spending.
+`./ad resume RUN_ID --extra-minutes 10`. This preserves checkpoints/spending.
 
 ```sh
 python3 -m harness list

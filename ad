@@ -41,8 +41,9 @@ def latest():
 
 
 def summary(run_id):
+    from harness.delivery import _completed_ads
     s = harness('status', run_id)
-    done = sum(t['stage'] == 'package' and t['status'] == 'succeeded' for t in s['tasks'])
+    done = len(_completed_ads(s))
     current = next((t for t in s['tasks'] if t['status'] in ('running', 'waiting_provider', 'failed', 'needs_review')), None)
     where = f" | {current['id']} {current['status']}" if current else ''
     print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
@@ -86,8 +87,9 @@ def summary(run_id):
         if publication['status'] == 'pending' or publication.get('adoption_status') == 'pending' or publication.get('parent_status') == 'pending':
             print(f'  Retry publication: ./ad publish {run_id}')
     for ad, fallback in s.get('fallbacks', {}).items():
-        print(f"  Ad {int(ad)+1:02}: product-only fallback {fallback['status']} | "
-              f"{fallback.get('error') or fallback.get('reason', '')}")
+        message = ('previous end-card-only output replaced with the full story' if int(ad) in _completed_ads(s)
+                   else 'previous end-card-only output rejected; original story required')
+        print(f"  Ad {int(ad)+1:02}: {message}.")
     if current and current['status'] == 'waiting_provider':
         print(f'  Provider blockers: {current.get("feedback", "No provider accepted this task")[:1200]}')
         print(f'  After fixing providers: ./ad resume {run_id}')

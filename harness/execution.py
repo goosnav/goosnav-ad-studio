@@ -103,6 +103,8 @@ class Budget:
     def production_remaining(self):
         if not self.data:
             return float('inf')
+        if self.data.get('finishing'):
+            return self.remaining()
         count = self.state['config']['count']
         target = self.data['target_seconds']
         reserve = min(target * .4, max(120 * count, min(300 * count, target * .2)))
@@ -113,12 +115,17 @@ class Budget:
         has_cut = any(t['stage'] in ('animate', 'edit') and t['status'] == 'succeeded'
                       and t['ad'] in unfinished for t in self.state['tasks'])
         cutoff = (self.data['hard_seconds'] if has_cut else target) - reserve
+        if not has_cut and self.state['config'].get('generation', {}).get('effort', 'medium') in ('low','medium'):
+            # Finishing now includes real animation, acting checks and a closing
+            # card, not a cheap product-only substitute. Switch before repair
+            # loops consume the time those mandatory stages actually need.
+            cutoff = min(cutoff, target * .6)
         return max(0, cutoff - self.spent())
 
     def check_production(self):
         self.check()
         if self.data and self.production_remaining() <= 0:
-            raise FinishRequired('Creative deadline reached; finishing from approved reusable product footage.')
+            raise FinishRequired('Creative deadline reached; finish the existing story with reduced production scope.')
 
     def simplify(self):
         if self.data and self.spent() >= self.data['target_seconds'] * .75 and self.data['mode'] != 'recovery':
@@ -144,5 +151,9 @@ class Budget:
         if task['stage'] in STAGE_FLOORS:
             effort = self.state['config'].get('generation', {}).get('effort', 'medium')
             minimum = STAGE_FLOORS[task['stage']][effort]
+        if self.data.get('finishing'):
+            minimum = min(minimum, 120 if task['stage'] == 'animate' else 60)
+            if task['stage'] == 'creative_qa':
+                minimum = 60  # inspect the completed film once, not repeated unusable 30s sessions
         share = max(minimum, max(normal_left, self.remaining() * .6) * WEIGHTS.get(task['stage'], 5) / weight)
         return max(.01, min(ceiling, share, self.remaining()))

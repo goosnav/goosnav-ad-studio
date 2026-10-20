@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import tempfile
 
 
 class ContractError(ValueError):
@@ -210,14 +211,22 @@ def validate(stage, data, workspace, context):
 
 
 def copy_checked(source, target, checkpoint):
-    """Cooperative deadline/control checks for controller-owned artifact copies."""
+    """Checked atomic copy; a prior read-only export is safely replaceable."""
     checkpoint()
-    with Path(source).open('rb') as src, Path(target).open('wb') as dst:
-        for block in iter(lambda: src.read(1024 * 1024), b''):
+    target=Path(target)
+    with tempfile.NamedTemporaryFile(dir=target.parent,prefix=f'.{target.name}.',delete=False) as dst:
+        temporary=Path(dst.name)
+        try:
+            with Path(source).open('rb') as src:
+                for block in iter(lambda: src.read(1024 * 1024), b''):
+                    checkpoint()
+                    dst.write(block)
+            dst.close()
+            shutil.copystat(source,temporary)
             checkpoint()
-            dst.write(block)
-    shutil.copystat(source, target)
-    checkpoint()
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def promote(data, workspace, destination, checkpoint=None):

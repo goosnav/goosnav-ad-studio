@@ -309,33 +309,41 @@ resolved before production; initial downloads are not a useful speed benchmark.
 At 75% of the target the controller requests simpler staging/reuse and enables
 cheaper dynamically resolved recovery models. Provider failures continue the same
 workspace with another eligible route. Finishing time is now ENFORCED, not just a
-prompt: an unrendered story stops creative workers/retries before the target,
-reserving roughly 2–5 minutes per ad (scaled for short/fast jobs). A normal medium
-9-second ad with no animation switches at 16 minutes instead of spending the
-entire 25-minute ceiling on board repairs. A real animation gets the overtime
+prompt: an unrendered story switches to one bounded FAST STORY FINISH pass before
+the target. A normal medium 9-second ad with no animation switches at 12 minutes
+instead of spending the entire 25-minute ceiling on ordinary board repairs.
+This uses the existing remaining allowance, not a new budget. A real animation gets the overtime
 window for editing/QA, with finishing time still protected; high keeps its larger
 creative budget. Finished approved films are delivered as-is, with a lean local
 video/QA package; deadline recovery does not rearchive large scene/source files.
 
-If there is no approved film (or creative repairs fail before the deadline),
-the controller automatically makes a PRODUCT-ONLY
-FALLBACK from the selected product's active catalogued floating-item video:
-real moving product, exact configured name, shop link, intentional silence.
-It omits abandoned story dialogue/claims and requires no new models or approval.
-This uses output.end_card_library / end_card_clips (stable asset IDs), never an
-archived model or hardcoded asset path. Fallbacks pass encoding/motion/picture
-checks, are labelled in status/manifests, and upload individually using the same
-durable Drive queue. Rejected story stages are skipped, not falsely passed.
-Already completed ads are preserved; one missing clip does not block the others.
+Recovery MUST complete the same story: preserve the script, accepted dialogue,
+cast, causal reaction/payoff and existing scene/checkpoints. Use faster render
+settings, reuse the animatic as final picture when valid, and omit optional new
+scenery/props. When no prior accepted edit needs a targeted correction, the
+controller preserves the whole accepted animatic/timeline as an identity edit,
+upscaling/transcoding mechanically if needed instead of asking another model to
+edit or rerender it. Workers have one ordinary attempt per eligible route and one focused review
+repair in this persisted finishing phase; it cannot repeatedly restart direction.
+Final creative review gets one adequate attempt (up to the remaining hard cap),
+instead of repeatedly starting review sessions too short to inspect the film.
+Only ads with accepted direction/audio enter this finishing pass; unstarted ads
+remain checkpointed rather than beginning new planning inside the reserve.
+All story/acting/media gates remain. The floating-item video is ONLY a short
+closing card. A full-length end-card/product-only video is NEVER a completed ad.
+QA and packaging compare every final story frame with the accepted edited source
+before the closing-card boundary. Explicitly skipped CTAs preserve the full film.
+Upload and the retry queue reject old
+product_only packages, even if an older version labelled them complete.
 
-Fallback still needs valid approved product footage and working FFmpeg/Frame.
-Missing/corrupt/retired footage or a finishing failure is reported explicitly;
-the harness cannot promise output when its source media/tools are unavailable.
+Existing card-only runs are reopened to their original skipped story stages on
+resume; old files and upload receipts are retained, not deleted. Completed real
+ads stay untouched and upload individually using the same durable Drive queue.
+If the actual story cannot be finished, status reports that fact and preserves
+checkpoints; it does not invent a successful output or upload a substitute.
 The hard ceiling still applies (up to 25% overtime), checkpoints are retained,
 and resume does not reset spending. An older run that already spent its whole
 budget needs an explicit finishing allowance; it does NOT start over:
-  ./ad resume RUN_ID --extra-minutes 3
-An explicit operator extension is available:
   ./ad resume RUN_ID --extra-minutes 10
 
 New jobs use measured audio before storyboard approval and animation. Low favors

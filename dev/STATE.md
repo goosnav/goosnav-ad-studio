@@ -4,18 +4,24 @@ Updated: 2026-10-16 (fourth session)
 
 ## Current position
 
-2026-10-20 deadline recovery: a medium 9-second run spent ~15 minutes in asset/board
-loops, then replanned with too little time and hit its 25-minute ceiling before
-animation. The former recovery policy was only a prompt/model-route change.
-Creative deadlines now stop workers and protect model-free finishing: preserve
-approved films or generate a labelled, technically checked product-only fallback
-from active catalogued floating-item footage. No abandoned story dialogue, no
-fake creative-review pass, no archived assets. Each deliverable uses the normal
-incremental Drive retry queue. High with animation retains longer editing time.
-Live recovery evidence: `20261020-103250-e80725ff` was given an explicit three-minute
-finishing allowance (its old ceiling was already spent), produced a checked 9-second
-1080x1350 product-only film in 36.4 seconds with zero new model attempts, and
-completed a verified MP4-only Drive upload. The original rejected scene was not passed.
+2026-10-20 correction: the product-only deadline fallback shipped in eb96475 was
+wrong. Run 20261020-115141-80834b37 never reached animation/editing; the controller
+uploaded a full-length end card instead. Technical motion/encoding checks did not
+prove story completion. That path is removed. Recovery must finish the same story
+in one bounded fast-production pass, preserving script/voices/scene/checkpoints.
+Approved films are packaged unchanged. Story-prefix comparisons run before
+packaging; delivery rejects the old product_only type. Old substituted runs reopen
+their skipped stages on resume, without deleting files or historical receipts.
+No end-card-only output may be counted as a completed ad.
+Verification recovery: 20261020-115141-80834b37 now has its original 12-second film
+(9.5-second character story plus 2.5-second card), accepted technical QA and a
+separate actual-media creative review. Vocal acting was not listened to by that
+reviewer and remains unverified. The already-spent old run needed explicit
+operator finishing allowances; future low/medium runs enter recovery earlier,
+and identity editing avoids another model/rerender for a complete animatic.
+The corrected local export replaces the old read-only convenience copy atomically;
+the original accepted card-only artifact remains available in history. At this
+verification checkpoint Drive is quota-throttled; durable upload retries continue.
 
 2026-10-20 end-card policy update: the owner's early-web-2002 direction supersedes
 the historical clean black Helvetica URL notes below. New cards use a blue,

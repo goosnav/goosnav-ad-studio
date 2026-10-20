@@ -31,7 +31,8 @@ def scope(config):
             '\nEvery proposed action needs a known clip/capability or a short successful test before production. '
             'Provide a simpler staging of the SAME joke if its action cannot be verified. '
             'A recovery execution policy takes precedence over optional scope: reuse, fewer shots, no auditions. '
-            'Do not simplify by deleting the causal reaction or product connection.\n')
+            'Do not simplify by deleting the causal reaction or product connection. '
+            'A product/end-card video is ONLY the short closing segment, never a substitute for the story.\n')
 
 
 def job(stage, original):

@@ -17,15 +17,14 @@ import time
 
 from .store import Busy, Store
 from .streaming import deliver_ready
-from .delivery import _already_verified
+from .delivery import _already_verified, _completed_ads
 
 
 def _pending(state):
     if (not state['config'].get('delivery', {}).get('drive', '').strip()
             or not state['config'].get('output', {}).get('folder')):
         return False
-    completed = {f'ad-{t["ad"]+1:02}.mp4' for t in state['tasks']
-                 if t['stage'] == 'package' and t['status'] == 'succeeded'}
+    completed = {f'ad-{ad+1:02}.mp4' for ad in _completed_ads(state)}
     info = state.get('delivery')
     info = info if isinstance(info, dict) else {}
     # Historical successful folder/ZIP deliveries are not failed queue entries.

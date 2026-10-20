@@ -58,6 +58,7 @@ def check_video(path, config, preview=False):
     if len(hashes) < 2:
         raise ContractError('No visible picture change: a static card is not an animated ad')
     return {'duration':duration, 'fps':fps, 'width':v['width'], 'height':v['height'],
+            'codec':v['codec_name'],'pixel_format':v.get('pix_fmt'),
             'audio':True, 'decoded':True, 'distinct_sampled_frames':len(hashes), 'sha256':digest(path)}
 
 
@@ -159,7 +160,8 @@ def finish_frame(master, script, config, work, cancelled, direction=None):
         shutil.copy2(master,destination)
         level=normalize_loudness(destination,config)
         return {'summary':f'CTA skipped by project/script policy; loudness {level["integrated"]} LUFS',
-                'master':'final.mp4','loudness':level,'files':[{'path':'final.mp4','kind':'video'}]}
+                'master':'final.mp4','cta_skipped':True,'end_card_start':None,
+                'loudness':level,'files':[{'path':'final.mp4','kind':'video'}]}
     tools=config['tools']; root=Path(tools['frame_root'])
     python=tools['frame_python']
     if not tools['frame_root'] or not (root/'app/src/goosnav_frame').is_dir() or not Path(python).is_file():
@@ -243,6 +245,46 @@ def _gray(path, t, tools, size=(54, 68)):
     if r.returncode or len(r.stdout) != size[0] * size[1]:
         raise ContractError(f'Could not read a frame at {t:.2f} s of {path}')
     return r.stdout
+
+
+def check_story_content(path, master, frame, config):
+    """The short closing card cannot replace the edited story before its cut."""
+    if frame.get('delivery_mode') == 'product_only':
+        raise ContractError('An end-card-only film is not a completed story ad')
+    o = config['output']
+    if not o.get('cta') or o.get('frame') != 'end_card':
+        return {'story_seconds': None, 'comparison': 'No closing-card replacement requested'}
+    start = frame.get('end_card_start')
+    skipped = frame.get('cta_skipped') is True or (start is None and frame.get('summary','').startswith('CTA skipped'))
+    if not skipped and (type(start) not in (int, float) or not math.isfinite(start) or start < o['min_seconds']/2 - .15):
+        raise ContractError('Missing story: the end card occupies too much of the film')
+    duration = float(json.loads(run([config['tools']['ffprobe'], '-v', 'error', '-show_entries',
+        'format=duration', '-of', 'json', str(path)]).stdout)['format']['duration'])
+    if skipped:
+        start = duration
+    elif not duration/2 - .15 <= start < duration:
+        raise ContractError('The story must precede a short closing end card')
+    pixels = 54 * 68
+    def decode(movie):
+        result = subprocess.run([config['tools']['ffmpeg'],'-v','error','-i',str(movie),'-t',str(start),
+            '-an','-vf',f'fps={o["fps"]},scale=54:68','-pix_fmt','gray','-f','rawvideo','-'],
+            capture_output=True, timeout=bounded_timeout(120))
+        if result.returncode or not result.stdout or len(result.stdout) % pixels:
+            raise ContractError('Cannot decode the full story prefix for verification')
+        return [result.stdout[i:i+pixels] for i in range(0,len(result.stdout),pixels)]
+    actual, expected = decode(path), decode(master)
+    if len(actual) != len(expected):
+        raise ContractError('Final story duration differs from the edited film')
+    maximum = 0
+    for i, picture in enumerate(actual):
+        # One-frame rounding at editorial cuts is harmless; a replacement lasting
+        # into the story is not. Decode/check every frame, including the last one.
+        difference = min(sum(abs(a-b) for a,b in zip(picture, expected[j]))/pixels
+                         for j in range(max(0,i-1), min(len(expected),i+2)))
+        maximum = max(maximum,difference)
+        if difference > 12:
+            raise ContractError(f'Story picture was replaced before the end card at {i/o["fps"]:.2f}s')
+    return {'story_seconds': start, 'checked_frames':len(actual),'max_picture_difference':round(maximum,2)}
 
 
 def check_picture(path, config, story_end, master=None, check_freeze=True, check_contrast=True):

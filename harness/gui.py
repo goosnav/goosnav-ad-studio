@@ -18,6 +18,7 @@ import urllib.request
 
 from .config import load_config
 from .store import Store
+from .delivery import _completed_ads
 
 REPO = Path(__file__).resolve().parents[1]
 LOCAL_CONFIG = REPO / 'harness.local.json'
@@ -49,8 +50,8 @@ def spawn(home, *args):
 def videos(state):
     found = []
     for task in state['tasks']:
-        if task['status'] == 'succeeded' and (task['stage'] in ('animate', 'edit', 'frame') or
-                (task['stage'] == 'package' and task['result'].get('delivery_mode') == 'product_only')):
+        if (task['status'] == 'succeeded' and task['stage'] in ('animate', 'edit', 'frame')
+                and task['result'].get('delivery_mode') != 'product_only'):
             for f in task['result'].get('files', []):
                 if f['path'].endswith('.mp4'):
                     found.append((task['id'], f['path']))
@@ -154,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
         rows = ''.join(
             f'<tr><td><a href="/run/{quote(r["id"])}">{esc(r["id"])}</a></td><td class="{esc(r["status"])}">{esc(r["status"])}</td>'
             f'<td>{esc(r["config"]["concept"] or "(open brief)")}</td><td>{r["config"]["count"]}</td>'
-            f'<td>{sum(t["stage"] == "package" and t["status"] == "succeeded" for t in r["tasks"])}</td>'
+            f'<td>{len(_completed_ads(r))}</td>'
             f'<td>{esc(describe(self.store, r)) if r.get("delivery") else "—"}</td></tr>'
             for r in self.store.list())
         target = load_config(self.config_path())['output']['target_seconds']
@@ -195,9 +196,11 @@ class Handler(BaseHTTPRequestHandler):
         from .delivery_queue import describe
         delivery = (f'<h2>Drive delivery</h2><pre>{esc(describe(self.store, s))}</pre>'
                     if s.get('delivery') else '')
-        fallback = ''.join(f'<p>Ad {int(ad)+1:02}: product-only fallback — {esc(info["status"])}. '
-                           f'{esc(info.get("error") or info.get("reason", ""))}</p>'
-                           for ad, info in s.get('fallbacks', {}).items())
+        fallback = ''.join(f'<p>Ad {int(ad)+1:02}: ' +
+                           ('previous end-card-only output replaced with the full story.'
+                            if int(ad) in _completed_ads(s) else
+                            'previous end-card-only output rejected; original story required before delivery.') + '</p>'
+                           for ad in s.get('fallbacks', {}))
         return page(f'Run {run_id}', f'<p>Status: <b class="{esc(s["status"])}">{esc(s["status"])}</b> {esc(s.get("error", ""))}</p>'
                     f'<p>{controls}</p>{delivery}{fallback}<p>Files: <code>{esc(self.store.root / "runs" / run_id)}</code></p>{media}{choice}'
                     f'<h2>Tasks</h2><table><tr><th>Task</th><th>Status</th><th>Attempts</th><th>Worker</th><th>Result / feedback</th></tr>{rows}</table>'

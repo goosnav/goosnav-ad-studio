@@ -6,7 +6,7 @@ both production hooks and a restarted background worker from retrying in a burst
 import random
 import time
 
-from .delivery import _already_verified, _error, _rate_limited, upload_run
+from .delivery import _already_verified, _completed_ads, _error, _rate_limited, upload_run
 
 
 RETRY_BASE_SECONDS = 60
@@ -36,8 +36,7 @@ def deliver_ready(store, state):
         config = state['config']
         if (not config.get('delivery', {}).get('drive', '').strip()
                 or not config.get('output', {}).get('folder')
-                or not any(t['stage'] == 'package' and t['status'] == 'succeeded'
-                           for t in state['tasks'])):
+                or not _completed_ads(state)):
             return state
         info = state.get('delivery') or {}
         if _already_verified(state):

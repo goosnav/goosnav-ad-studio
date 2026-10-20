@@ -13,6 +13,7 @@ from .models import resolve_workers
 from .sources import archived_asset, reconcile_sources, snapshot
 from .workers import CODEX_CLI_DEFAULT, command, last_actions, reset_delay, subscription_status, supervise
 from .execution import Budget, BudgetExceeded, FinishRequired, deadline, bounded_timeout
+from .delivery import _completed_ads
 
 ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'script_sense': 'director',
@@ -106,6 +107,7 @@ class Engine:
         with self.store.worker_lock():
             state = self.store.get(run_id); root = self.store.path(run_id)
             self.budget = Budget(state, self.store.save)
+            restart_finishing = False
             try:
                 self.reconcile(state)
                 self.deliver_finished(state)
@@ -179,7 +181,7 @@ class Engine:
                     task = self.next_task(state)
                     if task is None:
                         if state.get('execution') and self.aggregate(state) != 'complete':
-                            self.finish_pending(state, 'Creative repair allowance exhausted; finishing without further model calls.')
+                            restart_finishing = self.finish_pending(state, 'Creative repair allowance exhausted; finish the same story.')
                         else:
                             state['status'] = self.aggregate(state)
                         break
@@ -191,13 +193,17 @@ class Engine:
                     stage_started = time.monotonic()
                     try:
                         with deadline(min(self.budget.remaining(), self.budget.production_remaining())):
-                            if task['stage'] in ROLES:
+                            identity_edit = (task['stage'] == 'edit' and state.get('execution', {}).get('finishing')
+                                             and not task.get('previous'))
+                            if task['stage'] in ROLES and not identity_edit:
                                 self.agent_task(state, task, root)
                             else:
                                 self.builtin_task(state, task, root)
                     finally:
                         task['wall_seconds'] = task.get('wall_seconds', 0) + time.monotonic() - stage_started
                     self.budget.tick(True)
+                    if task['status'] == 'succeeded':
+                        self.review_transition(state, task)
                     # The controller owns the snapshot during generation. Check
                     # due deliveries at every boundary, not just the last ad.
                     self.deliver_finished(state)
@@ -206,11 +212,9 @@ class Engine:
                     steps += 1
                     if task['status'] in ('waiting_provider', 'cancelled'):
                         state['status'] = task['status']; break
-                    if task['status'] == 'succeeded':
-                        self.review_transition(state, task)
                     if task['ad'] is None and task['status'] in ('failed', 'needs_review'):
                         if state.get('execution'):
-                            self.finish_pending(state, 'Campaign stage failed; finishing without further model calls.')
+                            restart_finishing = self.finish_pending(state, 'Campaign stage failed; preserve story requirements.')
                         else:
                             state['status'] = task['status']
                         break
@@ -220,9 +224,7 @@ class Engine:
                 self.store.save(state, 'run_status', {'status': state['status']})
             except (FinishRequired, BudgetExceeded) as e:
                 if self.budget.remaining() > 0:
-                    self.finish_pending(state, str(e))
-                    state['status'] = self.aggregate(state) if self.store.control_value(run_id) == 'run' else (
-                        'cancelled' if self.store.control_value(run_id) == 'cancel' else 'paused')
+                    restart_finishing = self.finish_pending(state, str(e))
                     self.store.save(state, 'run_status', {'status': state['status']})
                 else:
                     state['status'] = 'budget_exhausted'; state['error'] = str(e)
@@ -242,19 +244,21 @@ class Engine:
                 self.store.save(state, 'exception', {'error': state['error']})
             finally:
                 self.budget.tick(True)
-            return state
+        if restart_finishing:
+            # Release the controller lock and checkpoint spending before the one
+            # bounded finishing pass. This is not a new creative run or allowance.
+            return self.run(run_id, max_steps=max_steps)
+        return state
 
     def finish_pending(self, state, reason):
-        """Produce independent fallbacks, preserving originals and per-ad delivery."""
-        from .finishing import product_film
-        from .media import package
-        checkpoint = lambda: self.finishing_checkpoint(state)
+        """Use the reserve on the SAME story; never manufacture an end-card ad."""
+        self.resume_reviews(state)  # consume persisted verdicts before any package can run
         pending = [t for t in state['tasks'] if t['stage'] == 'package' and t['status'] != 'succeeded']
         for index, task in enumerate(pending):
             action = self.store.control_value(state['id'])
             if action != 'run':
                 state['status'] = 'cancelled' if action == 'cancel' else 'paused'
-                return
+                return False
             ad = task['ad']
             for current in state['tasks']:
                 if current['ad'] == ad and current['status'] == 'running':
@@ -274,76 +278,37 @@ class Engine:
                     self.store.save(state, 'approved_film_finished', {'ad': ad})
                     self.deliver_finished(state)
                     continue
-            if not state['config']['output'].get('end_card_clips'):
-                # No finishing source was configured: retain the original failed
-                # stage and pending graph, rather than pretending packaging ran.
-                state.setdefault('fallbacks', {})[str(ad)] = {
-                    'status': 'failed', 'mode': 'product_only', 'reason': reason,
-                    'error': 'No approved configured product footage; configure output.end_card_clips.'}
-                self.store.save(state, 'finishing_unavailable', {'ad': ad})
-                continue
-            info = state.setdefault('fallbacks', {}).setdefault(str(ad), {})
-            info.update(status='finishing', mode='product_only', reason=reason)
-            state['status'] = 'finishing'
-            self.store.save(state, 'finishing_started', {'ad': ad, **info})
-            work = self.store.path(state['id'])/'workspaces'/f'ad-{ad+1:02}-fallback'
-            work.mkdir(parents=True, exist_ok=True)
-            try:
-                self.budget.check()
-                with deadline(self.budget.remaining() / (len(pending) - index)):
-                    self.verify_history(state, checkpoint=checkpoint)
-                    try:
-                        script = self.inputs(state, task)['selected_script']
-                    except (KeyError, StopIteration, IndexError, TypeError):
-                        clips = state['config']['output'].get('end_card_clips', [])
-                        if not clips:
-                            raise ContractError('No configured product footage for deadline fallback')
-                        script = {'product': clips[ad % len(clips)]['product']}
-                    cancelled = lambda: self.store.control_value(state['id']) != 'run'
-                    data = product_film(script, state['config'], work, cancelled)
-                    if cancelled():
-                        raise ContractError('Finishing cancelled or paused')
-                    destination = self.store.path(state['id'])/'artifacts'/f'ad-{ad+1:02}-fallback'/str(time.time_ns())
-                    film = promote(data, work, destination, checkpoint=checkpoint)
-                    packed = package({'product_only_fallback': film, 'fallback_reason': reason}, state, work, checkpoint=checkpoint)
-                    packed['files'].append({'path': 'final.mp4', 'kind': 'video'})
-                    packed.update(delivery_mode='product_only', master='final.mp4')
-                    packaged = promote(packed, work, destination/'package', checkpoint=checkpoint)
-                    if cancelled():
-                        raise ContractError('Finishing cancelled or paused')
-                    folder = state['config']['output'].get('folder')
-                    if folder:
-                        out = Path(folder)/state['id']; out.mkdir(parents=True, exist_ok=True)
-                        copy_checked(film['master'], out/f'ad-{ad+1:02}.mp4', checkpoint)
-                        copy_checked(work/'ad.zip', out/f'ad-{ad+1:02}.zip', checkpoint)
-                    checkpoint()
-                    # Keep genuine story rejections, attempts and previous files;
-                    # skipping is not a fabricated passing creative review.
-                    for current in state['tasks']:
-                        if current['ad'] == ad and current['status'] != 'succeeded':
-                            current['status'] = 'skipped'
-                            current['feedback'] = 'Replaced by product-only fallback: ' + reason
-                    task.update(status='succeeded', result=packaged,
-                                accepted_manifest=str(destination/'package/accepted.json'),
-                                accepted_manifest_sha256=digest(destination/'package/accepted.json'))
-                    info.update(status='complete', master=film['master'], source_asset=data.get('source_asset'))
-                    info.pop('error', None)
-                    self.store.save(state, 'finishing_complete', {'ad': ad, **info})
-                self.budget.tick(True)
-                self.deliver_finished(state)
-            except (KeyboardInterrupt, SystemExit):
-                state['status'] = 'interrupted'
-                self.store.save(state, 'finishing_interrupted', {'ad': ad})
-                raise
-            except Exception as exc:
-                info.update(status='failed', error=f'{type(exc).__name__}: {exc}')
-                task.update(status='failed', feedback=info['error'])
-                state['error'] = 'Product-only finishing failed: ' + info['error']
-                self.store.save(state, 'finishing_failed', {'ad': ad, **info})
+        remaining = [t for t in pending if t['status'] != 'succeeded']
+        # There must be an accepted selected story to continue. Failed writing is
+        # not permission to substitute unrelated product footage or silence.
+        selection = next((t for t in state['tasks'] if t['stage'] == 'select'), {})
+        execution = state.get('execution') or {}
+        eligible_ads = {t['ad'] for t in remaining if all(any(
+            upstream['ad'] == t['ad'] and upstream['stage'] == name and upstream['status'] == 'succeeded'
+            for upstream in state['tasks']) for name in ('direct', 'audio'))}
+        if eligible_ads and selection.get('status') == 'succeeded' and not execution.get('finishing'):
+            self.budget.check()
+            execution.update(finishing=True, mode='recovery', finish_reason=reason, finishing_ads=sorted(eligible_ads))
+            execution['changes'].append({'at_seconds': round(self.budget.spent(), 1),
+                'reason': reason, 'scope': 'Finish the same story; reuse cast/audio/scene; no optional construction.'})
+            for current in state['tasks']:
+                if current['ad'] not in eligible_ads or current['status'] == 'succeeded':
+                    continue
+                if current['attempts']:
+                    current['revision'] += 1  # one persisted phase, never reset again on resume
+                current['status'] = 'pending'
+                current['rounds'] = 0
+                current['feedback'] = 'FAST STORY FINISH: preserve script, dialogue and payoff. ' + current.get('feedback', '')
+            state['status'] = 'ready'; state['error'] = ''
+            self.store.save(state, 'story_finishing_started', {'reason': reason})
+            return True
         if self.aggregate(state) == 'complete':
             state['error'] = ''
         action = self.store.control_value(state['id'])
         state['status'] = self.aggregate(state) if action == 'run' else ('paused' if action == 'pause' else 'cancelled')
+        if remaining and action == 'run':
+            state['error'] = 'Story finishing could not complete; checkpoints retained. No end-card-only substitute was published.'
+        return False
 
     def finishing_checkpoint(self, state):
         self.budget.check()
@@ -366,7 +331,10 @@ class Engine:
         if not state.get('execution'):
             return
         for task in state['tasks']:
-            if task['status'] == 'needs_review' and isinstance(task.get('result'), dict):
+            result = task.get('result') or {}
+            unprocessed = (task['status'] == 'succeeded' and result.get('verdict') == 'revise'
+                           and not result.get('accepted_with_notes'))
+            if (task['status'] == 'needs_review' or unprocessed) and isinstance(task.get('result'), dict):
                 verify_accepted(task['result'])
                 if task.get('accepted_manifest_sha256') and digest(task['accepted_manifest']) != task['accepted_manifest_sha256']:
                     raise ContractError('Accepted review manifest changed: ' + task['id'])
@@ -418,6 +386,18 @@ class Engine:
         self.store.save(state, 'model_routes_refreshed', {'count': len(stale)})
 
     def reconcile(self, state):
+        for task in state['tasks']:
+            if task['stage'] == 'package' and (task.get('result') or {}).get('delivery_mode') == 'product_only':
+                task['previous'] = task['result']; task['result'] = None
+                task['status'] = 'pending'
+                task.pop('accepted_manifest', None); task.pop('accepted_manifest_sha256', None)
+                for current in state['tasks']:
+                    if current['ad'] == task['ad'] and current['status'] == 'skipped':
+                        current['status'] = 'pending'
+                        current['feedback'] = 'Resume the original story, not the rejected end-card-only substitute.'
+                state.setdefault('fallbacks', {}).setdefault(str(task['ad']), {}).update(status='rejected')
+                state['status'] = 'ready'
+                self.store.save(state, 'end_card_only_rejected', {'ad': task['ad']})
         for task in state['tasks']:
             if task['status'] == 'running':
                 for attempt in task['attempts']:
@@ -504,7 +484,10 @@ class Engine:
         if None in failed_ads:
             return None
         ready = []
+        allowed = state.get('execution', {}).get('finishing_ads')
         for index, task in enumerate(state['tasks']):
+            if allowed is not None and task['ad'] is not None and task['ad'] not in allowed:
+                continue
             if task['status'] in ('pending', 'waiting_provider') and task['ad'] not in failed_ads:
                 prerequisites=[t for t in state['tasks'][:index] if t['ad'] is None or t['ad']==task['ad']]
                 if all(t['status']=='succeeded' for t in prerequisites):
@@ -515,7 +498,7 @@ class Engine:
         return min(ready, key=lambda item: item[:2])[2] if ready else None
 
     def aggregate(self, state):
-        complete = sum(t['stage'] == 'package' and t['status'] == 'succeeded' for t in state['tasks'])
+        complete = len(_completed_ads(state))
         if complete == state['config']['count']:
             return 'complete'
         if complete:
@@ -551,7 +534,11 @@ class Engine:
 
     def agent_task(self, state, task, root):
         budget = getattr(self, 'budget', None)
-        c = state['config']; work = root/'workspaces'/task['id']; work.mkdir(parents=True, exist_ok=True)
+        c = state['config']
+        if state.get('execution', {}).get('finishing'):
+            import copy
+            c = copy.deepcopy(c); c['generation']['fast'] = True
+        work = root/'workspaces'/task['id']; work.mkdir(parents=True, exist_ok=True)
         if state.get('execution') and task['stage'] == 'research' and not task['attempts']:
             from .learning import cached_research, research_key
             hit = cached_research(self.store, c, state['sources'])
@@ -630,6 +617,8 @@ class Engine:
             # fall back to the next configured provider once.
             attempt_cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
                            else 1 if usable > 1 else 2)
+            if state.get('execution', {}).get('finishing'):
+                attempt_cap = 1
             remaining = max(0, attempt_cap - used)
             if any(on_route(a, route) and a['revision'] == task['revision'] and
                    a.get('kind') in ('timeout', 'idle_timeout', 'log_limit') for a in task['attempts']):
@@ -688,6 +677,17 @@ class Engine:
                         'remaining_seconds': round(budget.remaining(), 1) if budget else None,
                         'THIS_ATTEMPT_SECONDS': round(timeout, 1),
                         'instruction': 'Finish this stage and write COMPLETE result.json within this attempt allowance. Save a usable checkpoint early; do not spend the allowance exploring unrelated files.'})
+                    if state['execution'].get('finishing'):
+                        prompt += ('\nFAST STORY FINISH: Continue this SAME script, accepted voices and existing scene/checkpoint. '
+                            'Prioritize a complete animated story with its original dialogue, reaction and payoff. '
+                            'Reuse the rendered animatic as final picture when valid; use --fast rendering and fewer samples. '
+                            'Drop optional new scenery/props and decorative polish, never the story or readable acting. '
+                            'Keep the product clip ONLY in the short closing card. Do not produce a product-only film, '
+                            'slideshow, or silence instead of the accepted dialogue. Correct causal/technical blockers; '
+                            'do not restart direction or resynthesize accepted audio. Reviewers: missing optional décor '
+                            'or polish is an allowed scope reduction, not a blocker by itself. Still reject broken '
+                            'causality, absent story action, unreadable faces/product and speech/timing defects. '
+                            'One focused repair; submit promptly.')
                 attempt['prompt_chars'] = len(prompt)
                 (work/'TASK.md').write_text(prompt)
                 log = root/'logs'/f'{task["id"]}-{number}.jsonl'
@@ -1003,6 +1003,8 @@ class Engine:
                 budget = limits.get('review_repairs', 2)
             if state['config'].get('generation', {}).get('fast'):
                 budget = min(budget, 1)
+            if state['execution'].get('finishing'):
+                budget = min(budget, 1)
         # Count this review's own requests; upstream rewinds also bump revision and must not spend them.
         if task.get('rounds', 0) >= budget:
             # Keep strict quality gates. Modern production recovers automatically;
@@ -1021,6 +1023,11 @@ class Engine:
         default = {'select': 'write', 'critique_final': 'revise', 'script_sense': 'write',
                    'board_review': 'assets', 'edit_review': 'edit_plan'}.get(task['stage'], 'audio')
         start_stage = default if task['stage'] in ('select', 'critique_final', 'script_sense') else task['result'].get('restart', default)
+        if state.get('execution', {}).get('finishing') and start_stage in ('research','write','revise','direct'):
+            task['status'] = 'failed'
+            task['feedback'] = 'Finishing cannot restart the accepted story/voices; checkpointed findings: ' + json.dumps(task['result'])
+            self.store.save(state, 'story_finishing_blocked', {'task': task['id']})
+            return
         if start_stage == 'frame' and task['result'].get('end_card_patch'):
             patch = task['result']['end_card_patch']
             if not isinstance(patch, dict) or set(patch) != {'title'} or not isinstance(patch['title'], str) or not 1 <= len(patch['title']) <= 60:
@@ -1042,6 +1049,11 @@ class Engine:
         self.store.save(state, 'revision_requested', {'task': task['id']})
 
     def autonomous_replan(self, state, task):
+        if state.get('execution', {}).get('finishing'):
+            task['status'] = 'failed'
+            task['feedback'] = 'Finishing pass cannot restart the whole story; unresolved findings: ' + json.dumps(task['result'])
+            self.store.save(state, 'story_finishing_blocked', {'task': task['id']})
+            return
         key = 'campaign' if task['ad'] is None else str(task['ad'])
         recoveries = state.setdefault('autonomous_recovery', {})
         used = recoveries.get(key, 0)
@@ -1069,7 +1081,38 @@ class Engine:
         def result(stage):
             return next(t['result'] for t in state['tasks'] if t['ad'] == ad and t['stage'] == stage)
         try:
-            if task['stage'] == 'frame':
+            if task['stage'] == 'edit':
+                # No editorial rewrite is needed to preserve the entire approved
+                # animatic. Keep its picture, speech and timeline on one timebase.
+                from .media import run
+                animation = result('animate')['preview']
+                report = check_video(animation, state['config'], preview=True)
+                o = state['config']['output']
+                if ((report['width'],report['height']) == (o['width'],o['height'])
+                        and report['codec'] == 'h264' and report['pixel_format'] == 'yuv420p'):
+                    copy_checked(animation, work/'master.mp4', checkpoint)
+                else:
+                    run([state['config']['tools']['ffmpeg'],'-v','error','-y','-i',str(animation),
+                         '-vf',f'scale={o["width"]}:{o["height"]}:flags=neighbor','-c:v','libx264',
+                         '-preset','veryfast','-crf','17','-pix_fmt','yuv420p','-c:a','copy',str(work/'master.mp4')])
+                copy_checked(result('audio')['timeline'],work/'timeline.json',checkpoint)
+                timeline = json.loads((work/'timeline.json').read_text())
+                direction = self.direction(state,ad)
+                end = timeline['duration']
+                if o.get('cta') and o.get('frame') == 'end_card':
+                    card_at = direction['duration']-direction['end_card']['seconds']
+                    spans = [(0,card_at),(card_at,end)]
+                else:
+                    spans = [(0,end)]
+                plan = {'segments':[{'start':a,'end':b,'reason':'Preserve the full accepted story and closing window'} for a,b in spans],
+                        'removed_lines':[],'sound_plan':direction.get('mix') or 'Preserve the accepted synchronized mix'}
+                (work/'identity-plan.json').write_text(json.dumps(plan,indent=2))
+                data = {'summary':'Finishing identity edit: complete accepted animation and dialogue preserved, no rerender.',
+                    'master':'master.mp4','timeline':'timeline.json','plan':plan,
+                    'files':[{'path':'master.mp4','kind':'video'},{'path':'timeline.json','kind':'timeline'},
+                             {'path':'identity-plan.json','kind':'source'}]}
+                self.validate_media(task,data,work,state['config'],state)
+            elif task['stage'] == 'frame':
                 import copy
                 direction = copy.deepcopy(self.direction(state, ad))
                 if direction and str(ad) in state.get('frame_overrides', {}):
@@ -1080,6 +1123,8 @@ class Engine:
             elif task['stage'] == 'qa':
                 from .media import check_final_mix
                 report = check_video(result('frame')['master'], state['config'])
+                from .media import check_story_content
+                report['story'] = check_story_content(result('frame')['master'], result('edit')['master'], result('frame'), state['config'])
                 timeline = json.loads(Path(result('edit')['timeline']).read_text())
                 report['mix'] = check_final_mix(result('frame')['master'], timeline, state['config'], work)
                 from .speech import check_speech, loudness, TRUE_PEAK
@@ -1095,6 +1140,14 @@ class Engine:
                 (work/'qa.json').write_text(json.dumps(report, indent=2))
                 data = {'summary': 'Encoded media passed technical checks', 'files': [{'path':'qa.json','kind':'notes'}]}
             else:
+                review = next((t for t in state['tasks'] if t['ad'] == ad and t['stage'] == 'creative_qa'), {})
+                verdict = review.get('result') or {}
+                if state.get('execution') and (review.get('status') != 'succeeded' or
+                        not (verdict.get('verdict') == 'pass' or verdict.get('accepted_with_notes')) or
+                        any(f.get('severity') == 'blocking' for f in verdict.get('findings', []))):
+                    raise ContractError('Creative review has not accepted the complete story; packaging is blocked')
+                from .media import check_story_content
+                check_story_content(result('frame')['master'], result('edit')['master'], result('frame'), state['config'])
                 if final_only:
                     # Delivery of an approved film must not wait for recompressing
                     # every large .blend/source artifact in the finishing reserve.
@@ -1113,6 +1166,8 @@ class Engine:
             task['accepted_manifest_sha256'] = digest(destination/'accepted.json')
             checkpoint()
             task['status'] = 'succeeded'
+            if task['stage'] == 'package' and str(ad) in state.get('fallbacks', {}):
+                state['fallbacks'][str(ad)]['status'] = 'replaced_with_story'
         except BudgetExceeded:
             raise
         except Exception as e:
