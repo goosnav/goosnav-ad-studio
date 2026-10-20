@@ -14,6 +14,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import uuid
 
 from harness.arguments import HelpfulParser, add_model_options
 
@@ -227,8 +228,8 @@ def main():
 def start(*args):
     """Detached controller: it keeps going after this terminal closes."""
     logs = HOME / 'gui-logs'; logs.mkdir(parents=True, exist_ok=True)
-    log = logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}.log'
-    with log.open('w') as out:
+    log = logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}-{uuid.uuid4().hex}.log'
+    with log.open('x') as out:
         subprocess.Popen([sys.executable, '-m', 'harness', '--home', str(HOME), *args], cwd=REPO, stdout=out,
                          stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     for _ in range(60):
@@ -244,11 +245,16 @@ def start(*args):
     time.sleep(1.5)
     if '"error"' in log.read_text():
         sys.exit(log.read_text().strip())
-    queued = 'queued' in log.read_text()
+    waiting = next((line for line in reversed(log.read_text().splitlines())
+                    if 'queued' in line.lower()), '')
+    queued = bool(waiting)
     print(f'{"Queued" if queued else "Started"} {run_id} in the background (log: {log}).\n'
-          f'  ./ad watch      follow it        ./ad status     one line now\n'
-          f'  ./ad pause      stop after the current step\n'
+          f'  ./ad watch {run_id}      follow it\n'
+          f'  ./ad status {run_id}     one line now\n'
+          f'  ./ad pause {run_id}      stop after the current step\n'
           f'  or open the GUI: ./ad gui')
+    if waiting:
+        print(f'  {waiting}')
 
 
 if __name__ == '__main__':

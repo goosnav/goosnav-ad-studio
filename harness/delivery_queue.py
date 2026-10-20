@@ -41,22 +41,24 @@ def _pending(state):
 
 def pump(store):
     """Attempt one due run per tick; load it only after acquiring the controller lock."""
-    try:
-        with store.worker_lock():
-            for state in reversed(store.list()):
+    for candidate in reversed(store.list()):
+        try:
+            with store.worker_lock(candidate['id']):
+                state = store.get(candidate['id'])
                 info = state.get('delivery')
                 info = info if isinstance(info, dict) else {}
                 if (store.control_value(state['id']) != 'run' or not _pending(state)
                         or info.get('next_retry_at', 0) > time.time()):
                     continue
-                deliver_ready(store, state)
+                with store.delivery_lock():
+                    deliver_ready(store, state)
                 info = state.get('delivery', {})
                 print(f'{state["id"]}: Drive {info.get("status")} | attempt {info.get("attempts", 0)} | '
                       f'next retry {info.get("next_retry_at", "none")} | {info.get("error", "")[:240]}',
                       flush=True)
                 return 1
-    except Busy:
-        pass
+        except Busy:
+            continue
     return 0
 
 

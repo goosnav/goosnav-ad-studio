@@ -66,12 +66,12 @@ def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
     while True:
         try:
             result=engine.run(run_id,max_steps=max_steps)
-        except Busy:
-            # Another ad is being made: wait our turn instead of failing (pause/cancel still apply).
+        except Busy as exc:
+            # Only another owner of this run (or a legacy controller) blocks us.
             if store.control_value(run_id)=='cancel':
-                state=store.get(run_id);state['status']='cancelled';store.save(state,'cancelled_in_queue');return state
+                return {**store.get(run_id), 'status': 'cancelled'}
             if not queued:
-                print('Another run is in progress; this one is queued and starts when it finishes.',file=sys.stderr,flush=True)
+                print(f'Controller queued: {exc}',file=sys.stderr,flush=True)
                 queued=True
             # Check the cancellation flag quickly for controllers queued behind the lock.
             sleep(1);continue
@@ -88,7 +88,7 @@ def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
             step=min(1,delay);sleep(step);delay-=step
         # Never overwrite a newer controller snapshot with a stale wait record.
         try:
-            with store.worker_lock():
+            with store.worker_lock(run_id):
                 state = store.get(run_id)
                 if state.get('execution'):
                     state['execution']['waiting_seconds'] += time.monotonic() - waited
@@ -154,7 +154,7 @@ def main(argv=None):
                 overrides={k:getattr(a,k) for k in ('concept','website','count') if getattr(a,k) is not None}
                 overrides.update(model_overrides(a))
                 if a.seconds is not None:overrides['output']={'target_seconds':a.seconds}
-                result=store.create(load_config(a.config,overrides));result['tasks']=build_tasks(result['config']['count'], modern=True)
+                result=store.create(load_config(a.config,overrides));result['tasks']=build_tasks(result['config']['count'], modern=True, compact=True)
                 result['config_path'] = str(Path(a.config).resolve()) if a.config else None
                 store.save(result,'planned')
                 if a.cmd=='make' and not a.plan:
@@ -164,14 +164,14 @@ def main(argv=None):
                 if a.steps is not None and a.steps<0:raise ValueError('steps must be nonnegative')
                 if not 0 <= a.extra_minutes <= 240:raise ValueError('extra-minutes must be 0..240')
                 if a.extra_minutes:
-                    with store.worker_lock():
+                    with store.worker_lock(a.id):
                         result = store.get(a.id)
                         if not result.get('execution'):raise ValueError('Legacy run has no execution budget')
                         result['execution']['hard_seconds'] += a.extra_minutes * 60
                         result['execution']['changes'].append({'extra_minutes': a.extra_minutes, 'reason': 'operator allowance'})
                         store.save(result, 'budget_extended')
                 if a.cmd=='resume':
-                    with store.worker_lock():
+                    with store.worker_lock(a.id):
                         result=reopen(store.get(a.id))
                         store.save(result,'resumed')
                         store.control(a.id,'run')
@@ -192,7 +192,7 @@ def main(argv=None):
             elif a.cmd=='upload':
                 # The controller owns a full snapshot while rendering. Serialize
                 # manual uploads so an older receipt save cannot erase its progress.
-                with store.worker_lock():
+                with store.worker_lock(a.id):
                     from .streaming import deliver_ready
                     result=deliver_ready(store,store.get(a.id))
                     if not result.get('delivery'):
@@ -201,7 +201,7 @@ def main(argv=None):
                 recover_worker(store)
             elif a.cmd=='publish':
                 from .publication import publish_run
-                with store.worker_lock():
+                with store.worker_lock(a.id):
                     result=publish_run(store,store.get(a.id))
             elif a.cmd=='cooldown':
                 if a.action=='clear':
@@ -239,10 +239,10 @@ def main(argv=None):
             if a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial'):
                 from .publication import publish_run
                 try:
-                    with store.worker_lock():
+                    with store.worker_lock(result['id']):
                         result=publish_run(store,store.get(result['id']))
                 except Busy:
-                    print('Asset publication deferred: another run is active. Retry: ./ad publish ' + result['id'],
+                    print('Asset publication deferred: another controller owns this run. Retry: ./ad publish ' + result['id'],
                           file=sys.stderr, flush=True)
             if (a.cmd in ('make','run','resume','retry') and result.get('status') in ('complete','partial')
                     and result['config'].get('delivery', {}).get('drive')):

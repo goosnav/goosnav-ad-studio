@@ -126,3 +126,12 @@ def test_model_capacity_is_transient_provider_capacity_not_a_crash():
     event = '{"type":"turn.failed","error":{"message":"Selected model is at capacity. Please try a different model."}}'
     assert classify(1, event) == 'capacity'
     assert classify(1, 'API Error: 529 Overloaded') == 'capacity'
+def test_worker_temporary_files_stay_in_its_workspace(tmp_path):
+    import sys
+    from harness.workers import supervise
+    log = tmp_path / 'worker.log'
+    result = supervise([sys.executable, '-c',
+                        'import tempfile; print(tempfile.mkdtemp())'],
+                       cwd=tmp_path, prompt='', log=log, timeout=5, cancelled=lambda: False)
+    assert result['kind'] == 'ok'
+    assert log.read_text().strip().startswith(str(tmp_path / '.tmp') + '/')

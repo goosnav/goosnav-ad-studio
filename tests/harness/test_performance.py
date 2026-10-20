@@ -2,14 +2,21 @@
 from pathlib import Path
 import shutil
 import subprocess
+import json
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-LIBRARY = ROOT / 'assets/goosnav-3D-assets/assets/3D'
-MODELS = [LIBRARY / 'characters/goosnav_guy_ps1.blend',
-          LIBRARY / 'ps1guy/ps1guy.blend',
-          LIBRARY / 'ps1guy/astronaut/ps1guy_astronaut_v1.blend']
+def active_models():
+    from harness.library import catalog
+    config = ROOT / 'harness.local.json'
+    if not config.is_file():
+        return []
+    return [Path(e['path']) for e in catalog(json.loads(config.read_text()))
+            if e['kind'] == 'character']
+
+
+MODELS = active_models()
 
 CHECK = '''
 import bpy, json, sys
@@ -45,15 +52,19 @@ mouths = {'fps': 24, 'frames': 96, 'speakers': {
 report = performance.apply(timeline, mouths, rigs, models={s: model for s in rigs})
 assert report['A']['idle'] in ('idle', 'pose_idle')
 assert report['B']['idle'] in ('idle', 'pose_idle')
-assert report['A']['blinks'] != report['B']['blinks']
+if report['A']['blinks'] or report['B']['blinks']:
+    assert report['A']['blinks'] != report['B']['blinks']
 for speaker, arm in [('A', first), ('B', second)]:
-    assert report[speaker]['blinks']
-    body = arm.animation_data.nla_tracks[0].strips[0].action
-    assert all('jaw' not in fc.data_path for fc in body.fcurves)
-    assert all(fc.data_path.startswith('pose.bones[') for fc in body.fcurves)
+    if not report[speaker]['blinks']:
+        for m in performance._meshes(arm):
+            if m.data.shape_keys and 'blink' in m.data.shape_keys.key_blocks:
+                assert performance._protected(m.data.shape_keys, 'key_blocks["blink"].value')
+            elif 'eye' in m.name.lower() or 'pupil' in m.name.lower():
+                assert performance._protected(m, 'scale')
+    assert arm.animation_data.action.get('studio_performance')
     head = [fc for fc in arm.animation_data.action.fcurves
             if fc.data_path == 'pose.bones["head"].rotation_euler']
-    assert head and max(abs(k.co.y) for fc in head for k in fc.keyframe_points) < 0.4
+    assert all(abs(k.co.y) < 0.4 for fc in head for k in fc.keyframe_points)
     for frame in (1, 24, 60, 90):
         scene.frame_set(frame)
         assert max(abs(arm.matrix_world[r][c] - before[speaker][r][c])
@@ -63,6 +74,9 @@ for speaker, arm in [('A', first), ('B', second)]:
                       for m in meshes) if meshes else abs(arm.pose.bones['jaw'].rotation_euler.x))
         talking = (speaker == 'A' and frame == 24) or (speaker == 'B' and frame == 60)
         assert (opened > .1) == talking, (speaker, frame, opened)
+count = len(bpy.data.actions)
+performance.apply(timeline, mouths, rigs, models={s: model for s in rigs})
+assert len(bpy.data.actions) == count
 try:
     performance.play_clip(first, 'open_book', 73, 96, model=model)
 except ValueError as e:
@@ -89,10 +103,8 @@ print('PERFORMANCE_OK', json.dumps(report))
 '''
 
 
-@pytest.mark.parametrize('model', MODELS, ids=['jaw rig', 'morph rig', 'astronaut'])
+@pytest.mark.parametrize('model', MODELS, ids=lambda p: p.stem)
 def test_reusable_talking_on_two_real_library_characters(tmp_path, model):
-    if not model.is_file():
-        model = Path.home() / 'Desktop/code/goosnav-3D-assets/assets/3D' / model.relative_to(LIBRARY)
     if not shutil.which('blender') or not model.is_file():
         pytest.skip('requires Blender and library models')
     check = tmp_path / 'check.py'; check.write_text(CHECK)
@@ -103,7 +115,7 @@ def test_reusable_talking_on_two_real_library_characters(tmp_path, model):
     assert 'PERFORMANCE_OK' in result.stdout
 
 
-@pytest.mark.parametrize('model', MODELS[:2], ids=['saved poses', 'NLA clips'])
+@pytest.mark.parametrize('model', MODELS, ids=lambda p: p.stem)
 def test_inventory_can_read_the_current_open_model_without_reappending_it(tmp_path, model):
     if not shutil.which('blender') or not model.is_file():
         pytest.skip('requires Blender and library model')

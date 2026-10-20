@@ -108,11 +108,41 @@ def test_queue_reloads_under_controller_lock_and_respects_cancel(tmp_path, remot
     _, drive = remote
     store, state, _ = fixture(tmp_path)
     store.save(state, 'fixture')
-    with store.worker_lock():
+    with store.worker_lock(state['id']):
         assert pump(Store(store.root)) == 0
         assert drive.calls == []
     store.control(state['id'], 'cancel')
     assert pump(Store(store.root)) == 0
+    assert drive.calls == []
+
+
+def test_queue_skips_busy_run_and_delivers_another(tmp_path, remote):
+    from harness.delivery_queue import pump
+    _, drive = remote
+    store, first, _ = fixture(tmp_path)
+    _, second, _ = fixture(tmp_path)
+    store.save(first, 'fixture')
+    store.save(second, 'fixture')
+    with store.worker_lock(first['id']):
+        assert pump(Store(store.root)) == 1
+    assert store.get(second['id'])['delivery']['status'] == 'uploaded'
+    assert 'delivery' not in store.get(first['id'])
+    assert len([c for c in drive.calls if 'copyto' in c]) == 1
+
+
+def test_transfer_contention_defers_inline_and_queue_without_state_writes(tmp_path, remote):
+    from harness.delivery_queue import pump
+    _, drive = remote
+    store, state, _ = fixture(tmp_path)
+    store.save(state, 'fixture')
+    before = store.get(state['id'])
+    events = store.events(state['id'])
+    with Store(store.root).delivery_lock():
+        with store.worker_lock(state['id']):
+            assert streaming.deliver_ready(store, state) == before
+        assert pump(Store(store.root)) == 0
+    assert store.get(state['id']) == before
+    assert store.events(state['id']) == events
     assert drive.calls == []
 
 
@@ -315,8 +345,14 @@ while not (root / 'release').exists():
         first.terminate()
         first.wait(timeout=5)
         with pytest.raises(Busy):
-            with Store(store.root).worker_lock():
+            with Store(store.root).worker_lock(state['id']):
                 pass
+        with pytest.raises(Busy):
+            with Store(store.root).delivery_lock():
+                pass
+        other = store.create(state['config'])
+        with Store(store.root).worker_lock(other['id']):
+            pass
         second = ensure_worker(Store(store.root))
         time.sleep(0.3)
         assert len((binary / 'started').read_text().splitlines()) == 1

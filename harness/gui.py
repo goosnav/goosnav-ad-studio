@@ -1,7 +1,7 @@
 """A plain local web page over the same store and CLI. It never runs workers itself.
 
 Starting/resuming spawns `python -m harness ...` detached, so the CLI's file lock
-still guarantees one controller. Pause/cancel write the same control flag the CLI
+still guarantees one controller per run. Pause/cancel write the same control flag the CLI
 writes. Files are served only from inside the harness home.
 """
 import html
@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from urllib.parse import parse_qs, quote, urlparse
 import urllib.request
 
@@ -41,10 +42,11 @@ def page(title, body, refresh=False):
 
 def spawn(home, *args):
     """Detached controller process; its output goes to a per-run log in the home."""
-    logs = Path(home) / 'gui-logs'; logs.mkdir(exist_ok=True)
-    out = (logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}.log').open('w')
-    subprocess.Popen([sys.executable, '-m', 'harness', '--home', str(home), *args], cwd=REPO,
-                     stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    logs = Path(home) / 'gui-logs'; logs.mkdir(parents=True, exist_ok=True)
+    log = logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}-{uuid.uuid4().hex}.log'
+    with log.open('x') as out:
+        subprocess.Popen([sys.executable, '-m', 'harness', '--home', str(home), *args], cwd=REPO,
+                         stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
 
 
 def videos(state):

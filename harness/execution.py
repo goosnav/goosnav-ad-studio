@@ -103,6 +103,10 @@ class Budget:
     def production_remaining(self):
         if not self.data:
             return float('inf')
+        if any(t['stage'] == 'script' for t in self.state['tasks']):
+            # The animator now owns production. There is no storyboard phase to
+            # interrupt and hand to a cheaper worker partway through the film.
+            return self.remaining()
         if self.data.get('finishing'):
             return self.remaining()
         count = self.state['config']['count']
@@ -128,6 +132,8 @@ class Budget:
             raise FinishRequired('Creative deadline reached; finish the existing story with reduced production scope.')
 
     def simplify(self):
+        if any(t['stage'] == 'script' for t in self.state['tasks']):
+            return False  # keep the requested creative model; reduce render cost in its workspace
         if self.data and self.spent() >= self.data['target_seconds'] * .75 and self.data['mode'] != 'recovery':
             self.data['mode'] = 'recovery'
             self.data['changes'].append({'at_seconds': round(self.spent(), 1),
@@ -140,6 +146,20 @@ class Budget:
         if not self.data:
             return ceiling
         self.check()
+        if any(t['stage'] == 'script' for t in self.state['tasks']):
+            if task['stage'] == 'script':
+                spent = sum(max(0, a.get('ended', a['started']) - a['started'])
+                            for a in task.get('attempts', [])
+                            if a.get('revision', 0) == task.get('revision', 0))
+                allowance = max(0.01, min(120, 45 + 15 * self.state['config']['count']) - spent)
+            else:
+                unfinished = sum(t['stage'] == 'package' and t['status'] != 'succeeded'
+                                 for t in self.state['tasks']) or 1
+                per_ad = self.remaining() / unfinished
+                # Reserve editing and deterministic finishing before animation starts.
+                allowance = (per_ad * .72 if task['stage'] == 'animate' else
+                             per_ad * .65 if task['stage'] == 'edit' else per_ad)
+            return max(.01, min(ceiling, allowance, self.remaining()))
         pending = [t for t in self.state['tasks'] if t['status'] != 'succeeded']
         weight = sum(WEIGHTS.get(t['stage'], 5) for t in pending) or 1
         normal_left = max(0, self.data['target_seconds'] - self.spent())

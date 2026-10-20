@@ -163,7 +163,7 @@ def publish_run(store, state):
         return state
     publications = state.setdefault('asset_publications', {})
     for task in state['tasks']:
-        if task['stage'] != 'assets' or task['status'] != 'succeeded':
+        if task['stage'] not in ('assets', 'animate') or task['status'] != 'succeeded':
             continue
         # Never promote assets from an ad whose creative/media checks did not finish.
         delivered = any(t['ad'] == task['ad'] and t['stage'] == 'package' and t['status'] == 'succeeded'

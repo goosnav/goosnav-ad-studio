@@ -1,4 +1,4 @@
-"""Durable run snapshots and events; one active worker on this host/root."""
+"""Durable run snapshots and events; independent runs have independent owners."""
 from contextlib import contextmanager
 import fcntl
 import json
@@ -16,6 +16,8 @@ class Store:
     def __init__(self, root):
         self.root = Path(root).expanduser().resolve()
         self.worker_lock_fd = None
+        self._run_locks = {}
+        self.delivery_lock_fd = None
         self.root.mkdir(parents=True, exist_ok=True)
         self.db = self.root / 'state.sqlite3'
         with self.connect() as db:
@@ -127,15 +129,58 @@ class Store:
                 db.execute('DELETE FROM cooldowns WHERE provider=?', (provider,))
 
     @contextmanager
-    def worker_lock(self):
-        with (self.root / 'worker.lock').open('a') as lock:
+    def worker_lock(self, run_id=None):
+        """Exclude writers of one run; no-argument legacy callers exclude all runs.
+
+        Shared legacy leases coordinate with older controllers without serializing
+        new controllers. Never unlink lock files (their inode is the lock).
+        """
+        path = self.path(run_id) / 'worker.lock' if run_id is not None else None
+        with (self.root / 'worker.lock').open('a') as legacy:
+            try:
+                fcntl.flock(legacy, (fcntl.LOCK_SH if path else fcntl.LOCK_EX) | fcntl.LOCK_NB)
+            except BlockingIOError as e:
+                raise Busy('Another controller owns this workspace; status/pause/cancel still work') from e
+            lock = path.open('a') if path else legacy
+            previous = self.worker_lock_fd
+            try:
+                if path:
+                    try:
+                        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError as e:
+                        raise Busy(f'Another controller owns run {run_id}; status/pause/cancel still work') from e
+                self.worker_lock_fd = lock.fileno()
+                self._run_locks[run_id] = (legacy.fileno(), lock.fileno())
+                try:
+                    yield
+                finally:
+                    self._run_locks.pop(run_id, None)
+                    self.worker_lock_fd = previous
+            finally:
+                # Close, not LOCK_UN: an inherited uploader must keep its lease.
+                if path:
+                    lock.close()
+
+    def upload_lock_fds(self, run_id):
+        """Leases inherited by the deadline guard and its upload child."""
+        descriptors = self._run_locks.get(run_id, self._run_locks.get(None, ()))
+        if self.delivery_lock_fd is not None:
+            descriptors = (*descriptors, self.delivery_lock_fd)
+        return tuple(dict.fromkeys(descriptors))
+
+    @contextmanager
+    def delivery_lock(self):
+        """Serialize all transfers, including inline hooks and manual uploads."""
+        if self.delivery_lock_fd is not None:
+            yield
+            return
+        with (self.root / 'delivery-transfer.lock').open('a') as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as e:
-                raise Busy('Another controller owns this workspace; status/pause/cancel still work') from e
-            self.worker_lock_fd = lock.fileno()
+                raise Busy('Another delivery transfer is active') from e
+            self.delivery_lock_fd = lock.fileno()
             try:
                 yield
             finally:
-                self.worker_lock_fd = None
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                self.delivery_lock_fd = None

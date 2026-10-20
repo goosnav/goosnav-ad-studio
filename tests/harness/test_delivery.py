@@ -176,6 +176,22 @@ def test_selection_order_and_latest_succeeded_revision_determine_titles(tmp_path
     assert receipt['names']['ad-02.mp4'].startswith('revised-first-')
 
 
+def test_compact_campaign_titles_follow_ad_index_and_keep_saved_names(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    state['tasks'] = [t for t in state['tasks'] if t['stage'] == 'package'] + [
+        {'id': 'campaign-script', 'stage': 'script', 'status': 'succeeded',
+         'result': {'scripts': [{'title': 'First Film'}, {'title': 'Second Film'}]}},
+        {'id': 'campaign-script', 'stage': 'script', 'status': 'failed',
+         'result': {'scripts': [{'title': 'Rejected'}]}}]
+    drive = Drive()
+    receipt = deliver(store, state, drive)['delivery']
+    assert receipt['names']['ad-01.mp4'].startswith('first-film-')
+    assert receipt['names']['ad-02.mp4'].startswith('second-film-')
+    names = dict(receipt['names'])
+    state['tasks'][-2]['result']['scripts'][0]['title'] = 'Changed title'
+    assert deliver(store, state, drive)['delivery']['names'] == names
+
+
 @pytest.mark.parametrize('title', ['../../evil\\name\n--flag : x', '🔥 / ..', 'A' * 1000,
                                   'Café — Déjà Vu', '', None, {'title': 'bad'}])
 def test_unsafe_or_missing_titles_make_safe_bounded_unique_names(tmp_path, title):

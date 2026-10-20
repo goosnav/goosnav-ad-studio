@@ -12,6 +12,25 @@ from harness.store import Store
 from harness.workflow import build_tasks
 
 
+def test_same_second_spawns_preserve_independent_logs(tmp_path, monkeypatch):
+    from pathlib import Path
+    monkeypatch.setattr(gui.time, 'strftime', lambda *_: '20261020-154021')
+    logs = []
+    handles = []
+    def launch(command, **kwargs):
+        handles.append(kwargs['stdout'])
+        logs.append(Path(handles[-1].name))
+        handles[-1].write(f'controller {len(logs)}\n')
+        assert kwargs['start_new_session'] is True
+    monkeypatch.setattr(gui.subprocess, 'Popen', launch)
+    gui.spawn(tmp_path, 'make')
+    gui.spawn(tmp_path, 'make')
+    assert logs[0] != logs[1]
+    assert logs[0].read_text() == 'controller 1\n'
+    assert logs[1].read_text() == 'controller 2\n'
+    assert all(handle.closed for handle in handles)
+
+
 @pytest.fixture
 def server(tmp_path, monkeypatch):
     monkeypatch.setattr(gui, 'LOCAL_CONFIG', tmp_path / 'harness.local.json')

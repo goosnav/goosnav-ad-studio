@@ -4,10 +4,11 @@
 
 Quick start: `./ad "what the ad should be"` (see [`CLI.txt`](CLI.txt) for the variations).
 
-Use `-e low|medium|high` for production scope/model intensity and `--fast` to halve
-the time target while retaining the chosen model tier. Nine-second targets are
-10/20/40 minutes normally, 5/10/20 with `--fast`, with at most 25% overtime before
-checkpointing. These are budgets, not a claim that every ad finishes within them.
+Use `-e low|medium|high` for production scope/model intensity. Per 9-second ad,
+the base budgets are **10/20/40 minutes** for low/medium/high; `--fast` halves
+them to **5/10/20 minutes** while retaining the model tier. The hard ceiling is
+the base budget plus **25%**. These are budget limits, not measured speeds or
+completion promises; scene complexity, hardware and provider availability matter.
 `./ad metrics RUN_ID` reports actual work; `./ad feedback RUN_ID --rating good --note
 "The reaction worked"` supplies traceable guidance for later ads.
 
@@ -32,24 +33,47 @@ python3 -m harness make --count 3            # or add --concept "..."; omit both
 ./"Start Ad Studio.sh"                       # the same from a browser page: runs, videos, config, pause/resume
 ```
 
-A deterministic state machine (`harness/`) uses bounded factual research, TWO scripts
-per requested ad, and ONE selection/story-coherence review. Per ad: director,
-measured local neural audio, blocked assets and ONE combined storyboard/performance
-check, Blender animation, ONE video editor that plans and
-performs the conform, Goosnav Frame CTA, deterministic technical QA, a short final
-creative review and packaging. Each creative step is a budgeted, tool-using `codex exec`
-or `claude -p` session using your existing subscriptions. `-e low|medium|high`
-chooses the role/model preset; `-p openai|anthropic` chooses the preferred
-provider while preserving automatic failover. Medium defaults to Opus for
-writing/animation/direction and Sonnet for QA; high defaults to Astra with Sol
-for QA, and low defaults to Luna. Release versions resolve dynamically, and
-automatic model routes refresh for unfinished work on resume. See [CLI.txt](CLI.txt)
-for all combinations and `./ad models -e high` for a live preview. The backup
-continues interrupted work in the same workspace. Scripts default to simple spoken scenes; a shared
-Blender helper reuses idle/gesture clips and drives mouths from the measured
-dialogue, rather than rebuilding body animation for each ad. Static characters and products
-are acceptable when the dialogue and timing work. The editor can trim dead air and
-produces a new speech timeline for final QA. Static products stay intact. Worker example: [`dev/WORKER_GUIDE.md`](dev/WORKER_GUIDE.md#talking-characters-and-reusable-motion).
+Every new CLI run uses a compact workflow: concise campaign scripting/planning →
+animation → editing → deterministic Frame finishing, technical QA and packaging →
+per-ad MP4 upload when Drive is configured. The animator owns the scene, audio,
+build and render, where most production effort belongs. The editor checks the
+film, makes needed cuts and preserves accurate speech timing. There are no human
+production approval gates; an end-card-only video cannot substitute for the ad.
+Existing saved runs retain their workflow and accepted work when resumed.
+For new runs, the writer keeps the chosen model but uses low reasoning: a single
+9-second script gets at most 60 seconds per revision; larger batches are capped
+at 120 seconds per revision, subject to the remaining run budget. The animator
+keeps the selected effort. Compact context retains the three recent results and
+character voice memory.
+
+Creative workers use your Codex/Claude subscriptions. `-p openai|anthropic`
+selects a preferred provider while preserving automatic fallback. Models resolve
+dynamically; unfinished work continues in its existing workspace. Preview current
+routing with `./ad models -e high`.
+
+Separate launches generate concurrently. Each prints its own run ID; use explicit
+IDs for controls when several runs are active (omitting an ID selects the latest):
+
+```sh
+./ad "A character struggles to open Book Two"  # detached; prints first run ID
+./ad "A Goosklerf game gets interrupted"      # detached; starts independently
+./ad list
+RUN_A=REPLACE_WITH_FIRST_RUN_ID
+RUN_B=REPLACE_WITH_SECOND_RUN_ID
+./ad status "$RUN_A"
+./ad watch "$RUN_B"                          # Ctrl-C stops watching
+./ad pause "$RUN_A"
+./ad resume "$RUN_A"
+```
+
+Two controllers cannot own the same run simultaneously. Runs still share hardware
+and provider quotas. A legacy controller already running before the update keeps
+its workspace-wide lock: new launches queue until that old process finishes.
+Once it releases the lock, new controllers can generate independently.
+Drive transfers are serialized across all runs, including
+inline and manual uploads; durable retries preserve receipts without rerendering.
+
+Worker example: [`dev/WORKER_GUIDE.md`](dev/WORKER_GUIDE.md#talking-characters-and-reusable-motion).
 Operations: [`dev/OPERATIONS.md`](dev/OPERATIONS.md).
 Status and next steps: [`dev/STATE.md`](dev/STATE.md).
 
@@ -123,9 +147,8 @@ An MP4 from this helper is not evidence of creative approval.
 `harness.execution` accounts for active work and provider waiting separately;
 ordinary resume retains spending. At the hard ceiling, an operator can explicitly
 extend it with `./ad resume RUN_ID --extra-minutes 10`. Runs without the versioned
-execution policy retain legacy behavior. Versioned direction attempts request a
-minimum 90/120/180 seconds for low/medium/high, including fast mode, bounded by
-the stage ceiling and remaining global budget. This does not extend the hard cap.
+execution policy retain legacy behavior. Attempts remain bounded by their stage
+limits and the remaining run budget.
 Strict review contracts reject a pass verdict with unresolved blocking or important
 defects. `harness.learning` provides product-scoped,
 source-linked feedback, reuse ordering, voice suggestions and hash-verified research
@@ -133,7 +156,8 @@ reuse (up to six hours); it does not train a model or turn technical success int
 a quality rating. Use `./ad feedback` and `./ad metrics` as shown in [CLI.txt](CLI.txt).
 
 Post-production publication runs only for declared candidates from accepted asset
-tasks whose ad has a successful package. `./ad publish RUN_ID` retries it without
+tasks, or an animator's optional `candidate_manifest` in compact runs, whose ad
+has a successful package. `./ad publish RUN_ID` retries it without
 rendering: asset commit and LFS push precede local adoption and any matching parent
 gitlink update. Each has a separate receipt/status; failures do not invalidate a
 finished video. Accepted artifact hashes and the saved accepted-manifest hash are
@@ -147,11 +171,14 @@ Configure `output.folder` (a local absolute path) and `delivery.drive` (an
 rclone destination such as `agent-exchange:deliverables/ad-studio`) in
 `harness.local.json`, then authorize that remote with `rclone config` on the
 render machine. `./ad "prompt"` uploads only the finished MP4s to the configured
-folder immediately after each ad finishes packaging, using script-title filenames with stable UTC timestamps
+folder as each ad finishes packaging and the shared transfer slot is available,
+using script-title filenames with stable UTC timestamps
 and run/ad suffixes to avoid collisions. Source ZIPs remain local. It verifies the names via rclone,
 and records the delivery status. Upload errors never delete local renders or
-change a successful render status. Check `./ad status`; retry without
-re-rendering via `./ad upload [RUN_ID]`. Leave `delivery.drive` blank to disable
+change a successful render status. Pending uploads retry automatically with saved
+receipts and shared quota cooldowns, including after controller restart. Check
+`./ad status RUN_ID`; request a retry without rerendering via `./ad upload RUN_ID`.
+Pause/cancel the run to stop its automatic retries. Leave `delivery.drive` blank to disable
 Drive delivery entirely. See [`CLI.txt`](CLI.txt).
 
 For floating product end cards, configure `output.end_card_clips` with product

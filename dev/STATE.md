@@ -1,8 +1,83 @@
 # Development state
 
-Updated: 2026-10-16 (fourth session)
+Updated: 2026-10-20
 
 ## Current position
+
+2026-10-20 production simplification: the user contract is a short
+script guide -> animator-owned scene/audio/render -> editor -> deterministic
+finish/technical checks -> immediate per-ad MP4 upload. Independent CLI launches
+must run concurrently with separate run locks and a throttled delivery queue.
+Existing stage graphs stay resumable. Baseline is 4a23af2; the latest medium run
+20261020-143234-5a7e7a9f took 1439 seconds and 22 model attempts, with 811 seconds
+in assets/board review, then failed despite a rendered cut. The animation helper
+also reproducibly replaced the staged head/neck pose. Acceptance requires real
+fresh CLI runs, timed script/animation/edit phases, preserved scene poses,
+concurrent generation, correct full-story exports, and verified MP4 delivery.
+Unit scheduling fixtures alone do not satisfy that acceptance contract.
+
+Implemented: new CLI jobs use script -> animate -> edit -> frame -> qa -> package.
+The writer emits one guide at low reasoning using the selected model; animation
+keeps the chosen intensity. Measured audio/render/edit helpers preserve portable
+checkpoints and existing poses. Independent CLI launches use per-run leases;
+same-second launcher logs are unique and controls print explicit IDs. Drive has a
+separate serialized transfer lease and shared cooldown. Optional reusable assets
+from the animator still enter the validated publication path after packaging.
+
+Live verification: medium 20261020-154021-1b7cc5e1 ran alongside low
+20261020-154022-5a11c602. The medium film completed autonomously in 631.9 active
+seconds (script 13.6, animation 453.9, edit 82.9, Frame 38.6, QA 31.9, package 1.9).
+The 9.002-second H.264/AAC export contains the full gate/card-game story and a
+2.5-second rotating-product end card; sampled frames were independently viewed.
+Drive first rate-limited it, then verified the MP4 on attempt 2 while another
+run was generating. The old background uploader was restarted once to load the
+per-run lock update. No manual verdict or budget extension was used.
+
+The first low trial failed at 12.3 minutes: a speech-model/character-path collision
+prompted bad cached-line reuse, then an overly strict two-second freeze rejection
+spent a full rerender before the editor rejected the missing product/story.
+It was NOT uploaded or counted as success. Fixes separate those model namespaces,
+keep explicit reused-take constraints, measure short holds cumulatively (reject
+mostly static films), and check speaking scenes before full render. Low guides
+now limit construction to a small existing setup; high remains unrestricted by
+that low-scope rule. The second low trial, 20261020-155220-99a6096f, failed at
+10.0 minutes and was withheld from upload: an oversized hand-imported product
+was repaired, but the film remained frozen. Disabled library NLA clips were
+incorrectly protecting every channel from generated idle/reaction motion. A
+failing real-Blender regression reproduced this; procedural performance now
+ignores muted demo tracks/strips while preserving active authored animation.
+An independent face-direction regression also found that a head-center ray
+accepted the back of a skull; preflight now follows the posed anatomical forward
+direction. Production prompts recommend the tested product import helper and
+a small preview before full rendering. A diagnostic rerender restored subtle
+motion but remained too static; that was not counted as a passed ad.
+
+Fresh low 20261020-160947-f81d18f3 completed autonomously in 377.2 active seconds
+(6.3 minutes), with a 7.7-second writer invocation and 28.7-second editor invocation.
+The animator's first submission needed an asset-ID correction; automatic Sonnet
+fallback reused the existing film in 39.5 seconds, without another render. The
+submission helper now checks exact catalog IDs before the worker finishes, so
+future mistakes can be repaired in-session. The final 9.002-second 1080x1350
+H.264/AAC film contains the full conversation and approach, followed by the 2.5-second
+rotating product card with blue underlined serif URL. Final frames were independently
+viewed; no manual approval, verdict edit or time extension was applied. The first
+Drive attempt received the shared-project quota error; durable retry is pending.
+Minor limitations remain: basic movement, small opening product, no ambient bed;
+voice acting was not independently listened to. These are observed runs, not a
+guarantee that every generated story will pass. Writer memory now explicitly
+discourages repeating recent premises unless the user requests a variation.
+
+Verification checkpoint: full suite 766 passed, 2 skipped in 391.6 seconds; latest
+changed-module regressions 61 passed. Independent review findings (script resume budget, strict
+editor verdicts, versioned edit reuse, selected-take controls, full-frame CTA
+contract, freeze accumulation) have targeted reproductions and fixes. Fresh
+independent concurrency/delivery and motion/face-check reviews found no evidenced
+blockers. The nested
+brain pin was advanced from ae51c66 to upstream 1831fdd after a clean-tree check;
+asset layout/archive-isolation checks pass. The pointer-only asset commit 6b268b0
+was pushed and its remote tip verified. No retired assets were revived.
+
+## Earlier implementation history (superseded where noted above)
 
 2026-10-20 correction: the product-only deadline fallback shipped in eb96475 was
 wrong. Run 20261020-115141-80834b37 never reached animation/editing; the controller

@@ -17,7 +17,8 @@ def test_cli_minimal_plan_and_status(tmp_path):
     r=cli(tmp_path,'make','--config',str(cfg),'--website','example.com','--count','2','--plan')
     assert r.returncode==0,r.stderr
     d=json.loads(r.stdout)
-    assert d['status']=='ready' and len(d['tasks'])==23
+    assert d['status']=='ready' and len(d['tasks'])==11
+    assert d['tasks'][0]['id'] == 'campaign-script'
     s=cli(tmp_path,'status',d['id'])
     assert json.loads(s.stdout)['config']['website']=='https://example.com'
 
@@ -58,7 +59,7 @@ def test_drive_waits_for_provider_reset_then_continues(tmp_path):
     assert drive(NoCooldown(), store, run['id'], wait=True, sleep=slept.append)['status'] == 'waiting_provider'
 
 
-def test_drive_queues_behind_a_running_controller(tmp_path):
+def test_drive_queues_behind_a_running_controller(tmp_path, capsys):
     from harness.cli import drive
     from harness.store import Store, Busy
     store = Store(tmp_path); run = store.create({'count': 1}); attempts = []; slept = []
@@ -66,15 +67,66 @@ def test_drive_queues_behind_a_running_controller(tmp_path):
         def run(self, run_id, max_steps=None):
             attempts.append(1)
             if len(attempts) < 3:
-                raise Busy('another controller')
+                raise Busy('Another controller owns this workspace; status/pause/cancel still work')
             return {'id': run_id, 'status': 'complete'}
     assert drive(Fake(), store, run['id'], sleep=slept.append)['status'] == 'complete'
     assert len(attempts) == 3 and slept
+    assert 'Controller queued: Another controller owns this workspace' in capsys.readouterr().err
     store.control(run['id'], 'cancel')
+    before = store.get(run['id'])
+    events = store.events(run['id'])
     class AlwaysBusy:
         def run(self, run_id, max_steps=None):
             raise Busy('another controller')
     assert drive(AlwaysBusy(), store, run['id'], sleep=slept.append)['status'] == 'cancelled'
+    assert store.get(run['id']) == before
+    assert store.events(run['id']) == events
+
+
+def test_quick_launch_same_second_keeps_logs_and_explicit_run_controls(tmp_path, monkeypatch, capsys):
+    import runpy
+    start = runpy.run_path(str(ROOT / 'ad'))['start']
+    monkeypatch.setitem(start.__globals__, 'HOME', tmp_path)
+    monkeypatch.setattr(start.__globals__['time'], 'strftime', lambda *_: '20261020-154021')
+    monkeypatch.setattr(start.__globals__['time'], 'sleep', lambda *_: None)
+    logs = []
+    def launch(command, **kwargs):
+        out = kwargs['stdout']
+        logs.append(Path(out.name))
+        run_id = f'run-{len(logs)}'
+        out.write(f'Run {run_id} — inspect with status\n')
+        out.write('Controller queued: Another controller owns this workspace; status/pause/cancel still work\n')
+        assert kwargs['start_new_session'] is True
+    monkeypatch.setattr(start.__globals__['subprocess'], 'Popen', launch)
+    for index in (1, 2):
+        start('make', '--concept', f'film {index}')
+        output = capsys.readouterr().out
+        assert f'Queued run-{index}' in output
+        for control in ('watch', 'status', 'pause'):
+            assert f'./ad {control} run-{index}' in output
+        assert 'owns this workspace' in output
+    assert logs[0] != logs[1]
+    assert 'Run run-1' in logs[0].read_text()
+    assert 'Run run-2' in logs[1].read_text()
+    start('resume', 'saved-run')
+    output = capsys.readouterr().out
+    assert 'Queued saved-run' in output
+    assert './ad watch saved-run' in output
+
+
+def test_cli_requests_compact_graph_without_launching_agents(tmp_path, monkeypatch, capsys):
+    import harness.cli as module
+    calls = []
+    def build(count, *, modern, compact):
+        calls.append((count, modern, compact))
+        return [{'id': 'campaign-script', 'stage': 'script', 'status': 'pending'}]
+    monkeypatch.setattr(module, 'build_tasks', build)
+    cfg = tmp_path / 'blank.json'
+    cfg.write_text('{}')
+    assert module.main(['--home', str(tmp_path / 'state'), 'make', '--config', str(cfg),
+                        '--count', '2', '--plan']) == 0
+    assert calls == [(2, True, True)]
+    assert json.loads(capsys.readouterr().out)['tasks'][0]['id'] == 'campaign-script'
 
 
 def test_ad_status_explains_waiting_provider_and_watch_finishes(tmp_path):
@@ -164,7 +216,7 @@ def test_manual_upload_cannot_overwrite_a_running_controllers_state(tmp_path):
     state.update(status='running', tasks=[{'id': 'still-rendering', 'stage': 'animate',
                                          'status': 'running', 'ad': 0}])
     store.save(state, 'fixture')
-    with store.worker_lock():
+    with store.worker_lock(state['id']):
         state['tasks'][0]['status'] = 'succeeded'
         store.save(state, 'advanced')
         result = cli(tmp_path, 'upload', state['id'])

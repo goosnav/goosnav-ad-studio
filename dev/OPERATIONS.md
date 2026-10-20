@@ -44,10 +44,12 @@ gui-logs/                     output of controllers started from the GUI
 
 ## Watch and control
 
-Creative budgets protect a finishing reserve. A medium 9-second ad without
-animation enters one FAST STORY FINISH pass at 12 minutes, within the same
-25-minute ceiling. It continues the original script, voices and scene using faster
-rendering and less optional construction. It never replaces the story with a
+New runs give a short script guide directly to an animator that owns scene,
+voices, timing and rendering, followed by an editor and deterministic finishing.
+The writer has at most 60 seconds for one guide (up to 120 for larger batches);
+the animator gets most of the available time. The requested creative model tier
+remains in use instead of switching to a cheaper storyboard recovery at 12 minutes.
+Legacy runs retain their original graphs and finishing policy. Neither replaces the story with a
 full-length floating-item end card. The closing card remains short; QA/packaging
 check that the preceding story picture matches the edited source. Upload/retry
 filters reject the prior product_only package type. Resuming such a run restores
@@ -84,8 +86,12 @@ history are not deleted. Only runs under the chosen harness home are affected;
 other Python/Blender processes are not killed. Controller-side work that does
 not poll cancellation may need to finish its current operation first.
 
-Only one controller runs per harness home (file lock). `status`, `pause` and
-`cancel` work while it runs. The GUI uses the same commands, so a run started
+Independent CLI launches run concurrently, with one controller per run ID.
+Use explicit IDs with `./ad status`, `watch`, `pause`, `resume` and `cancel`;
+omitting one selects the latest run. Shared provider cooldowns still apply.
+Drive transfers use a separate global lock and durable retry queue. A controller
+started before this update retains its old workspace-wide lock until it exits.
+The GUI uses the same commands, so a run started
 in the browser can be paused from a terminal and vice versa.
 
 Exit codes: 0 complete, 1 the run stopped in a non-complete state (`partial`,
@@ -95,22 +101,26 @@ error, 130 interrupted (state is saved; `resume`).
 ## What happens in a run
 
 ```text
-research -> write (3 scripts per ad) -> critique -> [revise -> critique_final] -> select
-then per selected ad:
-direct -> assets (+storyboard) -> board_review -> audio -> animate -> review -> edit
-       -> frame (end card, loudness) -> qa -> creative_qa -> package
+campaign-script (one guide per ad)
+then per ad:
+animate (scene, measured voices, render) -> edit (review + cut)
+    -> frame (end card, loudness) -> qa -> package -> MP4 upload
 ```
 
-Agent stages are separate `codex exec` / `claude -p` sessions with their own
-workspace and full local tools. Lightweight campaign stages get 10 minutes per
-attempt (with a 5-minute no-activity timeout); direction/reviews get 15 minutes;
-asset building, audio, animation and final editing keep a 4-hour budget and
-have no automatic idle cutoff (rendering can legitimately be quiet).
-`frame`, `qa` and `package` are controller code. `revise` and `critique_final` are
-skipped when the first critique passes. `board_review` is the director looking at one
-still per beat, rendered from the blocked scene, before voices or animation exist.
-Every stage's result is checked by controller code before it is accepted; the full
-list of gates is in [WORKER_GUIDE.md](WORKER_GUIDE.md#controller-gates-what-gets-a-result-rejected).
+Agent stages are separate `codex exec` / `claude -p` sessions, continuing the same
+workspace after provider interruption. The writer uses its selected model with low
+reasoning effort. Animation retains the requested effort. `harness.production_tools`
+measures and aligns full voice takes, reuses cached audio, submits portable results
+and assembles the editor's explicitly reviewed cut. No extra agent is needed for
+those mechanical jobs. An editor may request one focused animation repair; it
+judges the actual measured plan instead of restoring intentionally shortened lines.
+Controller media checks remain mandatory. The final technical QA checks speech
+once, not in repeated planning stages. No human production approvals are requested.
+
+### Legacy stage graphs
+
+The following separate-stage contracts describe older saved runs. Their accepted
+work and original scheduling remain usable on resume; new runs use the graph above.
 
 `direct` is the director: on the quality tier it writes the plan every later
 stage follows (timed beats, cast with voice and gender, timed lines, the end card

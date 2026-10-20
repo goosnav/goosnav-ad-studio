@@ -13,7 +13,7 @@ ONE-TIME SETUP (ON THE RENDER COMPUTER)
   # Asset sources may be an external repository, not this repo's submodule.
   # Use their configured Git top-level; do not assume a particular asset layout.
   # OPTIONAL: set delivery.drive to "agent-exchange:deliverables/ad-studio"
-  # for automatic Drive upload after a completed or partially completed run.
+  # for automatic Drive upload as each ad finishes (no wait for the whole batch).
   # Leave delivery.drive empty for local-only operation (the default).
   # Install/configure rclone once: rclone config && rclone lsd agent-exchange:
   ./ad doctor
@@ -31,7 +31,42 @@ MAKE AN AD (DETACHED - SURVIVES TERMINAL CLOSURE)
   ./ad "..." -s 9 -e medium -p anthropic
   ./ad "..." -s 9 -e low -p openai
   ./ad                        open brief: agents choose the concept
-  # Starting another job queues it behind the active job.
+  # Separate launches generate concurrently; each prints its own run ID.
+
+DEFAULT WORKFLOW (EVERY NEW CLI RUN)
+  campaign-script -> ad-NN-animate -> edit -> frame -> qa -> package
+  # Concise campaign scripting/planning comes first. The animator owns scene,
+  # audio, build and render; most production effort belongs there. The editor
+  # checks/edits the film, then deterministic finishing and technical QA package
+  # it. Each finished ad uploads its MP4 when Drive delivery is configured.
+  # No human production approval gates; no end-card-only substitute for a story.
+  # Existing saved runs retain their graph and accepted work when resumed.
+  # The render helper checks speaking rigs/faces before full rendering. The
+  # editor judges brief held reactions; controller QA still rejects mostly
+  # frozen films, broken speech, black/unreadable footage and missing story.
+  # The writer keeps the chosen model but uses low reasoning. A single 9-second
+  # script stage gets <=60 seconds per revision; larger batches get <=120 seconds,
+  # bounded by the remaining run budget. The animator keeps the selected effort.
+  # Compact context retains the three recent results and character voice memory.
+
+PARALLEL RUNS (USE THE PRINTED IDS)
+  ./ad "A character struggles to open Book Two"  # detached; prints first ID
+  ./ad "A Goosklerf game gets interrupted"      # detached; starts independently
+  ./ad list
+  RUN_A=REPLACE_WITH_FIRST_RUN_ID
+  RUN_B=REPLACE_WITH_SECOND_RUN_ID
+  ./ad status "$RUN_A"
+  ./ad watch "$RUN_B"              # Ctrl-C stops watching, not generation
+  ./ad pause "$RUN_A"
+  ./ad resume "$RUN_A"
+  # Omitting an ID selects the latest run: use IDs with concurrent jobs.
+  # Only one controller can own a given run. Different runs share hardware and
+  # provider quotas; concurrency is not a completion-time guarantee.
+  # Drive transfers remain globally serialized, with durable automatic retries.
+  # Legacy controllers already running before this update retain a workspace-wide
+  # lock. New launches queue until that old process finishes and releases it;
+  # then new controllers can generate independently. The queued message includes
+  # the actual contention reason. No cancellation/restart is needed just to wait.
 
 MODEL INTENSITY / PROVIDER (NEW RUNS)
   -e, --effort, -effort       low | medium | high (default: medium)
@@ -43,7 +78,7 @@ MODEL INTENSITY / PROVIDER (NEW RUNS)
   # switch dynamically, continuing the existing stage workspace.
   # OpenAI uses your Codex subscription; Anthropic uses Claude Code.
 
-  PRESET    PRIMARY    WRITER / ANIMATOR / DIRECTOR        QA / STORY CHECKS
+  PRESET    PRIMARY    CREATIVE WORKERS                    SUPPORT ROUTES
   high      OpenAI     current Astra, high effort          current Sol, medium
   medium    Anthropic  latest Opus, medium effort          latest Sonnet, medium
   low       OpenAI     current Luna, low effort            current Luna, low
@@ -54,7 +89,8 @@ MODEL INTENSITY / PROVIDER (NEW RUNS)
   -e low    -p anthropic  latest Sonnet at low; QA latest Haiku
   # Producer/editor: Sol for OpenAI high/medium, Luna for OpenAI low;
   # Sonnet for Anthropic (medium thinking at high/medium, low at low).
-  # QA includes research, critique, selection and final creative review.
+  # Legacy graphs also use research, critique, selection and creative review
+  # routes. New compact runs finish with deterministic technical QA.
   # Haiku gets no unsupported explicit reasoning-effort parameter.
 
   # Release numbers are NOT pinned in the presets:
@@ -107,7 +143,7 @@ STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   python3 -m harness cancel --all  equivalent full CLI command
   # All means runs in this Ad Studio's STUDIO_HARNESS_HOME only.
   # Stops running agents via their existing cancellation checks, within seconds.
-  # Queued jobs exit promptly instead of waiting a 30-second queue interval.
+  # Cancellation also applies to controllers waiting for the same run's lock.
   # No unrelated processes are killed; no finished MP4s or state are deleted.
   ./ad upload [RUN_ID]         attempt/queue Drive upload of packaged MP4s only; no re-render
   ./ad cooldown status         show cached quota cooldowns
@@ -172,17 +208,19 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # A powered-off computer cannot upload; reopen the CLI/GUI after a reboot.
   # The worker log is delivery-worker.log under the harness home (the same
   # STUDIO_HARNESS_HOME used by generation); the queue/receipts live in state.sqlite3.
-  # Copies are sequential, with one rclone API transaction per second and a
+  # Copies are serialized across ALL runs, including inline/manual uploads,
+  # with one rclone API transaction per second and a
   # burst size of one. A quota response stops the batch and sets a shared
   # cooldown for other runs, instead of immediately trying every remaining ad.
   # Automatic delivery skips already-verified video bytes. A copied video
   # awaiting verification is listed again before recopying. All attempts use
-  # the controller lock, so a stale delivery snapshot cannot overwrite rendering.
-  # Production checks due retries at each stage boundary while it owns that lock.
+  # affected run's lock, so stale delivery state cannot overwrite its rendering.
+  # A separate global transfer lock excludes overlapping uploads. A busy run
+  # does not block another run's generation or eligible queued delivery.
   # Drive I/O has bounded timeouts and is excluded from the generation budget.
   # An independent timeout watchdog kills a stalled uploader even if its
-  # controller dies; the uploader retains the lock until it exits so recovery
-  # cannot launch an overlapping copy or hold generation hostage indefinitely.
+  # controller dies; the uploader retains its run and transfer locks until exit
+  # so recovery cannot overlap the copy. Other runs can keep generating.
   # The rclone copy never deletes files on Drive. If Drive is down, the
   # local MP4/ZIP remain intact and the render is still marked successful,
   # but delivery is explicitly marked RETRYING, not successfully delivered.
@@ -255,22 +293,14 @@ PROVIDER FAILOVER / WAITING_PROVIDER
   # it does not request manual review. Automatic waits never reset budgets.
   # A repair that fixes evidence but forgets to resubmit result.json can reuse
   # that revision's prior manifest ONLY if every contract/media check now passes.
-  # Campaign writing uses the requested AD count, not the number of products:
-  # 3 ads require at least 6 distinct candidate scripts. Writers receive both
-  # numbers explicitly. Short batches report expected/received/missing counts
-  # and instruct the next attempt to preserve valid candidates and add missing
-  # ones, then resubmit the complete result.json. Malformed script entries
-  # identify the array index/field to fix. Fallback and contract repairs remain
-  # bounded; invalid output never advances to selection.
-  # After pulling this fix, resume an older short-batch failure normally:
-  # it receives the corrected campaign brief and keeps its existing workspace.
+  # Compact campaign scripting supplies one script per requested ad. Saved
+  # legacy runs keep their candidate-writing/selection workflow and checkpoints.
   # Note: manual workers profiles with ONLY Claude cannot fall back to Codex.
 
 AGENT STALLS / TIMEOUTS
-  # Defaults for NEW runs: research 3 min, selection 4 min, creative QA 5 min,
-  # writing/critique 10 min, direction/other reviews 15 min.
-  # Idle with no log/checkpoint changes: 5 min, capped by the stage deadline.
-  # Asset building, audio, animation and final editing retain 4 hours per attempt.
+  # Attempts are bounded by their stage limits and the run's remaining budget.
+  # Compact runs concentrate production work in animation, with brief scripting
+  # and an editor pass before deterministic finishing. No speed is guaranteed.
   # On a timeout/stall the next provider/cheaper route is tried immediately.
   # A COMPLETE, contract-valid result.json is kept even if its worker timed out.
   # These can be tuned in harness.local.json under limits:
@@ -292,63 +322,40 @@ NOTES
   - harness.local.json and studio.local.json are separate configs.
   - A completed pipeline does not guarantee an aesthetically good ad;
     review the MP4 before publishing.
-PRODUCTION SPEED, WORLDS AND REUSE (execution policy v1)
-------------------------------------------------------
+PRODUCTION BUDGETS, WORLDS AND REUSE
+----------------------------------
   ./ad "A character comedy in a strange outpost" -s 9 -e high
-  ./ad "A character comedy in a strange outpost" -s 9 -e high --fast
   ./ad "A quick Goosklerf exchange" -s 9 -e low --fast
 
-Normal targets for ONE 9-second ad: low 10 min, medium 20 min, high 40 min.
---fast halves those targets to 5 / 10 / 20 minutes. It keeps the selected
-model tier/provider; it reduces optional construction, auditions and revisions.
-Budgets scale with duration/count. These are production targets, not measured
-speed guarantees. Initialization, rendering and verification consume active time.
-Provider waiting is shown separately. Missing tool/model installations must be
-resolved before production; initial downloads are not a useful speed benchmark.
+Effort selects production scope/model intensity. Base budgets per 9-second ad:
+  EFFORT     NORMAL       --fast       HARD CEILING (NORMAL / --fast)
+  low        10 minutes   5 minutes    12.5 / 6.25 minutes
+  medium     20 minutes   10 minutes   25 / 12.5 minutes
+  high       40 minutes   20 minutes   50 / 25 minutes
+--fast halves the base budget while keeping the model tier/provider. The hard
+ceiling adds 25% to that budget. Budgets scale with duration/count. These are
+budget ceilings, NOT measured speeds or promised completion times. Provider
+waiting is accounted separately. Rendering hardware and scene complexity also
+affect completion time. Use ./ad metrics RUN_ID for actual work.
 
-At 75% of the target the controller requests simpler staging/reuse and enables
-cheaper dynamically resolved recovery models. Provider failures continue the same
-workspace with another eligible route. Finishing time is now ENFORCED, not just a
-prompt: an unrendered story switches to one bounded FAST STORY FINISH pass before
-the target. A normal medium 9-second ad with no animation switches at 12 minutes
-instead of spending the entire 25-minute ceiling on ordinary board repairs.
-This uses the existing remaining allowance, not a new budget. A real animation gets the overtime
-window for editing/QA, with finishing time still protected; high keeps its larger
-creative budget. Finished approved films are delivered as-is, with a lean local
-video/QA package; deadline recovery does not rearchive large scene/source files.
+The animator handles measured audio, scene construction and rendering together.
+The editor checks the resulting film and makes needed edits before deterministic
+Frame finishing, technical QA and packaging. Recovery preserves accepted work
+and checkpoints; it must not replace a real story with a full-length product card.
+Only finished, packaged ads are eligible for per-ad MP4 delivery. Failed or
+unfinished ads remain visible rather than being reported as successful uploads.
+An animator may also declare an optional candidate_manifest for reusable asset
+publication after its ad packages successfully; this is separate from MP4 upload.
 
-Recovery MUST complete the same story: preserve the script, accepted dialogue,
-cast, causal reaction/payoff and existing scene/checkpoints. Use faster render
-settings, reuse the animatic as final picture when valid, and omit optional new
-scenery/props. When no prior accepted edit needs a targeted correction, the
-controller preserves the whole accepted animatic/timeline as an identity edit,
-upscaling/transcoding mechanically if needed instead of asking another model to
-edit or rerender it. Workers have one ordinary attempt per eligible route and one focused review
-repair in this persisted finishing phase; it cannot repeatedly restart direction.
-Final creative review gets one adequate attempt (up to the remaining hard cap),
-instead of repeatedly starting review sessions too short to inspect the film.
-Only ads with accepted direction/audio enter this finishing pass; unstarted ads
-remain checkpointed rather than beginning new planning inside the reserve.
-All story/acting/media gates remain. The floating-item video is ONLY a short
-closing card. A full-length end-card/product-only video is NEVER a completed ad.
-QA and packaging compare every final story frame with the accepted edited source
-before the closing-card boundary. Explicitly skipped CTAs preserve the full film.
-Upload and the retry queue reject old
-product_only packages, even if an older version labelled them complete.
-
-Existing card-only runs are reopened to their original skipped story stages on
-resume; old files and upload receipts are retained, not deleted. Completed real
-ads stay untouched and upload individually using the same durable Drive queue.
-If the actual story cannot be finished, status reports that fact and preserves
-checkpoints; it does not invent a successful output or upload a substitute.
-The hard ceiling still applies (up to 25% overtime), checkpoints are retained,
-and resume does not reset spending. An older run that already spent its whole
-budget needs an explicit finishing allowance; it does NOT start over:
+Existing saved runs retain their graph, accepted artifacts and delivery receipts.
+Resume does not reset spending. If a run has exhausted its saved allowance, an
+explicit extension is available:
   ./ad resume RUN_ID --extra-minutes 10
 
-New jobs use measured audio before storyboard approval and animation. Low favors
-tested sets/performances; medium permits a meaningful variation; high permits
-distinctive environments, supported actions and motivated camera moves.
+Low favors tested sets/performances; higher effort permits more construction and
+variation within the available budget. Active catalog roots may move: configure
+sources.assets / sources.characters and resolve stable catalog IDs rather than
+copying old paths.
 output.look: retro_world (new default), ps1, or clean. retro_world uses original
 early-3D-world detail, shadows, texture and atmosphere; it does not force extreme
 pixelation or photorealism. Existing saved jobs retain their prior graph and look.

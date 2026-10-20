@@ -39,6 +39,21 @@ def test_publication_failure_preserves_completed_video_and_retries(tmp_path, mon
     assert 'network unavailable' in result['asset_publications']['ad-01-assets']['error']
 
 
+def test_compact_animator_candidates_use_existing_publication_checks(tmp_path, monkeypatch):
+    from harness import publication
+    store, state = accepted_publication(tmp_path)
+    task = state['tasks'][0]
+    task.update(stage='animate', id='ad-01-animate')
+    calls = []
+    def publish(config, path, run_id):
+        calls.append((path, run_id))
+        return {'status': 'pending', 'error': 'fixture: no remote push'}
+    monkeypatch.setattr(publication, 'publish_candidates', publish)
+    publication.publish_run(store, state)
+    assert calls == [(Path(task['result']['candidate_manifest']), state['id'] + ':ad-01-animate')]
+    assert state['asset_publications']['ad-01-animate']['status'] == 'pending'
+
+
 @pytest.mark.parametrize('step', ['publish', 'push', 'adopt', 'pin'])
 @pytest.mark.parametrize('changed', ['candidate', 'asset', 'accepted_manifest', 'missing'])
 def test_publication_reverifies_accepted_bytes_before_every_retry(tmp_path, monkeypatch, step, changed):

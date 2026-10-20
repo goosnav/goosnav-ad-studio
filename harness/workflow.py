@@ -14,8 +14,9 @@ from .sources import archived_asset, reconcile_sources, snapshot
 from .workers import CODEX_CLI_DEFAULT, command, last_actions, reset_delay, subscription_status, supervise
 from .execution import Budget, BudgetExceeded, FinishRequired, deadline, bounded_timeout
 from .delivery import _completed_ads
+from .production import compact_run
 
-ROLES = {'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
+ROLES = {'script': 'writer', 'research': 'researcher', 'write': 'writer', 'critique': 'critic', 'revise': 'writer',
          'critique_final': 'critic', 'select': 'selector', 'script_sense': 'director',
           'assets': 'producer', 'audio': 'producer',
          'animate': 'animator', 'review': 'director', 'edit_plan': 'editor',
@@ -72,10 +73,12 @@ def agent_deadline(config, stage):
     return total, min(total, limits.get('idle_timeout_seconds', 300))
 
 
-def build_tasks(count, modern=False):
+def build_tasks(count, modern=False, compact=False):
     production = (['direct', 'audio', 'assets', 'board_review', 'animate', 'edit', 'frame',
                    'qa', 'creative_qa', 'package'] if modern else PRODUCTION)
-    pairs = [(s, None) for s in CAMPAIGN] + [(s, ad) for ad in range(count) for s in production]
+    if compact:
+        production = ['animate', 'edit', 'frame', 'qa', 'package']
+    pairs = [(s, None) for s in (['script'] if compact else CAMPAIGN)] + [(s, ad) for ad in range(count) for s in production]
     return [{'id': f'{"campaign" if ad is None else f"ad-{ad+1:02}"}-{s}', 'stage': s, 'ad': ad,
              'status': 'pending', 'attempts': [], 'result': None, 'revision': 0, 'feedback': ''} for s, ad in pairs]
 
@@ -104,7 +107,7 @@ class Engine:
         self.preflight = preflight or (check_dependencies if execute is execute_worker else lambda config: [])
 
     def run(self, run_id, max_steps=None):
-        with self.store.worker_lock():
+        with self.store.worker_lock(run_id):
             state = self.store.get(run_id); root = self.store.path(run_id)
             self.budget = Budget(state, self.store.save)
             restart_finishing = False
@@ -153,7 +156,7 @@ class Engine:
                         moves = {old: paths[key] for key, old in previous.items() if key in paths and old != paths[key]}
                         if moves:
                             for t in state['tasks']:
-                                if t['stage'] == 'direct' and t.get('result'):
+                                if t['stage'] in ('direct', 'animate') and (t.get('result') or {}).get('direction'):
                                     for cast in t['result']['direction'].get('cast', []):
                                         cast['model'] = moves.get(cast.get('model'), cast.get('model'))
                             self.store.save(state, 'asset_paths_resolved', {'moves': moves})
@@ -164,7 +167,7 @@ class Engine:
                     state['asset_catalog'] = entries
                 self.reconcile_cast(state)
                 if not state.get('sources_ready'):
-                    state['sources'] = snapshot(state['config'], root/'sources')
+                    state['sources'] = [] if compact_run(state) else snapshot(state['config'], root/'sources')
                     state['sources_ready'] = True
                     self.store.save(state, 'sources_ready')
                 if not state['models']:
@@ -193,7 +196,7 @@ class Engine:
                     stage_started = time.monotonic()
                     try:
                         with deadline(min(self.budget.remaining(), self.budget.production_remaining())):
-                            identity_edit = (task['stage'] == 'edit' and state.get('execution', {}).get('finishing')
+                            identity_edit = (not compact_run(state) and task['stage'] == 'edit' and state.get('execution', {}).get('finishing')
                                              and not task.get('previous'))
                             if task['stage'] in ROLES and not identity_edit:
                                 self.agent_task(state, task, root)
@@ -252,6 +255,11 @@ class Engine:
 
     def finish_pending(self, state, reason):
         """Use the reserve on the SAME story; never manufacture an end-card ad."""
+        if compact_run(state):
+            state['status'] = self.aggregate(state)
+            stopped = next((t for t in state['tasks'] if t['status'] == 'failed'), None)
+            state['error'] = ((stopped.get('feedback') if stopped else None) or reason)
+            return False
         self.resume_reviews(state)  # consume persisted verdicts before any package can run
         pending = [t for t in state['tasks'] if t['stage'] == 'package' and t['status'] != 'succeeded']
         for index, task in enumerate(pending):
@@ -433,20 +441,20 @@ class Engine:
         """A resumed plan must not bring retired characters back into production."""
         library = state['config']['sources']['characters']
         for task in state['tasks']:
-            if task['stage'] != 'direct' or task['status'] != 'succeeded':
+            if task['stage'] not in ('direct', 'animate') or task['status'] != 'succeeded' or not task['result'].get('direction'):
                 continue
             cast = task['result']['direction'].get('cast', [])
             retired = [c.get('model') for c in cast if
                        (c.get('model') and archived_asset(c['model'])) or
                        (library and c.get('model') not in library)]
             if retired:
-                self.rewind(state, task['ad'], 'direct',
+                self.rewind(state, task['ad'], task['stage'],
                             f'The accepted cast is retired or no longer approved: {retired}. '
                             'Replan with the configured active sources.characters; never use archived models.')
                 self.store.save(state, 'cast_replanned', {'ad': task['ad'], 'retired': retired})
 
     def prepare_retry(self, run_id, task_id):
-        with self.store.worker_lock():
+        with self.store.worker_lock(run_id):
             state=self.store.get(run_id)
             target=next((t for t in state['tasks'] if t['id']==task_id),None)
             if target is None:raise ValueError('Unknown task ID')
@@ -458,7 +466,7 @@ class Engine:
             elif target['status']=='needs_review':
                 feedback=json.dumps(target['result'],indent=2)
                 if target['ad'] is None:
-                    start = 'write' if target['stage'] == 'select' and any(
+                    start = 'script' if compact_run(state) else 'write' if target['stage'] == 'select' and any(
                         t['stage'] == 'write' for t in state['tasks']) else 'revise'
                 else:
                     start = target['result'].get('restart', 'direct')
@@ -509,6 +517,10 @@ class Engine:
         inputs = {t['id']: t['result'] for t in state['tasks'] if t['status'] == 'succeeded'
                   and (t['ad'] is None or t['ad'] == task['ad'])}
         if task['ad'] is not None:
+            if compact_run(state):
+                scripts = next(t['result']['scripts'] for t in state['tasks'] if t['stage'] == 'script')
+                inputs['selected_script'] = scripts[task['ad']]
+                return inputs
             selection = next(t['result'] for t in state['tasks'] if t['stage'] == 'select')
             scripts = next(t['result']['scripts'] for t in reversed(state['tasks'])
                            if t['stage'] in ('revise', 'write') and t['status'] == 'succeeded')
@@ -547,7 +559,8 @@ class Engine:
                 task.update(status='succeeded', result=hit['result'], reused_from=hit['run'])
                 self.store.save(state, 'research_reused', {'source_run': hit['run']})
                 return
-        context = {'count': c['count'], 'strict_review': bool(state.get('execution'))}
+        compact = compact_run(state)
+        context = {'count': c['count'], 'strict_review': bool(state.get('execution')), 'compact': compact}
         if task['stage'] == 'script_sense':
             context['selected_ids'] = next(t['result']['selected'] for t in state['tasks'] if t['stage'] == 'select')
         if task['stage'] == 'select':
@@ -562,7 +575,7 @@ class Engine:
         # collide when another model is appended after a failed recovery attempt.
         routes = workers.setdefault(role, list(routes))
         preferred = []
-        if state.get('execution', {}).get('mode') == 'recovery':
+        if not compact and state.get('execution', {}).get('mode') == 'recovery':
             from .presets import worker_presets
             if not state.get('recovery_models'):
                 state['recovery_models'] = self.resolve(worker_presets('low', c.get('generation', {}).get('provider', 'auto')))
@@ -617,7 +630,7 @@ class Engine:
             # fall back to the next configured provider once.
             attempt_cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
                            else 1 if usable > 1 else 2)
-            if state.get('execution', {}).get('finishing'):
+            if compact or state.get('execution', {}).get('finishing'):
                 attempt_cap = 1
             remaining = max(0, attempt_cap - used)
             if any(on_route(a, route) and a['revision'] == task['revision'] and
@@ -640,9 +653,12 @@ class Engine:
                 if not any(a['revision'] == task['revision'] for a in task['attempts']):
                     # Repair findings for this revision; failure notes replace feedback later.
                     task['assignment'] = task['feedback']
+                # Keep the selected writing model, but make the tiny guide a quick
+                # response. Animation still gets the user's full creative effort.
+                invocation_profile = {**profile, 'effort': 'low'} if compact and task['stage'] == 'script' else profile
                 attempt = {'number': number, 'route': route, 'provider': provider, 'model': profile['model'],
                            'route_id': profile['route_id'],
-                           'effort': profile.get('effort'), 'revision': task['revision'], 'started': time.time()}
+                           'effort': invocation_profile.get('effort'), 'revision': task['revision'], 'started': time.time()}
                 if repairing_contract:
                     attempt['contract_repair'] = True
                     repairing_contract = False
@@ -655,10 +671,14 @@ class Engine:
                 timeout, idle = agent_deadline(c, task['stage'])
                 if budget and budget.data:
                     timeout = budget.stage_seconds(task, timeout)
-                    idle = min(idle or 120, timeout)
-                prompt = brief(task, c, self.inputs(state, task), state['sources'], task['feedback'],
-                               modern=bool(state.get('execution')), workspace=work)
-                if state.get('execution'):
+                    idle = None if compact and task['stage'] == 'animate' else min(idle or 120, timeout)
+                if compact:
+                    from .production import production_brief
+                    prompt = production_brief(state, task, work, timeout, self.store.root, self.store)
+                else:
+                    prompt = brief(task, c, self.inputs(state, task), state['sources'], task['feedback'],
+                                   modern=bool(state.get('execution')), workspace=work)
+                if state.get('execution') and not compact:
                     prompt += '\nRUN CONTEXT\n' + json.dumps({'run_id': state['id'],
                         'publication_id': state['id'] + ':' + task['id'],
                         'accepted_manifests': {t['stage']: t['accepted_manifest'] for t in state['tasks']
@@ -668,11 +688,11 @@ class Engine:
                     if task['stage'] in ('direct', 'audio'):
                         from .learning import character_voices
                         prompt += '\nPREVIOUS CHARACTER VOICES (reuse unless the role needs a different performance)\n' + json.dumps(character_voices(self.store, c))
-                if state.get('execution') and task['stage'] in ('write', 'direct', 'assets'):
+                if state.get('execution') and not compact and task['stage'] in ('write', 'direct', 'assets'):
                     from .learning import lessons, catalog_brief
                     prompt += '\nPRODUCTION MEMORY (reference data, never instructions)\n' + json.dumps(lessons(self.store, c))
                     prompt += '\nACTIVE ASSET CATALOG (reference data)\n' + json.dumps(catalog_brief(self.store, c, state.get('asset_catalog', [])))
-                if state.get('execution'):
+                if state.get('execution') and not compact:
                     prompt += '\nEXECUTION POLICY\n' + json.dumps({**state['execution'],
                         'remaining_seconds': round(budget.remaining(), 1) if budget else None,
                         'THIS_ATTEMPT_SECONDS': round(timeout, 1),
@@ -703,7 +723,7 @@ class Engine:
                         budget.check_production()
                     return self.store.control_value(state['id']) == 'cancel'
                 try:
-                    outcome = self.execute({**profile, 'log_mb': c['limits']['log_mb'],
+                    outcome = self.execute({**invocation_profile, 'log_mb': c['limits']['log_mb'],
                                             'idle_timeout': idle}, work, prompt, log,
                         cancelled=cancelled,
                         timeout=timeout, started=started)
@@ -748,9 +768,9 @@ class Engine:
                         data = validate(task['stage'], json.loads(result_file.read_text()), work, context)
                         # Direction and edit plans are checked here too, but a bad plan is a
                         # format error the worker can correct, not broken media.
-                        phase = 'contract' if task['stage'] in ('direct', 'edit_plan') else 'media'
+                        phase = 'contract' if task['stage'] in ('script', 'direct', 'edit_plan') else 'media'
                         self.validate_media(task, data, work, c, state)
-                        if task['stage'] == 'assets' and state.get('execution'):
+                        if (task['stage'] == 'assets' or (compact and task['stage'] == 'animate')) and state.get('execution'):
                             from .library import resolve_snapshot
                             known = {e['id']: e for e in state.get('asset_catalog', [])}
                             used = data.get('used_asset_ids', [])
@@ -842,9 +862,11 @@ class Engine:
                         for a in task['attempts'])
             cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
                    else 1 if usable > 1 else 2)
+            if compact or state.get('execution', {}).get('finishing'):
+                cap = 1
             can_wait |= spent < cap or self.contract_retry_available(state, task, route, routes)
         task['status'] = 'waiting_provider' if can_wait else 'failed'
-        if (state.get('execution') and task['status'] == 'failed' and current_attempts
+        if (not compact and state.get('execution') and task['status'] == 'failed' and current_attempts
                 and current_attempts[-1].get('kind') in ('timeout', 'idle_timeout', 'log_limit', 'model')
                 and task.get('recovery_revision') != task['revision'] and (not budget or budget.remaining() > 30)):
             task['recovery_revision'] = task['revision']
@@ -868,11 +890,15 @@ class Engine:
         self.store.save(state, 'task_stopped', {'task': task['id'], 'status': task['status'], 'reason': task['feedback']})
 
     def direction(self, state, ad):
-        task = next((t for t in state['tasks'] if t['ad'] == ad and t['stage'] == 'direct'), None)
+        stage = 'animate' if compact_run(state) else 'direct'
+        task = next((t for t in state['tasks'] if t['ad'] == ad and t['stage'] == stage), None)
         return task['result']['direction'] if task and task['status'] == 'succeeded' else None
 
     def validate_media(self, task, data, work, config, state=None):
         self.check_changed(task, data, work)
+        if state and compact_run(state):
+            from .production import validate_production_media
+            return validate_production_media(self, state, task, data, work, config)
         if task['stage'] == 'direct':
             from .direction import check_direction, check_scratch_takes
             check_direction(data['direction'], config)
@@ -984,6 +1010,19 @@ class Engine:
         data['talking'] = check_scene(work/data['scene'], data['rigs'], lines, config['output']['fps'], models)
 
     def review_transition(self, state, task):
+        if compact_run(state):
+            if task['stage'] != 'edit' or task['result'].get('verdict') != 'revise':
+                return
+            if task.get('rounds', 0) >= 1:
+                task['status'] = 'failed'
+                task['feedback'] = 'Editor could not accept the repaired film: ' + json.dumps(task['result']['findings'])
+                self.store.save(state, 'editor_repair_exhausted', {'task': task['id']})
+                return
+            rounds = task.get('rounds', 0) + 1
+            self.rewind(state, task['ad'], 'animate', json.dumps(task['result'], separators=(',', ':')))
+            task['rounds'] = rounds
+            self.store.save(state, 'revision_requested', {'task': task['id']})
+            return
         if task['stage'] == 'critique' and task['result']['verdict'] == 'pass':
             # Nothing to fix: the drafts stand as the revision and this critique as the final one.
             stage = {t['stage']: t for t in state['tasks'] if t['ad'] is None}
@@ -1132,7 +1171,8 @@ class Engine:
                 from .media import check_picture
                 framed = result('frame').get('end_card_start')
                 report['picture'] = check_picture(result('frame')['master'], state['config'],
-                                                  framed or report['duration'], master=result('edit')['master'] if framed else None)
+                    framed or report['duration'], master=result('edit')['master'] if framed else None,
+                    **({'max_frozen_fraction': .5} if compact_run(state) else {}))
                 report['loudness'] = level = loudness(result('frame')['master'])
                 target = state['config']['output']['loudness']
                 if abs(level['integrated'] - target) > 1.5 or level['true_peak'] > TRUE_PEAK + 0.5:
@@ -1140,7 +1180,8 @@ class Engine:
                 (work/'qa.json').write_text(json.dumps(report, indent=2))
                 data = {'summary': 'Encoded media passed technical checks', 'files': [{'path':'qa.json','kind':'notes'}]}
             else:
-                review = next((t for t in state['tasks'] if t['ad'] == ad and t['stage'] == 'creative_qa'), {})
+                review_stage = 'edit' if compact_run(state) else 'creative_qa'
+                review = next((t for t in state['tasks'] if t['ad'] == ad and t['stage'] == review_stage), {})
                 verdict = review.get('result') or {}
                 if state.get('execution') and (review.get('status') != 'succeeded' or
                         not (verdict.get('verdict') == 'pass' or verdict.get('accepted_with_notes')) or
@@ -1148,7 +1189,7 @@ class Engine:
                     raise ContractError('Creative review has not accepted the complete story; packaging is blocked')
                 from .media import check_story_content
                 check_story_content(result('frame')['master'], result('edit')['master'], result('frame'), state['config'])
-                if final_only:
+                if final_only or compact_run(state):
                     # Delivery of an approved film must not wait for recompressing
                     # every large .blend/source artifact in the finishing reserve.
                     inputs = {key: value for key, value in inputs.items()

@@ -15,7 +15,7 @@ def product_key(config):
 def feedback(store, run_id, rating, note):
     if rating not in ('good', 'okay', 'bad') or not isinstance(note, str) or len(note) > 4000:
         raise ValueError('Use good|okay|bad and a note of at most 4000 characters')
-    with store.worker_lock():
+    with store.worker_lock(run_id):
         state = store.get(run_id)
         item = {'rating': rating, 'note': note, 'at': time.time()}
         state.setdefault('user_feedback', []).append(item)
@@ -30,11 +30,11 @@ def lessons(store, config, limit=8):
         if product_key(s['config']) != key:
             continue
         scripts = [t['result'].get('scripts', []) for t in s['tasks']
-                   if t['stage'] == 'write' and t.get('result')]
+                   if (t['stage'] in ('write', 'script', 'campaign-script') or t.get('id') == 'campaign-script') and t.get('result')]
         premise = [x.get('premise', '') for group in scripts for x in group][:2]
         ratings = s.get('user_feedback', [])
         findings = [dict(f, stage=t['stage']) for t in s['tasks']
-                    if t['stage'] in ('select', 'board_review', 'creative_qa') and t.get('result')
+                    if t['stage'] in ('select', 'board_review', 'creative_qa', 'edit') and t.get('result')
                     for f in t['result'].get('findings', [])]
         if ratings or premise or findings:
             results.append({'run': s['id'], 'premises': premise,
@@ -59,9 +59,9 @@ def character_voices(store, config):
             continue
         paths = {path: identifier for identifier, path in state.get('asset_paths', {}).items()}
         for task in state['tasks']:
-            if task['stage'] == 'direct' and task.get('result'):
-                for cast in task['result']['direction'].get('cast', []):
-                    identity = paths.get(cast.get('model'))
+            if task['stage'] in ('direct', 'animate') and task.get('result'):
+                for cast in task['result'].get('direction', {}).get('cast', []):
+                    identity = cast.get('asset_id') or paths.get(cast.get('model'))
                     if identity and identity not in voices:
                         voices[identity] = {'voice': cast['voice'], 'performance': cast.get('performance'), 'source_run': state['id']}
         if len(voices) >= 8:
@@ -108,10 +108,12 @@ def catalog_brief(store, config, entries):
         if product_key(state['config']) != product_key(config) or not state.get('user_feedback'):
             continue
         value = {'good': 1, 'okay': 0, 'bad': -1}[state['user_feedback'][-1]['rating']]
+        used = set()
         for task in state['tasks']:
-            if task['stage'] == 'assets' and task.get('result'):
-                for identifier in task['result'].get('used_asset_ids', []):
-                    scores[identifier] = scores.get(identifier, 0) + value
+            if task['stage'] in ('assets', 'animate') and task.get('result'):
+                used.update(task['result'].get('used_asset_ids', []))
+        for identifier in used:
+            scores[identifier] = scores.get(identifier, 0) + value
     compact = [{k: e[k] for k in ('id', 'kind', 'path', 'sha256', 'capabilities', 'preview') if k in e}
                for e in entries]
     for e in compact:

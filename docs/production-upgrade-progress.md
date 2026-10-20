@@ -9,9 +9,27 @@ with at most 25% overtime, scope reduction and checkpoint recovery.
 
 User contract: the CLI turns a product premise and approved assets into a reviewed,
 playable nine-second advertisement, with bounded execution and recoverable failures.
-The live happy path remains under validation; test fixtures are not proof of creative quality.
+Test fixtures are not proof of creative quality.
 
-## Work
+## Current compact workflow (2026-10-20)
+
+New CLI runs now use one concise script guide, an animator-owned scene/audio/render,
+an editor, and deterministic finishing/QA/packaging. Each finished ad uploads
+independently; separate CLI launches generate concurrently under per-run leases.
+Older saved graphs remain resumable. See [the current evidence record](../dev/STATE.md)
+for exact live run IDs, timings, failures and verification results.
+
+The new medium trial completed a full nine-second story and rotating-product card
+in 631.9 active seconds, then verified its MP4 in Drive on retry while another run
+was generating. Two low trials failed safely and exposed additional voice,
+product-import and procedural-motion defects; do not count them as successful ads.
+The fresh low trial then completed autonomously in 377.2 active seconds with a
+7.7-second script invocation. Its full nine-second export passed editor/technical
+checks; Drive initially rate-limited delivery and the durable retry remains active.
+No manual verdict or extra time was used. The historical benchmark record below
+describes earlier graphs, not the current default workflow.
+
+## Earlier implementation work
 
 - Runtime policy, deadlines, CLI and targeted invalidation: implemented; regression checks pass.
 - Relocatable catalog and publication: implemented; temporary-remote and relocation tests pass.

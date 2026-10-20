@@ -12,6 +12,46 @@ from harness import render as renderer
 from harness.contracts import digest
 
 
+def test_cli_uses_measured_receipt_without_guessing_mix_folder(tmp_path, monkeypatch, capsys):
+    folder = tmp_path / 'audio'; folder.mkdir()
+    mix = folder / 'mix-0002.wav'; mix.write_bytes(b'verified mixed audio')
+    receipt = folder / 'production.json'
+    receipt.write_text(json.dumps({'mix': mix.name, 'direction': {'duration': 9},
+        'files': [{'path': mix.name, 'sha256': digest(mix)}]}))
+    calls = []
+    monkeypatch.setattr(renderer, 'render', lambda **kwargs: calls.append(kwargs) or {})
+    renderer.main(['--scene', 'scene.blend', '--production', str(receipt), '--output', 'preview.mp4'])
+    assert calls[0]['audio'] == str(mix)
+    assert calls[0]['seconds'] == 9
+    mix.write_bytes(b'changed')
+    with pytest.raises(ValueError, match='Changed'):
+        renderer.main(['--scene', 'scene.blend', '--production', str(receipt), '--output', 'preview.mp4'])
+    assert len(calls) == 1
+
+
+def test_production_render_checks_saved_speakers_before_expensive_frames(tmp_path, monkeypatch):
+    from harness import media
+    audio = tmp_path / 'mix.wav'; audio.write_bytes(b'audio')
+    direction = {'duration': 9, 'cast': [{'speaker': 'A', 'model': 'active.blend'}],
+                 'lines': [{'speaker': 'A', 'text': 'Hi', 'start': .2, 'end': 1.2}]}
+    receipt = tmp_path / 'production.json'
+    receipt.write_text(json.dumps({'mix': audio.name, 'direction': direction,
+        'files': [{'path': audio.name, 'sha256': digest(audio)}]}))
+    rigs = tmp_path / 'rigs.json'; rigs.write_text('{"A":"actor.rig"}')
+    calls = []
+    def check(scene, names, lines, fps, models, **kwargs):
+        calls.append('check')
+        assert names == {'A': 'actor.rig'} and models == {'A': 'active.blend'}
+        assert lines[0]['end'] == 1.2
+        raise ValueError('Speaker face is obscured')
+    monkeypatch.setattr(media, 'check_scene', check)
+    monkeypatch.setattr(renderer, 'render', lambda **kwargs: calls.append('render'))
+    with pytest.raises(ValueError, match='face is obscured'):
+        renderer.main(['--scene', 'scene.blend', '--production', str(receipt),
+                       '--rigs', str(rigs), '--output', 'preview.mp4'])
+    assert calls == ['check']
+
+
 def png(width, height):
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))

@@ -39,6 +39,14 @@ def _destination(value, run_id=None):
 def _title(state, ad):
     """Follow production's selected ID and latest accepted script pool."""
     succeeded = [t for t in state['tasks'] if t['status'] == 'succeeded']
+    campaign = next((t.get('result') for t in reversed(succeeded)
+                     if t.get('id') == 'campaign-script' or t['stage'] in ('script', 'campaign-script')), None)
+    if isinstance(campaign, dict):
+        scripts = campaign.get('scripts', [])
+        if isinstance(scripts, list) and 0 <= ad < len(scripts):
+            title = scripts[ad].get('title') if isinstance(scripts[ad], dict) else None
+            if isinstance(title, str) and title.strip():
+                return title
     selection = next((t.get('result') for t in reversed(succeeded) if t['stage'] == 'select'), None)
     writing = next((t.get('result') for t in reversed(succeeded)
                     if t['stage'] in ('write', 'revise')), None)
@@ -154,11 +162,17 @@ def _bounded_run(command, **kwargs):
 
 
 def upload_run(store, state, *, run=None, which=None):
+    with store.delivery_lock():
+        return _upload_run(store, state, run=run, which=which)
+
+
+def _upload_run(store, state, *, run=None, which=None):
     """Deliver finished MP4s, durably acknowledging each successful copy.
 
     Verified receipts survive partial failures. An acknowledged copy whose
     listing was interrupted is listed again before any retry copies it.
-    Production callers must hold store.worker_lock(); Engine and CLI do so.
+    Production callers must hold store.worker_lock(state['id']). The public
+    wrapper also excludes transfers belonging to other runs.
     """
     run = _bounded_run if run is None else run
     which = shutil.which if which is None else which
@@ -211,8 +225,8 @@ def upload_run(store, state, *, run=None, which=None):
         command = ['rclone', *drive_flags, *_NETWORK_FLAGS]
         # If the controller dies mid-copy, its uploader must retain exclusion
         # until it exits. Otherwise a restarted worker can overlap that copy.
-        lock_fd = store.worker_lock_fd
-        inheritance = {'pass_fds': (lock_fd,)} if lock_fd is not None else {}
+        lock_fds = store.upload_lock_fds(state['id'])
+        inheritance = {'pass_fds': lock_fds} if lock_fds else {}
 
         def verify(candidates):
             result = run([*command, 'lsf', '--max-depth', '1', remote, '--files-only'],

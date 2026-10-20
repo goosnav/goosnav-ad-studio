@@ -83,6 +83,20 @@ def validate(stage, data, workspace, context):
         for r in data['references']:
             for key in ('url', 'observation', 'application'):
                 text(r, key)
+    elif stage == 'script':
+        scripts = data.get('scripts')
+        count = context.get('count', 1)
+        if not isinstance(scripts, list) or len(scripts) != count:
+            raise ContractError(f'Return exactly {count} script guides, one per ad; no candidate contest.')
+        ids = set()
+        for script in scripts:
+            if not isinstance(script, dict):
+                raise ContractError('Each script guide must be an object')
+            for key in ('id', 'title', 'premise', 'script', 'visual_direction', 'product', 'cta'):
+                text(script, key)
+            if script['id'] in ids:
+                raise ContractError('Script guide IDs must be unique')
+            ids.add(script['id'])
     elif stage in ('write', 'revise'):
         scripts = data.get('scripts')
         count = context.get('count', 1)
@@ -196,6 +210,12 @@ def validate(stage, data, workspace, context):
         if not isinstance(data.get('plan'), dict):
             raise ContractError('edit_plan must return a structured cut plan')
     elif stage == 'edit':
+        if context.get('compact'):
+            validate('creative_qa', data, workspace, {**context, 'strict_review': True})
+            if data['verdict'] == 'revise':
+                if data.get('restart') != 'animate':
+                    raise ContractError('Editor repair must target animate; preserve the script guide')
+                return data
         if not isinstance(data.get('plan'), dict):
             raise ContractError('Editor must return its approved cut plan')
         for key in ('master', 'timeline'):

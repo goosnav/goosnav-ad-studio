@@ -7,6 +7,7 @@ import random
 import time
 
 from .delivery import _already_verified, _completed_ads, _error, _rate_limited, upload_run
+from .store import Busy
 
 
 RETRY_BASE_SECONDS = 60
@@ -27,6 +28,16 @@ def _retry(store, state):
 
 
 def deliver_ready(store, state):
+    # Hold the transfer lease through the cooldown check and receipt/retry saves.
+    # Busy is a deferral, not a failed attempt or an invitation to rewrite state.
+    try:
+        with store.delivery_lock():
+            return _deliver_ready(store, state)
+    except Busy:
+        return state
+
+
+def _deliver_ready(store, state):
     """Attempt due deliveries only; persist retries and never fail production.
 
     The caller owns when this runs and excludes delivery time from its production

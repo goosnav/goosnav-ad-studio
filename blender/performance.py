@@ -1,8 +1,8 @@
 """Reusable planted conversation, built from the character's existing motion assets.
 
-Run inside Blender. apply(timeline, mouths, rigs, models=...) owns animation on
-the named characters only. It preserves actor placement, copies an idle clip,
-adds small line-timed nods/blinks, then keys the measured mouths. No hand IK,
+Run inside Blender. apply(timeline, mouths, rigs, models=...) preserves authored
+poses and animation, adds reference-relative idle on free Euler channels and
+small line-timed nods/blinks, then keys the measured mouths. No hand IK,
 prop manipulation, rig rebuilding or model generation is involved.
 """
 import json
@@ -37,7 +37,7 @@ def _clips(arm, model=None):
              for strip in track.strips if strip.action}
     cached = {a['studio_motion_clip']: a for a in bpy.data.actions
               if source_path and a.get('studio_motion_source') == source_path}
-    if local:
+    if any(name in local for name in ('idle', 'pose_idle')):
         clips = local
     elif cached:
         clips = cached
@@ -53,6 +53,7 @@ def _clips(arm, model=None):
         clips = {}
     clips = {name: action for name, action in clips.items() if action and any(
         fc.data_path.startswith('pose.bones[') for fc in action.fcurves)}
+    clips.update(local)
     for name, action in clips.items():
         action.use_fake_user = True
         if source_path:
@@ -113,13 +114,72 @@ def _meshes(arm):
             (o.parent == arm or any(m.type == 'ARMATURE' and m.object == arm for m in o.modifiers))]
 
 
+def _active_nla_actions(data):
+    # Libraries keep their entire motion pack in muted tracks. Those clips are
+    # available to play_clip, but must not suppress procedural motion now.
+    tracks = [t for t in data.nla_tracks if not t.mute]
+    solo = any(t.is_solo for t in tracks)
+    return [strip.action for track in tracks if not solo or track.is_solo
+            for strip in track.strips if strip.action and not strip.mute]
+
+
+def _begin(block):
+    """Rebuild our composite action from the untouched authored action and pose.
+
+    Metadata travels with the blend, so a repeat after save/reload is also safe.
+    Other NLA tracks, drivers and constraints are never removed or muted.
+    """
+    data = block.animation_data_create()
+    previous = data.action
+    if previous and previous.get('studio_performance'):
+        baseline = json.loads(previous['studio_baseline'])
+        original = bpy.data.actions.get(previous.get('studio_original', ''))
+        generated_paths = {fc.data_path for fc in previous.fcurves}
+        authored_paths = {fc.data_path for fc in original.fcurves} if original else set()
+        data.action = original
+        for path, value in baseline.items():
+            if path not in generated_paths or path in authored_paths:
+                continue
+            owner, _, prop = path.rpartition('.')
+            setattr(block.path_resolve(owner) if owner else block, prop, value)
+        if previous.users == 0:
+            bpy.data.actions.remove(previous)
+    else:
+        original = previous
+        baseline = {}
+        if isinstance(block, bpy.types.Object):
+            baseline['scale'] = list(block.scale)
+            if block.type == 'ARMATURE':
+                for bone in block.pose.bones:
+                    for prop in ('location', 'rotation_euler', 'rotation_quaternion', 'scale'):
+                        baseline[bone.path_from_id(prop)] = list(getattr(bone, prop))
+        elif isinstance(block, bpy.types.Key):
+            baseline = {key.path_from_id('value'): key.value for key in block.key_blocks}
+    protected = set()
+    actions = ([original] if original else []) + _active_nla_actions(data)
+    for action in actions:
+        protected.update(fc.data_path for fc in action.fcurves)
+    protected.update(fc.data_path for fc in data.drivers)
+    if original:
+        original.use_fake_user = True
+    generated = original.copy() if original else bpy.data.actions.new('Studio performance')
+    generated.name = f'Studio performance: {block.name}'
+    generated.use_fake_user = False
+    generated['studio_performance'] = True
+    generated['studio_original'] = original.name if original else ''
+    generated['studio_baseline'] = json.dumps(baseline)
+    data.action = generated
+    return protected
+
+
 def _blinks(meshes, start, end, fps, offset):
     targets = []
     for obj in meshes:
         keys = obj.data.shape_keys
         if keys and 'blink' in keys.key_blocks:
-            targets.append((keys.key_blocks['blink'], 'value', 0.0, 1.0))
-        elif 'eye' in obj.name.lower() or 'pupil' in obj.name.lower():
+            if not _protected(keys, 'key_blocks["blink"].value'):
+                targets.append((keys.key_blocks['blink'], 'value', keys.key_blocks['blink'].value, 1.0))
+        elif ('eye' in obj.name.lower() or 'pupil' in obj.name.lower()) and not _protected(obj, 'scale'):
             targets.append((obj, 'scale', obj.scale.z, obj.scale.z * .06))
     frames = list(range(start + round((1.8 + offset * .37) * fps), end, round(3.3 * fps)))
     for target, path, opened, closed in targets:
@@ -132,6 +192,16 @@ def _blinks(meshes, start, end, fps, offset):
             else:
                 target.scale.z = value; target.keyframe_insert(path, index=2, frame=frame)
     return frames if targets else []
+
+
+def _protected(block, path):
+    data = block.animation_data
+    if not data:
+        return False
+    original = bpy.data.actions.get(data.action.get('studio_original', '')) if data.action else None
+    actions = ([original] if original else []) + _active_nla_actions(data)
+    return any(fc.data_path == path for a in actions for fc in a.fcurves) or any(
+        fc.data_path == path for fc in data.drivers)
 
 
 def apply(timeline, mouths, rigs, *, models=None, nod_degrees=3):
@@ -154,6 +224,8 @@ def apply(timeline, mouths, rigs, *, models=None, nod_degrees=3):
     if rate <= 0 or mouths['frames'] != math.ceil(timeline['duration'] * fps):
         raise ValueError('invalid timeline duration or sample rate')
     prepared = []
+    if len({_arm(value).as_pointer() for value in rigs.values()}) != len(rigs):
+        raise ValueError('each speaker needs a separate rig')
     for speaker, value in rigs.items():
         arm = _arm(value); model = (models or {}).get(speaker)
         clips = _clips(arm, model)
@@ -163,7 +235,7 @@ def apply(timeline, mouths, rigs, *, models=None, nod_degrees=3):
         prepared.append((speaker, arm, model, name, clips[name]))
     report = {}; scene.frame_set(start)
     for index, (speaker, arm, model, name, idle) in enumerate(prepared):
-        arm.animation_data_clear()
+        protected = _begin(arm)
         if model:
             arm['studio_motion_model'] = str(model)
         meshes = _meshes(arm)
@@ -172,25 +244,21 @@ def apply(timeline, mouths, rigs, *, models=None, nod_degrees=3):
             # from one actor into the other actor's face.
             if obj.data.shape_keys and obj.data.users > 1:
                 obj.data = obj.data.copy()
-            obj.animation_data_clear()
+            _begin(obj)
             if obj.data.shape_keys:
-                obj.data.shape_keys.animation_data_clear()
-                for key in obj.data.shape_keys.key_blocks:
-                    if key.name in ('open', 'round', 'wide', 'blink'):
-                        key.value = 0
-        # Imported previews/old hand-contact attempts must not override idle.
-        for bone in arm.pose.bones:
-            for constraint in bone.constraints:
-                if constraint.name in ('arm_ik', 'arm_ik_rot'):
-                    constraint.influence = 0
-        if 'jaw' in arm.pose.bones:
-            arm.pose.bones['jaw'].rotation_mode = 'XYZ'
-            arm.pose.bones['jaw'].rotation_euler = (0, 0, 0)
-        _strip(arm, idle, start, end, True)
-        head = arm.pose.bones['head']; head.rotation_mode = 'XYZ'
-        base = {fc.array_index: fc for fc in idle.fcurves
-                if fc.data_path == 'pose.bones["head"].rotation_euler'}
+                _begin(obj.data.shape_keys)
+        # Add only reference-relative Euler idle motion on unauthored channels.
+        # Quaternion/axis-angle rigs and authored curves retain their own motion.
+        # In particular, never substitute the stock head/neck rest orientation.
         a, b = idle.frame_range
+        channels = []
+        for bone in arm.pose.bones:
+            path = bone.path_from_id('rotation_euler')
+            if bone.name == 'jaw' or bone.rotation_mode in ('QUATERNION', 'AXIS_ANGLE') or path in protected:
+                continue
+            curves = {fc.array_index: fc for fc in idle.fcurves if fc.data_path == path}
+            if curves or bone.name == 'head':
+                channels.append((bone, tuple(bone.rotation_euler), curves))
         lines = [(line['start_sample'] / rate, line['end_sample'] / rate)
                  for line in timeline['dialogue'] if line['speaker'] == speaker]
         for frame in sorted(set(range(start, end, 2)) | {end}):
@@ -198,10 +266,13 @@ def apply(timeline, mouths, rigs, *, models=None, nod_degrees=3):
             pulse = max((math.sin(math.pi * (t - lo) / (hi - lo)) ** 2
                          for lo, hi in lines if lo <= t < hi), default=0)
             local = a + (frame - start) % max(1, b - a)
-            head.rotation_euler = tuple(base[i].evaluate(local) if i in base else 0 for i in range(3))
-            head.rotation_euler.x += math.radians(nod_degrees) * pulse
-            head.keyframe_insert('rotation_euler', frame=frame)
+            for bone, base, curves in channels:
+                bone.rotation_euler = tuple(base[i] + (curves[i].evaluate(local) - curves[i].evaluate(a)
+                                           if i in curves else 0) for i in range(3))
+                if bone.name == 'head':
+                    bone.rotation_euler.x += math.radians(nod_degrees) * pulse
+                bone.keyframe_insert('rotation_euler', frame=frame)
         report[speaker] = {'idle': name, 'blinks': _blinks(meshes, start, end, fps, index)}
-    lipsync.apply(mouths, rigs)
+    lipsync.apply(mouths, {speaker: _arm(value).name for speaker, value in rigs.items()})
     scene.frame_set(start)
     return report

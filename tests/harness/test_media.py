@@ -172,3 +172,32 @@ def test_picture_qa_rejects_frozen_flat_and_missing_card(tmp_path):
         check_picture(_clip(tmp_path/'flat.mp4','color=0xb0b0b0'),c,story_end=4,check_freeze=False)
     with pytest.raises(ContractError,match='end card'):
         check_picture(moving,c,story_end=2,master=moving)   # "framed" video identical to the master
+def test_compact_picture_allows_short_hold_but_not_mostly_static_story(tmp_path):
+    from harness.config import load_config
+    from harness.media import check_picture
+    from harness.contracts import ContractError
+    import subprocess
+    moving = tmp_path / 'held-reaction.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                    'testsrc2=size=160x200:rate=24:duration=4', '-vf',
+                    'tpad=stop_mode=clone:stop_duration=2.2', '-c:v', 'libx264',
+                    '-pix_fmt', 'yuv420p', str(moving)], check=True)
+    c = load_config()
+    result = check_picture(moving, c, story_end=6.2, max_frozen_fraction=.5)
+    assert result['freezes'] and result['freezes'][0][1] > 2
+    with pytest.raises(ContractError, match='frozen'):
+        check_picture(_clip(tmp_path/'still-compact.mp4', 'smptebars'), c, story_end=4,
+                      max_frozen_fraction=.5)
+
+
+def test_compact_picture_counts_short_stills_across_multiple_shots(tmp_path):
+    from harness.config import load_config
+    from harness.media import check_picture
+    from harness.contracts import ContractError
+    import subprocess
+    slideshow = tmp_path / 'slideshow.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                    'testsrc2=size=160x200:rate=24:duration=6', '-vf', 'fps=2/3,fps=24',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(slideshow)], check=True)
+    with pytest.raises(ContractError, match='picture frozen'):
+        check_picture(slideshow, load_config(), story_end=6, max_frozen_fraction=.5)

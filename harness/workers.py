@@ -198,10 +198,13 @@ def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, star
     # A file for stdin avoids blocking the supervisor on a large pipe write.
     prompt_path = Path(cwd) / '.worker-input.txt'
     prompt_path.write_text(prompt)
+    temporary = Path(cwd).resolve() / '.tmp'
+    temporary.mkdir(exist_ok=True)
+    env = {**worker_env(), 'TMPDIR': str(temporary), 'TMP': str(temporary), 'TEMP': str(temporary)}
     try:
         with prompt_path.open() as inp, log.open('w') as out:
             proc = subprocess.Popen(argv, cwd=cwd, stdin=inp, stdout=out,
-                                    stderr=subprocess.STDOUT, env=worker_env(), start_new_session=True)
+                                    stderr=subprocess.STDOUT, env=env, start_new_session=True)
             if started:
                 started(proc.pid)
             try:

@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from .contracts import digest
+from .contracts import contained, digest
 from .learning import signature
 from .blender_dependencies import EXTERNAL_PATH_SCAN
 
@@ -144,14 +144,41 @@ def render(scene, audio, output, *, width=1080, height=1350, fps=24, seconds=9,
             'frames': end, 'settings': settings, 'wall_seconds': round(time.monotonic() - started, 2)}
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--scene', required=True); p.add_argument('--audio', required=True); p.add_argument('--output', required=True)
+    p.add_argument('--scene', required=True); p.add_argument('--output', required=True)
+    audio = p.add_mutually_exclusive_group(required=True)
+    audio.add_argument('--audio')
+    audio.add_argument('--production', help='Measured audio receipt; resolves its mix path and duration')
+    p.add_argument('--rigs', help='With --production: check saved speaking rigs before rendering')
     for name, default in [('width',1080), ('height',1350), ('fps',24), ('seconds',9), ('timeout',600)]:
         p.add_argument('--' + name, type=int, default=default)
     p.add_argument('--effort', choices=('low','medium','high'), default='medium')
     p.add_argument('--fast', action='store_true'); p.add_argument('--blender', default='blender'); p.add_argument('--ffmpeg', default='ffmpeg')
-    print(json.dumps(render(**vars(p.parse_args())), indent=2))
+    args = vars(p.parse_args(argv))
+    receipt = args.pop('production')
+    rigs = args.pop('rigs')
+    if rigs and not receipt:
+        p.error('--rigs requires --production')
+    started = time.monotonic()
+    if receipt:
+        receipt = Path(receipt).resolve()
+        data = json.loads(receipt.read_text())
+        mix = contained(receipt.parent, data['mix'])
+        entry = next((f for f in data['files'] if f['path'] == data['mix']), None)
+        if not entry or entry.get('sha256') != digest(mix):
+            raise ValueError('Changed or undeclared audio mix in production receipt')
+        args.update(audio=str(mix), seconds=data['direction']['duration'])
+        if rigs and data['direction']['lines']:
+            from .media import check_scene
+            from .execution import deadline
+            cast = data['direction']['cast']
+            with deadline(args['timeout']):
+                check_scene(args['scene'], json.loads(Path(rigs).read_text()), data['direction']['lines'],
+                            args['fps'], {c['speaker']: c['model'] for c in cast if c.get('model')},
+                            blender=args['blender'])
+            args['timeout'] -= time.monotonic() - started
+    print(json.dumps(render(**args), indent=2))
 
 
 if __name__ == '__main__':

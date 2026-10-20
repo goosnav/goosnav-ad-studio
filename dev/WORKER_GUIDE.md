@@ -18,18 +18,22 @@ numbers for measurements, not estimates presented as measurements.
 
 ## Animation scope
 
-The default ad is a short spoken scene: one or two planted characters, one set,
-a two-shot and perhaps a close-up, then an intact product hero. Put the premise
-in the dialogue and delivery. Most body motion should come from an existing idle
-or gesture clip. Walking is optional and uses an existing cycle. Do not plan
-silent physical spectacle unless the owner explicitly requests it.
+For new compact runs, the animator owns the measured plan, audio, scene and render.
+Use `TASK.md`'s production helper commands, not the legacy separate-stage contracts
+below. The editor judges that measured version and may request one focused repair.
+No independent storyboard submission or storyboard-review agent is required.
 
-Inspect the actual asset before promising an interaction. A static book stays
-closed; no new hinge, mesh splitting, page rig or custom hand IK to rescue a
-script. Keep hands free and put the product on a stand or in a separate shot.
-If an action is unsupported, document the limit and simplify the action to a
-spoken exchange. Reviewers should accept a well-delivered standing conversation;
-more arm motion or camera travel is not a quality requirement.
+Low effort favors an existing set, one or two characters and a short readable action
+or exchange. Medium can vary the staging; high can invest in distinctive environments,
+supported action and motivated camera movement. Reuse existing motion where it fits.
+Spend effort on the story and readable performance rather than planning documents.
+
+Inspect the actual asset before promising an interaction. Do not assume a static
+book can open or a rig has hand controls it lacks. Use a verified motion, implement
+a justified action within the budget, or adapt the scene without losing its payoff.
+A well-delivered standing conversation can work; extra camera travel is not mandatory.
+The performance helper preserves authored poses, animation, constraints and drivers
+while adding measured speech. It does not supply object contact or story acting.
 
 ## Local audio
 

@@ -104,7 +104,7 @@ def check_audio(path, timeline, config, direction=None):
         raise ContractError(f'Invalid audio/timeline: {e}') from e
 
 
-def check_scene(blend, rigs, lines, fps, models=None, timeout=900):
+def check_scene(blend, rigs, lines, fps, models=None, timeout=900, blender='blender'):
     """Run harness/scene_check.py in Blender on the saved scene; raise with the problems.
     models: {speaker: library character .blend} the speaker's armature must match."""
     import tempfile
@@ -112,7 +112,7 @@ def check_scene(blend, rigs, lines, fps, models=None, timeout=900):
         request, report = Path(tmp) / 'request.json', Path(tmp) / 'report.json'
         request.write_text(json.dumps({'fps': fps, 'rigs': rigs, 'lines': lines, 'models': models or {}}))
         script = Path(__file__).with_name('scene_check.py')
-        r = run(['blender', '-b', str(blend), '--python-exit-code', '1', '--python', str(script),
+        r = run([blender, '-b', str(blend), '--python-exit-code', '1', '--python', str(script),
                  '--', str(request), str(report)], timeout=timeout)
         if not report.is_file():
             raise ContractError(f'Scene check produced no report: {r.stdout[-800:]}')
@@ -287,15 +287,17 @@ def check_story_content(path, master, frame, config):
     return {'story_seconds': start, 'checked_frames':len(actual),'max_picture_difference':round(maximum,2)}
 
 
-def check_picture(path, config, story_end, master=None, check_freeze=True, check_contrast=True):
+def check_picture(path, config, story_end, master=None, check_freeze=True, check_contrast=True,
+                  max_frozen_fraction=None):
     """Bad animation and unreadable pictures, measured on the encoded video.
 
     Story (before story_end): no long frozen stretch, no black gap, no washed-out stretch.
     End card (after story_end, when master is given): Frame's card is really there, i.e. the
     picture differs from the edit master and carries dark type on a light ground."""
     tools = config['tools']; problems = []
+    detect_hold = .5 if max_frozen_fraction is not None else MAX_FREEZE
     r = subprocess.run([tools['ffmpeg'], '-nostats', '-t', f'{story_end:.3f}', '-i', str(path), '-an', '-vf',
-                        f'freezedetect=n=-60dB:d={MAX_FREEZE},blackdetect=d={MAX_BLACK}:pix_th=0.1,'
+                        f'freezedetect=n=-60dB:d={detect_hold},blackdetect=d={MAX_BLACK}:pix_th=0.1,'
                         'fps=4,signalstats,metadata=print:file=-', '-f', 'null', '-'],
                        capture_output=True, text=True, timeout=bounded_timeout(600))
     log = r.stdout + r.stderr
@@ -303,7 +305,13 @@ def check_picture(path, config, story_end, master=None, check_freeze=True, check
     lengths = [float(v) for v in re.findall(r'freeze_duration: ([\d.]+)', log)]
     # An unfinished freeze at the cut-off point still counts up to story_end.
     freezes = [(a, round(d, 2)) for a, d in zip(starts, lengths + [story_end - a for a in starts[len(lengths):]])]
-    if check_freeze:
+    if max_frozen_fraction is not None:
+        if not 0 < max_frozen_fraction <= 1:
+            raise ValueError('max_frozen_fraction must be in (0, 1]')
+        frozen = sum(max(0, min(d, story_end - a)) for a, d in freezes)
+        if frozen >= story_end * max_frozen_fraction:
+            problems.append(f'picture frozen for {frozen:.1f} of {story_end:.1f} story seconds')
+    elif check_freeze:
         problems += [f'picture frozen {d:.1f} s from {a:.1f} s' for a, d in freezes if d >= MAX_FREEZE]
     problems += [f'black picture from {float(a):.1f} s' for a in re.findall(r'black_start:([\d.]+)', log)]
     lows = [float(v) for v in re.findall(r'signalstats.YLOW=([\d.]+)', log)]
