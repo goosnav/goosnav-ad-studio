@@ -8,7 +8,6 @@
     ./ad cancel all                  cancel every unfinished job on this render machine
     ./ad cancel -a                   same as cancel all
 """
-import argparse
 import json
 import os
 from pathlib import Path
@@ -16,16 +15,22 @@ import subprocess
 import sys
 import time
 
+from harness.arguments import HelpfulParser, add_model_options
+
 REPO = Path(__file__).resolve().parent
 HOME = Path(os.environ.get('STUDIO_HARNESS_HOME', Path.home() / '.local/share/goosnav-ad-studio'))
-COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'cooldown', 'gui', 'doctor')
+COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'cooldown', 'gui', 'doctor', 'models')
 DONE = ('complete', 'partial', 'failed', 'needs_review', 'waiting_provider', 'cancelled', 'interrupted', 'paused')
 
 
 def harness(*args, capture=True):
     r = subprocess.run([sys.executable, '-m', 'harness', '--home', str(HOME), *args], cwd=REPO,
                        capture_output=capture, text=True)
-    return json.loads(r.stdout) if capture and r.stdout.strip().startswith(('{', '[')) else r
+    if capture and r.stdout.strip().startswith(('{', '[')):
+        return json.loads(r.stdout)
+    if capture and r.returncode:
+        sys.exit(r.stderr.strip() or r.stdout.strip() or 'Command failed; see ./ad --help')
+    return r
 
 
 def latest():
@@ -75,13 +80,29 @@ def main():
         command, rest = sys.argv[1], sys.argv[2:]
         if command == 'gui':
             os.execv(str(REPO / 'Start Ad Studio.sh'), [str(REPO / 'Start Ad Studio.sh'), *rest])
-        if command == 'doctor':
-            return harness('doctor', capture=False).returncode
+        if command in ('doctor', 'models'):
+            parser = HelpfulParser(prog=f'./ad {command}')
+            parser.add_argument('--config')
+            if command == 'models':
+                add_model_options(parser)
+            parser.parse_args(rest)
+            return harness(command, *rest, capture=False).returncode
+        parser = HelpfulParser(prog=f'./ad {command}')
+        if command == 'cooldown':
+            parser.add_argument('action', nargs='?', choices=('status', 'clear'), default='status')
+            parser.add_argument('provider', nargs='?', choices=('codex', 'claude', 'all'), default='all')
+        elif command != 'list':
+            parser.add_argument('run_id', nargs='?', help='run ID (defaults to latest)')
+            if command == 'cancel':
+                parser.add_argument('-a', '--all', action='store_true', help='cancel all unfinished runs')
+        options = parser.parse_args(rest)
+        if command == 'cancel' and options.all and options.run_id is not None:
+            parser.error('Use cancel --all OR cancel RUN_ID, not both')
         if command == 'list':
             for r in harness('list')[:15]:
                 print(time.strftime('%m-%d %H:%M', time.localtime(r['created'])), r['id'], r['status'])
             return 0
-        if command == 'cancel' and rest in (['all'], ['-a'], ['--all']):
+        if command == 'cancel' and (options.all or options.run_id == 'all'):
             result = harness('cancel', '--all')
             if not isinstance(result, dict) or result.get('requested') != 'cancel_all':
                 print('Failed to request cancellation; inspect: python3 -m harness cancel --all',
@@ -91,7 +112,7 @@ def main():
             for run_id in result['runs']:
                 print('  ' + run_id)
             return 0
-        run_id = rest[0] if rest else latest()
+        run_id = None if command == 'cooldown' else options.run_id or latest()
         if command == 'status':
             summary(run_id); return 0
         if command == 'upload':
@@ -106,7 +127,7 @@ def main():
             print(f'Uploaded to Drive: {d["remote"]}')
             return 0
         if command == 'cooldown':
-            result = harness('cooldown', *(rest or ['status']))
+            result = harness('cooldown', options.action, options.provider)
             if isinstance(result, dict):
                 if 'cleared' in result:
                     print(f"Cleared {result['cleared']} provider cooldown(s).")
@@ -123,11 +144,17 @@ def main():
         if command == 'resume':
             start('resume', run_id); return 0
         harness(command, run_id); print(f'{command} requested for {run_id}'); return 0
-    p = argparse.ArgumentParser(prog='./ad', description='Make animated ads. See CLI.txt.')
+    p = HelpfulParser(prog='./ad', description='Make animated ads. See CLI.txt.',
+                      epilog='Controls: ' + ', '.join(COMMANDS) + '. Use ./ad COMMAND --help for command options.')
     p.add_argument('concept', nargs='*', help='what the ad should be (quotes optional)')
     p.add_argument('-n', '--count', type=int, help='number of ads (default 1)')
     p.add_argument('-s', '--seconds', type=int, help='length of each ad (default 10)')
-    a = p.parse_args()
+    add_model_options(p)
+    p.add_argument('--config', help='project JSON configuration (default harness.local.json)')
+    p.add_argument('--plan', action='store_true', help='save a run plan without starting workers')
+    if sys.argv[1:] == ['help']:
+        p.print_help(); return 0
+    a = p.parse_intermixed_args()
     args = ['make']
     if a.concept:
         args += ['--concept', ' '.join(a.concept)]
@@ -135,6 +162,11 @@ def main():
         args += ['--count', str(a.count)]
     if a.seconds is not None:
         args += ['--seconds', str(a.seconds)]
+    for key in ('effort', 'provider', 'config'):
+        if getattr(a, key) is not None:
+            args += ['--' + key, getattr(a, key)]
+    if a.plan:
+        return harness(*args, '--plan', capture=False).returncode
     start(*args)
     return 0
 

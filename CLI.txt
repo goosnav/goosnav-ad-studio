@@ -25,8 +25,73 @@ MAKE AN AD (DETACHED - SURVIVES TERMINAL CLOSURE)
   ./ad "..." -n 3             make 3 ads
   ./ad "..." -s 15            target 15 seconds (default 10)
   ./ad "..." -n 3 -s 15      both
+  ./ad "An astronaut reads Book Two" -s 9 -e high
+  ./ad "..." -s 9 -e medium -p anthropic
+  ./ad "..." -s 9 -e low -p openai
   ./ad                        open brief: agents choose the concept
   # Starting another job queues it behind the active job.
+
+MODEL INTENSITY / PROVIDER (NEW RUNS)
+  -e, --effort, -effort       low | medium | high (default: medium)
+  -p, --provider, -provider   auto | openai | anthropic (default: auto)
+  # Effort is a whole-ad model/role preset, not just a token budget.
+  # auto uses OpenAI first for high/low and Anthropic first for medium.
+  # -p openai / -p anthropic changes the PREFERRED provider for all roles;
+  # the other provider remains the backup. Quota/capacity/timeouts still
+  # switch dynamically, continuing the existing stage workspace.
+  # OpenAI uses your Codex subscription; Anthropic uses Claude Code.
+
+  PRESET    PRIMARY    WRITER / ANIMATOR / DIRECTOR        QA / STORY CHECKS
+  high      OpenAI     current Astra, high effort          current Sol, medium
+  medium    Anthropic  latest Opus, medium effort          latest Sonnet, medium
+  low       OpenAI     current Luna, low effort            current Luna, low
+
+  PROVIDER OVERRIDES
+  -e high   -p anthropic  latest Opus at MAX effort; QA Sonnet at medium
+  -e medium -p openai     current Sol at medium; QA Luna at low
+  -e low    -p anthropic  latest Sonnet at low; QA latest Haiku
+  # Producer/editor: Sol for OpenAI high/medium, Luna for OpenAI low;
+  # Sonnet for Anthropic (medium thinking at high/medium, low at low).
+  # QA includes research, critique, selection and final creative review.
+  # Haiku gets no unsupported explicit reasoning-effort parameter.
+
+  # Release numbers are NOT pinned in the presets:
+  # - OpenAI reads the installed Codex CLI's live model/list catalog and
+  #   selects the newest visible current Astra/Sol/Luna release. Hidden,
+  #   retired, deprecated and superseded entries are excluded. Classification
+  #   can also use catalog descriptions if family names change.
+  # - Anthropic uses Claude Code's opus/sonnet/haiku moving aliases.
+  # - Actual models are recorded on every attempt. Automatic selectors and
+  #   moving aliases refresh for unfinished work on resume/provider waits;
+  #   completed stages are not repeated. Explicit model version pins in
+  #   custom worker JSON remain pinned.
+  # - Supported reasoning levels come from the OpenAI catalog. If a requested
+  #   level is unavailable, the closest supported lower level is used (or the
+  #   lowest supported level); the adjustment is recorded in model diagnostics.
+  # - If discovery fails, the existing CLI-default recovery remains available
+  #   and is explicitly reported in the model resolution diagnostics.
+  # Model catalog visibility is not a guarantee of account access; real
+  # provider failures still use the existing failover/cooldown machinery.
+
+  ./ad models -e high                   preview actual current model routing
+  ./ad models -e medium -p openai       preview a provider override; no ad starts
+  ./ad "..." -s 9 -e high --plan       save a plan, start NO workers
+  ./ad --help                          show flags and allowed choices
+  ./ad models --help                   command-specific help
+  ./ad status --help                   controls also have help
+  # Invalid values print the valid choices and exit before launching a job.
+  # Mistyped options (e.g. --efort) show help and a closest-option suggestion.
+  # Single-dash long forms (-effort, -provider) are supported too.
+
+  # The full CLI accepts the same model flags on make/new/models:
+  python3 -m harness make --seconds 9 -e high -p openai --plan
+  python3 -m harness models --effort medium --provider anthropic
+  # Defaults can also be saved in harness.local.json:
+  # "generation": {"effort": "medium", "provider": "auto"}
+  # Explicit per-role "workers" entries in JSON are preserved without flags.
+  # Passing -e or -p replaces those custom routes with the chosen preset for
+  # that run only. It does NOT rewrite the JSON file. --config FILE selects
+  # another project's config; existing duration/count/concept flags still work.
 
 STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   ./ad status [RUN_ID]         quick status and failure reason
@@ -95,32 +160,41 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # of that run using the saved run config, or by running rclone copy manually.
 
 PROVIDER FAILOVER / WAITING_PROVIDER
-  # Claude is the primary provider; Codex is the backup for every role.
+  # The intensity chooses the primary provider by default; -p changes the
+  # preference. Presets ALWAYS include the other provider as the backup.
   # A worker cut off mid-task (usage, capacity, context, timeout) hands its
   # partial workspace to the backup, which continues instead of restarting.
   # The harness now keeps Codex eligible if app-server model discovery fails:
   # Codex CLI selects its own default model rather than being skipped.
-  # Resuming refreshes stale unavailable Codex routes from existing run state.
+  # Resuming refreshes moving model selectors/aliases for unfinished work,
+  # including stale unavailable Codex routes from existing run state.
   # A retired Codex model triggers one automatic retry using the CLI default.
   # The scheduler still honors real per-provider quota cooldowns.
   ./ad status                  shows specific provider skip/failure reasons
   ./ad doctor                  checks local CLI tools and login diagnostics
   python3 -m harness models    check model routing in current configuration
   ./ad resume RUN_ID           retry a previously blocked run after git pull
-  # Existing tasks/artifacts are preserved; successful stages are not repeated.
+  # Resume reopens a FAILED stage with a fresh bounded attempt budget, keeping
+  # its work, feedback and attempt history; successful stages are not repeated.
+  # A real needs_review verdict stays a review gate (use retry --task after
+  # reviewing its findings). Automatic waiting does not reset attempt budgets.
+  # A repair that fixes evidence but forgets to resubmit result.json can reuse
+  # that revision's prior manifest ONLY if every contract/media check now passes.
   # Note: manual workers profiles with ONLY Claude cannot fall back to Codex.
 
 AGENT STALLS / TIMEOUTS
-  # Defaults for NEW runs: lightweight research/write/critique/select 10 min,
-  # direction/reviews 15 min, idle with no log/checkpoint changes 5 min.
+  # Defaults for NEW runs: research 3 min, selection 4 min, creative QA 5 min,
+  # writing/critique 10 min, direction/other reviews 15 min.
+  # Idle with no log/checkpoint changes: 5 min, capped by the stage deadline.
   # Asset building, audio, animation and final editing retain 4 hours per attempt.
   # On a timeout/stall the next provider/cheaper route is tried immediately.
   # A COMPLETE, contract-valid result.json is kept even if its worker timed out.
   # These can be tuned in harness.local.json under limits:
   # "limits": {"quick_timeout_seconds": 600, "review_timeout_seconds": 900,
   #            "idle_timeout_seconds": 300}
-  # Limits apply to NEW attempts. Existing run configs retain their saved
-  # worker routes; start a new run to gain the new economy/balanced backups.
+  # Limits apply to NEW attempts. Existing run configs keep their selected
+  # intensity/provider preference; their automatic model releases refresh on
+  # resume. Start a new run to choose a different -e/-p preset.
   # If an already-running OLD controller is stuck, from another shell:
   ./ad cancel RUN_ID
   # Pull the new code, then:

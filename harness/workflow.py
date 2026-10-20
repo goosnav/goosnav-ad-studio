@@ -122,7 +122,7 @@ class Engine:
                     state['models'] = self.resolve(state['config']['workers'])
                     self.store.save(state, 'models_resolved')
                 else:
-                    self.refresh_unavailable_codex(state)
+                    self.refresh_model_routes(state)
                 state['error'] = ''
                 steps = 0
                 while max_steps is None or steps < max_steps:
@@ -161,27 +161,46 @@ class Engine:
                 self.store.save(state, 'exception', {'error': state['error']})
             return state
 
-    def refresh_unavailable_codex(self, state):
-        """Recover Codex routes disabled by an earlier transient discovery error.
-
-        Resumed runs retain their model snapshots. Only re-resolve unavailable Codex
-        entries, never successful/pinned routes from another provider.
-        """
+    def refresh_model_routes(self, state):
+        """Refresh moving selectors for unfinished work; leave explicit pins and history intact."""
         routes = state['models'].get('workers', {})
-        stale = [(role, index) for role, profiles in routes.items()
-                 for index, profile in enumerate(profiles)
-                 if profile['provider'] == 'codex' and profile.get('unavailable')]
+        pending = {ROLES[t['stage']] for t in state['tasks']
+                   if t['stage'] in ROLES and t['status'] != 'succeeded'}
+        if 'reviewer' in pending and 'reviewer' not in routes:
+            pending.add('director')
+        if any(role in pending and role not in routes for role in ('animator', 'editor')):
+            pending.add('producer')
+        requested = {}
+        stale = []
+        for role, profiles in routes.items():
+            requested[role] = []
+            configured = state['config']['workers'].get(role, [])
+            for index, profile in enumerate(profiles):
+                source = configured[index] if index < len(configured) else profile
+                selector = profile.get('selector', source.get('model', profile['model']))
+                moving = selector.startswith('auto:') or selector in ('opus', 'sonnet', 'haiku')
+                recover = profile['provider'] == 'codex' and profile.get('unavailable')
+                refresh = role in pending and (moving or recover)
+                candidate = {k: profile[k] for k in ('provider', 'model', 'effort') if k in profile}
+                if refresh:
+                    candidate['model'] = selector
+                    # A previous catalog adaptation must not become the new intent.
+                    if profile.get('requested_effort'):
+                        candidate['effort'] = profile['requested_effort']
+                    stale.append((role, index))
+                requested[role].append(candidate)
         if not stale:
             return
-        refreshed = self.resolve(state['config']['workers'])
+        refreshed = self.resolve(requested)
         newer = refreshed.get('workers', {})
         for role, index in stale:
             candidates = newer.get(role, [])
-            if index < len(candidates) and candidates[index].get('provider') == 'codex':
+            if index < len(candidates) and candidates[index].get('provider') == routes[role][index]['provider']:
                 routes[role][index] = candidates[index]
         state['models']['checked_at'] = time.time()
         state['models']['discovery_error'] = refreshed.get('discovery_error')
-        self.store.save(state, 'codex_routes_refreshed', {'count': len(stale)})
+        state['models']['catalog'] = refreshed.get('catalog', state['models'].get('catalog', []))
+        self.store.save(state, 'model_routes_refreshed', {'count': len(stale)})
 
     def reconcile(self, state):
         for task in state['tasks']:
@@ -369,8 +388,10 @@ class Engine:
                     repairing_contract = False
                 task['attempts'].append(attempt)
                 result_file = work/'result.json'
+                backup = None
                 if result_file.exists():
-                    result_file.rename(work/f'result.previous-{number}.json')
+                    backup = work/f'result.previous-{number}.json'
+                    result_file.rename(backup)
                 prompt = brief(task, c, self.inputs(state, task), state['sources'], task['feedback'])
                 attempt['prompt_chars'] = len(prompt)
                 (work/'TASK.md').write_text(prompt)
@@ -401,6 +422,14 @@ class Engine:
                                 if pinned['provider']=='claude' and pinned['model']==alias:
                                     pinned['model']=observed[0];pinned['resolved_alias']=alias
                 self.verify_history(state)
+                prior = task['attempts'][-2] if len(task['attempts']) > 1 else None
+                if (outcome['kind'] == 'ok' and not result_file.is_file() and backup is not None
+                        and prior and prior['revision'] == task['revision'] and prior.get('kind') == 'invalid'):
+                    # A repair may fix the evidence/media and forget to resubmit
+                    # its manifest. Reuse only this revision's prior manifest,
+                    # then run every contract and media check below, unchanged.
+                    shutil.copy2(backup, result_file)
+                    attempt['recovered_result'] = backup.name
                 if outcome['kind'] == 'ok' and not result_file.is_file():
                     attempt['kind'] = 'invalid'
                     attempt['detail'] = 'Missing result.json'

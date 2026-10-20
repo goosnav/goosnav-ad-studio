@@ -311,6 +311,9 @@ EDITORIAL_STANDARD = "\nSTORY / EDITING QUALITY RULES\nEvery comedy beat require
 TARGETED = '''TARGETED REPAIR. Your previous files are still in this workspace and the earlier accepted
 work is in accepted_inputs. Fix exactly the findings below and anything they force; keep every
 other decision, take, shot and file. Do not start over or re-render more than the fix needs.
+If result.json was moved to result.previous-N.json at retry startup, use the latest
+prior JSON as the starting point, fix its errors and write a COMPLETE result.json
+again. Fixing only an artifact or replying that it is fixed is not a submission.
 '''
 
 

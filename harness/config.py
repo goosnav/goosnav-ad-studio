@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .presets import EFFORTS, PROVIDERS, worker_presets
+
 
 class ConfigError(ValueError):
     pass
@@ -17,6 +19,7 @@ def profiles(tier):
 
 DEFAULTS = {
     'website': '', 'products': [], 'concept': '', 'count': 1,
+    'generation': {'effort': 'medium', 'provider': 'auto'},
     'brand': {'name': '', 'direction': '', 'documents': []},
     'sources': {'assets': [], 'scripts': [], 'inspiration': [], 'characters': []},
     # min/max 0 = derive an accepted range around the target (80-130 %).
@@ -27,16 +30,7 @@ DEFAULTS = {
                'frame': 'end_card', 'end_card_seconds': 2.5,
                # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
                'look': 'clean', 'loudness': -14},
-    # Faster/cheaper routes are a last resort for hung research or writing sessions.
-    'workers': {'researcher': profiles('economy'),
-                'writer': profiles('balanced'),
-                'critic': profiles('economy'), 'selector': profiles('balanced'),
-                'producer': profiles('balanced'),
-                'animator': [{'provider': 'claude', 'model': 'opus'},
-                             {'provider': 'codex', 'model': 'auto:quality'}],
-                'director': profiles('balanced'),
-                'editor': profiles('balanced'),
-                'reviewer': profiles('economy')},
+    'workers': worker_presets(),
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
                'idle_timeout_seconds': 300,
@@ -78,14 +72,26 @@ def website(value):
 def load_config(path=None, overrides=None):
     c = copy.deepcopy(DEFAULTS)
     base = Path.cwd()
+    saved = {}
     if path:
         p = Path(path).expanduser().resolve(); base = p.parent
         try:
-            merge(c, json.loads(p.read_text()))
+            saved = json.loads(p.read_text())
+            merge(c, saved)
         except (OSError, ValueError) as e:
             raise ConfigError(f'{p}: {e}') from e
     if overrides:
         merge(c, overrides)
+    for key, choices in (('effort', EFFORTS), ('provider', PROVIDERS)):
+        if c['generation'][key] not in choices:
+            raise ConfigError(f'generation.{key} must be one of: {", ".join(choices)}')
+    c['workers'] = worker_presets(**c['generation'])
+    # Existing custom JSON routes still work. An explicit per-run preset takes
+    # precedence over those routes, without modifying the source configuration.
+    if not overrides or 'generation' not in overrides:
+        merge(c['workers'], saved.get('workers', {}), 'workers.')
+    if overrides:
+        merge(c['workers'], overrides.get('workers', {}), 'workers.')
     c['website'] = website(c['website'])
     for key in ('concept',):
         if not isinstance(c[key], str):

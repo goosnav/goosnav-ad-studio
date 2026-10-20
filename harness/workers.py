@@ -35,11 +35,14 @@ def command(profile, workspace):
             cmd += ['-m', model, '-c', f'model_reasoning_effort="{profile.get("effort", "medium")}"']
         # An omitted -m uses the Codex CLI's own default; never invent a model ID.
         return cmd + ['--json', '-']
-    return ['claude', '-p', '--model', model, '--output-format', 'stream-json', '--verbose',
+    cmd = ['claude', '-p', '--model', model, '--output-format', 'stream-json', '--verbose',
             '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
             '--dangerously-skip-permissions',
             # The tool set scopes the job (no sub-agents); it is not a permission gate.
             '--tools', 'Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch,TodoWrite']
+    if profile.get('effort'):
+        cmd += ['--effort', profile['effort']]
+    return cmd
 
 
 def subscription_status(provider):

@@ -13,6 +13,30 @@ def test_future_models_are_selected_without_release_names():
     assert choose_model(models, 'balanced')['model'] == 'future-d'
 
 
+@pytest.mark.parametrize('tier,family', [('quality', 'astra'), ('balanced', 'sol'), ('economy', 'luna')])
+def test_new_family_release_wins_even_if_catalog_order_and_default_lag(tier, family):
+    models = [
+        {'model': f'gpt-6-{family}', 'description': 'Current model', 'isDefault': True},
+        {'model': f'gpt-6.2-{family}', 'description': 'Current model'},
+        {'model': f'gpt-5.6-{family}', 'description': 'Current model'},
+        {'model': f'gpt-7-{family}', 'description': 'Hidden preview', 'hidden': True},
+    ]
+    assert choose_model(models, tier)['model'] == f'gpt-6.2-{family}'
+
+
+def test_preset_effort_adapts_to_catalog_supported_efforts(monkeypatch):
+    import harness.models as models
+    monkeypatch.setattr(models, 'codex_catalog', lambda: [
+        {'model': 'gpt-9-astra', 'description': 'Frontier intelligence',
+         'supportedReasoningEfforts': [{'reasoningEffort': 'medium'}, {'reasoningEffort': 'xhigh'}]}])
+    monkeypatch.setattr(models.shutil, 'which', lambda _: '/usr/bin/cli')
+    result = models.resolve_workers({'writer': [{'provider': 'codex', 'model': 'auto:quality', 'effort': 'high'}]})
+    profile = result['workers']['writer'][0]
+    assert profile['model'] == 'gpt-9-astra'
+    assert profile['effort'] in ('medium', 'xhigh')
+    assert 'effort' in profile['resolution'].lower()
+
+
 def test_no_silent_quality_or_cost_downgrade():
     with pytest.raises(ModelError):
         choose_model([{'model': 'mystery', 'description': 'Unknown model'}], 'economy')

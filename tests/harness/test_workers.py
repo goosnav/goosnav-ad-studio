@@ -17,6 +17,11 @@ def test_explicit_models_and_no_shell(tmp_path):
     assert '--dangerously-skip-permissions' in b and '--permission-mode' not in b
 
 
+def test_claude_effort_is_forwarded_to_native_cli(tmp_path):
+    argv = command({'provider': 'claude', 'model': 'opus', 'effort': 'max'}, tmp_path)
+    assert argv[argv.index('--effort') + 1] == 'max'
+
+
 def test_subscription_environment():
     env = worker_env({'OPENAI_API_KEY': 'secret', 'ANTHROPIC_API_KEY': 'secret',
         'ANTHROPIC_BASE_URL': 'https://gateway', 'PATH': '/bin', 'CLAUDECODE': '1'})

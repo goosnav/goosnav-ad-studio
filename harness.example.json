@@ -2,6 +2,7 @@
   "website": "",
   "products": [],
   "concept": "",
+  "generation": {"effort": "medium", "provider": "auto"},
   "output": {"target_seconds": 10, "folder": "", "look": "clean"},
   "delivery": {"drive": ""},
   "brand": {"name": "", "direction": "", "documents": []},

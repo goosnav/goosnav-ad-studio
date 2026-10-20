@@ -1,5 +1,4 @@
 """One-command production with inspectable, recoverable jobs."""
-import argparse
 import json
 import os
 from pathlib import Path
@@ -10,6 +9,7 @@ import sys
 import time
 
 from .config import load_config
+from .arguments import HelpfulParser, add_model_options, model_overrides
 from .delivery import upload_run
 from .models import resolve_workers
 from .store import Busy, Store
@@ -18,10 +18,15 @@ from .workers import subscription_status
 
 
 def reopen(state):
-    """Resume continues cancelled tasks and tasks a controller crash marked failed, not real failures."""
+    """An explicit resume retries failed tasks in place; automatic waits do not reset budgets."""
     for task in state['tasks']:
-        crashed = state.get('error') and task['status'] == 'failed' and task['feedback'] == state['error']
-        if task['status'] == 'cancelled' or crashed:
+        if task['status'] == 'failed':
+            task['revision'] = task.get('revision', 0) + 1
+            task['status'] = 'pending'
+            task['feedback'] = ('Operator resumed this failed stage. Continue the existing workspace and '
+                                'write a complete result.json; successful upstream stages stay accepted.\n'
+                                + task.get('feedback', ''))
+        elif task['status'] == 'cancelled':
             task['status'] = 'pending'
     return state
 
@@ -80,13 +85,14 @@ def drive(engine, store, run_id, wait=True, max_steps=None, sleep=time.sleep):
 
 
 def main(argv=None):
-    p=argparse.ArgumentParser(prog='python -m harness',description='Hands-off animated ads using your installed CLI agents.')
+    p=HelpfulParser(prog='python -m harness',description='Hands-off animated ads using your installed CLI agents.')
     p.add_argument('--home',default=os.environ.get('STUDIO_HARNESS_HOME',str(Path.home()/'.local/share/goosnav-ad-studio')))
     sub=p.add_subparsers(dest='cmd',required=True)
     for name in ('make','new'):
         q=sub.add_parser(name);q.add_argument('--config',default=default_config())
         q.add_argument('--concept');q.add_argument('--website');q.add_argument('--count',type=int)
         q.add_argument('--seconds',type=int,help='Target length per ad (default 10)')
+        add_model_options(q)
         q.add_argument('--plan',action='store_true',help='Create the run without starting any agents')
         q.add_argument('--no-wait',action='store_true',help='Stop instead of waiting out provider usage limits')
     for name in ('run','resume'):
@@ -106,6 +112,8 @@ def main(argv=None):
     sub.add_parser('list')
     for name in ('doctor','models'):
         q=sub.add_parser(name);q.add_argument('--config',default=default_config())
+        if name == 'models':
+            add_model_options(q)
     q=sub.add_parser('gui',help='Local browser page for runs, config and controls')
     q.add_argument('--host',default='0.0.0.0',help='default: every interface (reachable on the LAN); 127.0.0.1 = this computer only')
     q.add_argument('--port',type=int,default=8788)
@@ -116,12 +124,15 @@ def main(argv=None):
             from .gui import serve
             serve(a.home,a.host,a.port,not a.no_browser);return 0
         if a.cmd in ('doctor','models'):
-            c=load_config(a.config)
+            c=load_config(a.config, model_overrides(a))
             result=doctor(c) if a.cmd=='doctor' else resolve_workers(c['workers'])
+            if a.cmd == 'models':
+                result['generation'] = c['generation']
         else:
             store=Store(a.home)
             if a.cmd in ('make','new'):
                 overrides={k:getattr(a,k) for k in ('concept','website','count') if getattr(a,k) is not None}
+                overrides.update(model_overrides(a))
                 if a.seconds is not None:overrides['output']={'target_seconds':a.seconds}
                 result=store.create(load_config(a.config,overrides));result['tasks']=build_tasks(result['config']['count'])
                 store.save(result,'planned')

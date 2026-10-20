@@ -136,12 +136,21 @@ and only `blocking` findings stop for a person (`needs_review`).
 
 ### Models and fallback
 
-| Role | Tier | Claude (first) | Codex (backup) |
+`./ad -e low|medium|high` selects the model preset (medium by default).
+`-p openai|anthropic` sets the preferred provider; the other provider remains
+available for failover. `./ad models -e high` previews current routes without
+starting an ad. All aliases, combinations, thinking efforts and JSON precedence
+are documented in `CLI.txt`.
+
+| Preset | Primary | Writer, animator, director | QA/story/research |
 |---|---|---|---|
-| researcher, producer | balanced | `sonnet` | latest workhorse |
-| writer, selector, director | quality | `opus` | frontier model, high effort |
-| critic | economy | `haiku` | affordable model, low effort |
-| critic (last resort) | balanced | `sonnet` | workhorse |
+| high | OpenAI | current Astra, high effort | current Sol, medium |
+| medium | Anthropic | latest Opus, medium | latest Sonnet, medium |
+| low | OpenAI | current Luna, low | current Luna, low |
+
+Anthropic high uses Opus at max effort and Sonnet for QA. Anthropic low uses
+Sonnet and Haiku. OpenAI medium uses Sol and Luna. Producer/editor roles use
+Sol for OpenAI high/medium, Luna for low, and Sonnet for Anthropic.
 
 If a worker runs out of usage, capacity or context mid-task (or times out), the
 next route continues in the same workspace. Its brief carries a `HANDOFF` note:
@@ -149,10 +158,9 @@ the files written so far, the end of `handoff.md` and the interrupted worker's
 last actions, plus the task's original repair notes. When the backup is also
 limited, the run waits and the note is kept for the resumed attempt.
 
-Animation has its own `workers.animator` routes: **Claude `opus` first**, then
-Codex `auto:quality` (the discovered frontier model). Existing timeout/quota
-fallback applies immediately; assets, audio and edit keep the producer routes.
-Saved runs created before this role retain their original producer routing.
+Animation has its own `workers.animator` routes, selected by the preset alongside
+writer and director. Timeout/quota fallback applies immediately. Saved runs
+created before this role retain their original producer routing.
 
 New scripts default to spoken scenes with one or two planted characters. The
 animator uses `blender/performance.py` to reuse library idle motion, add small
@@ -168,15 +176,18 @@ or does not describe an appropriate model, the Codex route now **remains
 available** and runs without `-m`, allowing the installed Codex CLI to
 choose its own default model. If a previously selected Codex model is later
 rejected as unsupported, the scheduler retries that task once using the CLI
-default, without consuming a creative repair. On resume, saved `unavailable`
-Codex routes from earlier discovery failures are re-resolved. A failed or
+default, without consuming a creative repair. On resume/provider waits,
+automatic selectors and moving aliases for unfinished roles are re-resolved,
+including saved `unavailable` Codex routes. Explicit version pins are preserved,
+and historical attempts retain the concrete models actually used. A failed or
 unexpectedly formatted `codex login status` check alone no longer prevents a
 Codex attempt: the actual CLI reports any real authentication error instead.
-Claude aliases are pinned to the concrete model observed in the first session.
+Claude aliases are recorded as the concrete model observed in a session and
+refresh through the moving alias when the controller resumes unfinished work.
 Override any role in the config:
 
 ```json
-"workers": {"writer": [{"provider": "claude", "model": "opus"}, {"provider": "codex", "model": "gpt-6-astra", "effort": "high"}]}
+"workers": {"writer": [{"provider": "claude", "model": "opus"}, {"provider": "codex", "model": "auto:quality", "effort": "high"}]}
 ```
 
 Routes are tried in order, each with `limits.repairs + 1` attempts. Critics only reach the balanced routes after the cheap ones fail the output
@@ -212,6 +223,7 @@ before saving. Unknown keys are errors.
 | `website` | Advertised domain. Used for the Frame CTA link. Empty = no link CTA. |
 | `products` | `[{name, description, url?}]`. Writers sell these; facts must be sourced. |
 | `concept`, `count` | Optional idea; number of finished ads (1-50). |
+| `generation` | `effort`: low/medium/high (default medium); `provider`: auto/openai/anthropic (default auto). `./ad -e high -p openai` overrides these for a new run. See `CLI.txt` for all role/provider combinations and `./ad models` for a live preview. |
 | `brand.name/direction/documents` | Brand voice and PDF/DOCX/TXT/MD brand docs or URLs. |
 | `sources.scripts` | Example or ready-made scripts for writers to learn from or use. |
 | `sources.inspiration` | Theory, style bibles, reference notes or URLs. |
