@@ -313,6 +313,10 @@ Quiet dialogue receives one measured uniform gain (target -21 dBFS, at most
 records the gain and final measurements; unsafe/unreachable speech levels block
 assembly instead of clipping or quietly weakening the controller's checks.
 Helpers do not replace the controller's contract, speech and creative checks.
+Render and asset-publication checks ignore Blender's provenance-only append-origin
+references, not actual dependencies. Fully appended/packed assets can survive moving
+their original files; linked libraries, unpacked inputs and same-path external shader
+dependencies still fail validation. Existing render caches are checked on every use.
 In worker results, files lists NEW workspace outputs only. Reviews normally use
 files: []; cite accepted input boards/media in findings.target, not files.
 

@@ -127,7 +127,7 @@ def blender_scenes(tmp_path_factory):
     root = tmp_path_factory.mktemp('render-dependencies')
     fonts = sorted(Path('/usr/share/fonts').rglob('*.ttf'))
     script = f'ROOT = {str(root)!r}\nFONT_PATH = {str(fonts[0]) if fonts else None!r}\n' + '''
-import bpy
+import bpy, shutil
 from pathlib import Path
 root = Path(ROOT)
 def save(name):
@@ -164,6 +164,29 @@ with bpy.data.libraries.load(str(root / 'packed.blend'), link=True) as (source, 
 for obj in target.objects:
     bpy.context.scene.collection.objects.link(obj)
 save('linked')
+bpy.ops.wm.read_factory_settings(use_empty=True)
+shutil.copy2(root / 'packed.blend', root / 'append-source.blend')
+bpy.ops.wm.append(directory=str(root / 'append-source.blend' / 'Object') + '/', filename='Cube')
+save('appended')
+bpy.ops.wm.open_mainfile(filepath=str(root / 'appended.blend'), use_scripts=False)
+assert any(block.library_weak_reference for block in bpy.data.user_map()), 'fixture needs weak origin metadata'
+assert not bpy.data.libraries, 'fixture unexpectedly retains a linked library'
+# A node-level dependency sharing an origin path must not be filtered out.
+material = bpy.data.materials.new('IES collision')
+material.use_nodes = True
+material.use_fake_user = True
+node = material.node_tree.nodes.new('ShaderNodeTexIES')
+node.mode = 'EXTERNAL'
+node.filepath = str(root / 'append-source.blend')
+save('appended-ies')
+bpy.data.materials.remove(material)
+# A real linked dependency with the SAME origin as a weak reference must still fail.
+with bpy.data.libraries.load(str(root / 'append-source.blend'), link=True) as (source, target):
+    target.objects = ['Cube']
+for obj in target.objects:
+    bpy.context.scene.collection.objects.link(obj)
+save('appended-linked')
+(root / 'append-source.blend').unlink()
 if FONT_PATH:
     bpy.ops.wm.read_factory_settings(use_empty=False)
     text = bpy.data.curves.new('text', 'FONT')
@@ -179,7 +202,7 @@ if FONT_PATH:
     return blender, root
 
 
-@pytest.mark.parametrize('name', ['external-image', 'font', 'sequencer', 'volume', 'disk-cache', 'linked'])
+@pytest.mark.parametrize('name', ['external-image', 'font', 'sequencer', 'volume', 'disk-cache', 'linked', 'appended-linked', 'appended-ies'])
 def test_real_dependencies_rejected_even_with_complete_cached_frames(blender_scenes, tmp_path, monkeypatch, name):
     blender, root = blender_scenes
     scene = root / (name + '.blend')
@@ -201,9 +224,10 @@ def test_real_dependencies_rejected_even_with_complete_cached_frames(blender_sce
     assert not output.exists()
 
 
-def test_real_packed_scene_revalidates_on_every_cache_hit(blender_scenes, tmp_path, monkeypatch):
+@pytest.mark.parametrize('name', ['packed', 'appended'])
+def test_real_packed_scene_revalidates_on_every_cache_hit(blender_scenes, tmp_path, monkeypatch, name):
     blender, root = blender_scenes
-    scene = root / 'packed.blend'
+    scene = root / (name + '.blend')
     audio, output, cache = cached_render(tmp_path, scene)
     run = subprocess.run
     calls = []
@@ -220,3 +244,21 @@ def test_real_packed_scene_revalidates_on_every_cache_hit(blender_scenes, tmp_pa
     for _ in range(2):
         renderer.render(scene, audio, output, blender=blender, fps=1, seconds=1, timeout=30)
     assert calls == ['validate', 'encode', 'validate', 'encode']
+
+
+@pytest.mark.parametrize('name,accepted', [('appended', True), ('appended-linked', False), ('appended-ies', False)])
+def test_publication_validates_appended_origins_and_real_collisions(blender_scenes, tmp_path, name, accepted):
+    from harness.library import _validate_media, LibraryError
+    blender, root = blender_scenes
+    source = root / (name + '.blend')
+    before = digest(source)
+    preview = tmp_path / 'preview.png'
+    if accepted:
+        report = _validate_media({'tools': {'blender': blender}}, source, preview, tmp_path)
+        assert 'Cube' in report['objects']
+        assert preview.is_file()
+    else:
+        with pytest.raises(LibraryError, match='External dependencies'):
+            _validate_media({'tools': {'blender': blender}}, source, preview, tmp_path)
+        assert not preview.exists()
+    assert digest(source) == before

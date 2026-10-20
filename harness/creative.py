@@ -164,7 +164,9 @@ animation. Check the causal joke, reaction timing, faces/product at phone size, 
 and whether the proposed action was actually tested. Listen only if your tools support listening;
 otherwise clearly mark acting quality unverified. Intelligibility does not prove good acting.
 Reject concrete blockers or important defects, not differences in personal taste. Do not demand
-more motion just to fill a frame. Return summary, files:[], verdict:pass|revise, findings:[{target,severity,problem,fix}],
+more motion just to fill a frame. Return summary, files:[], verdict:pass|revise,
+findings:[{target,severity:blocking|important|minor,problem,fix}],
+and put unverified observations that are not defects in summary rather than inventing a severity.
 and restart:direct|assets|audio for the actual cause. Give a focused correction preserving good work.'''
     if stage == 'edit':
         return original.replace('then render the original scene at\n full delivery quality.',

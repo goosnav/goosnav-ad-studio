@@ -103,7 +103,8 @@ def validate(stage, data, workspace, context):
             severity = f['severity'].strip().lower()
             f['severity'] = SEVERITY_SYNONYMS.get(severity, severity)
             if f['severity'] not in ('blocking', 'important', 'minor'):
-                raise ContractError('Unknown finding severity')
+                raise ContractError('Unknown finding severity. Expected blocking, important, or minor; '
+                                    'use summary for unverified observations that are not defects.')
         if data['verdict'] == 'pass' and any(f['severity'] == 'blocking' for f in data['findings']):
             raise ContractError('Review cannot pass unresolved blockers')
         strict = stage in ('script_sense', 'edit_review') or (

@@ -17,6 +17,7 @@ import tempfile
 import wave
 
 from .contracts import ContractError, digest
+from .blender_dependencies import EXTERNAL_PATH_SCAN
 
 
 class LibraryError(ContractError):
@@ -446,7 +447,7 @@ import bpy, json, sys
 from mathutils import Vector
 source, preview, report = sys.argv[sys.argv.index('--') + 1:]
 bpy.ops.wm.open_mainfile(filepath=source)
-external = list(bpy.utils.blend_paths(absolute=True, packed=False))
+''' + EXTERNAL_PATH_SCAN + r'''
 if external or bpy.data.libraries:
     raise RuntimeError('External dependencies must be packed/local: ' + repr(external))
 if any(o.get('proxy') or o.get('is_proxy') for o in bpy.data.objects):

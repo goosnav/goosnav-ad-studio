@@ -142,3 +142,12 @@ def test_canonical_paths_stay_in_sync_with_references_and_promote(tmp_path, auth
         assert Path(promoted[key]).is_absolute()
         assert Path(promoted[key]).is_file()
     assert all(Path(b['image']).is_file() for b in promoted['boards'])
+
+
+def test_board_review_prompt_and_error_list_severity_options(tmp_path):
+    from harness.creative import job
+    assert 'severity:blocking|important|minor' in job('board_review', '')
+    result = {'summary': 'Review', 'files': [], 'verdict': 'pass', 'findings': [
+        {'target': 'acting', 'severity': 'unverified', 'problem': 'Not listened', 'fix': 'Listen'}]}
+    with pytest.raises(ContractError, match='severity.*blocking.*important.*minor'):
+        validate('board_review', result, tmp_path, {'strict_review': True})

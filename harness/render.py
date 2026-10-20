@@ -8,6 +8,7 @@ import time
 
 from .contracts import digest
 from .learning import signature
+from .blender_dependencies import EXTERNAL_PATH_SCAN
 
 
 # Run inside Blender on EVERY invocation, including complete cache hits. A scene
@@ -15,7 +16,9 @@ from .learning import signature
 _DEPENDENCY_CHECK = r'''
 import bpy, sys
 bpy.ops.wm.open_mainfile(filepath=sys.argv[sys.argv.index('--') + 1], load_ui=False, use_scripts=False)
-external = list(bpy.utils.blend_paths(absolute=True, packed=False))
+''' + EXTERNAL_PATH_SCAN + r'''
+# Strong libraries and actual media are independently rejected even if they share
+# a path with an origin reference. Origin metadata never authorizes external data.
 external.extend(lib.filepath for lib in bpy.data.libraries)
 for image in bpy.data.images:
     if image.source not in {'FILE', 'GENERATED', 'VIEWER'} or (image.source == 'FILE' and not image.packed_file):
