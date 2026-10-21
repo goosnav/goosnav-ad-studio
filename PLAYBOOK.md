@@ -46,7 +46,7 @@ Software: actual input-to-output task, quality and compatibility. No fake interf
 
 No arbitrary screen duration, shot count or production stopwatch is the default creative constraint. Read/perform the scene, measure actual voice takes, and allow the audience to perceive the important detail and reaction. Remove filler; do not rush the only product experience. If a real placement requires a shorter delivery, document it and preserve a stronger master where appropriate.
 
-Compact `./ad` still uses configured runtime ranges and execution controls. The existing worker prompts carry product taste, not a new automatic story-duration planner. For unconstrained work, use the authored-film/toolkit route or configure a fresh run after performance timing is known. Never change a running contract or claim an unchanged validator now works differently.
+Compact `./ad` treats `target_seconds` as a guideline: the audio step grows the plan to fit its measured performance, up to a wide default maximum (or the owner's explicit bounds). Its writer and animator receive the product content inventory and the comedy and staging craft from GET YOUR OWN, and plans can place ambience and foley (`direction.sounds`). Execution controls remain. Never change a running contract.
 
 Efficiency means source manifests, reusable rigs/sets/props, accepted voice takes, camera helpers, cheap previews, checkpoints and local corrections. Spending caps and runaway-process protections remain intact. More tokens do not authorize extra tools, paid calls or new production runs.
 

@@ -105,9 +105,9 @@ def test_virtualenv_interpreter_symlink_is_preserved(tmp_path):
 
 def test_target_length_defaults_to_ten_seconds_and_derives_range():
     o = load_config()['output']
-    assert (o['target_seconds'], o['min_seconds'], o['max_seconds']) == (10, 8, 13)
+    assert (o['target_seconds'], o['min_seconds'], o['max_seconds']) == (10, 5, 25)
     o = load_config(None, {'output': {'target_seconds': 30}})['output']
-    assert (o['min_seconds'], o['max_seconds']) == (24, 39)
+    assert (o['min_seconds'], o['max_seconds']) == (15, 75)
     o = load_config(None, {'output': {'target_seconds': 15, 'min_seconds': 14, 'max_seconds': 16}})['output']
     assert (o['min_seconds'], o['max_seconds']) == (14, 16)
     for bad in ({'target_seconds': 0}, {'target_seconds': 20, 'max_seconds': 15}, {'target_seconds': 301}):
@@ -120,7 +120,7 @@ def test_writer_brief_states_target_length():
     from harness.workflow import build_tasks
     c = load_config(None, {'output': {'target_seconds': 12}})
     text = brief(build_tasks(1)[1], c, {}, [])
-    assert 'TARGET LENGTH: 12 seconds' in text and '10-16' in text
+    assert 'TARGET LENGTH: 12 seconds' in text and '6-30' in text
 
 
 def test_promote_maps_declared_paths_inside_lists_and_boards(tmp_path):

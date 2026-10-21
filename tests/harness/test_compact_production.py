@@ -46,7 +46,7 @@ def test_animator_brief_prioritizes_conversation_framing_over_prop_mechanics():
     assert 'Frame speakers\' upper bodies and faces clearly at phone size' in ANIMATOR_JOB
     assert 'Start near their eye level' in ANIMATOR_JOB
     assert 'not at distant environment spawn anchors' in ANIMATOR_JOB
-    assert 'without constructing or manipulating another prop' in ANIMATOR_JOB
+    assert 'must be legible on a\nphone' in ANIMATOR_JOB and 'blender/book2.py' in ANIMATOR_JOB
 
 
 def test_new_graph_reaches_animator_immediately_after_script(tmp_path):

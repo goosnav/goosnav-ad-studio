@@ -25,7 +25,7 @@ ONE-TIME SETUP (ON THE RENDER COMPUTER)
 MAKE AN AD (DETACHED - SURVIVES TERMINAL CLOSURE)
   ./ad "A PS1-style character struggles to open Book Two"
   ./ad "..." -n 3             make 3 ads
-  ./ad "..." -s 15            target 15 seconds (default 10)
+  ./ad "..." -s 15            target 15 seconds (default 10; a guideline, the story sets the length)
   ./ad "..." -n 3 -s 15      both
   ./ad "An astronaut reads Book Two" -s 9 -e high
   ./ad "..." -s 9 -e medium -p anthropic

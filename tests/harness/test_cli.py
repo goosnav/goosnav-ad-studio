@@ -33,7 +33,7 @@ def test_cli_unknown_run_and_invalid_input_are_clean_errors(tmp_path):
 def test_cli_seconds_sets_target_length(tmp_path):
     cfg=tmp_path/'blank.json';cfg.write_text('{}')
     d=json.loads(cli(tmp_path,'make','--config',str(cfg),'--seconds','15','--plan').stdout)
-    assert d['config']['output']['target_seconds']==15 and d['config']['output']['max_seconds']==20
+    assert d['config']['output']['target_seconds']==15 and d['config']['output']['max_seconds']==38
     assert cli(tmp_path,'make','--config',str(cfg),'--seconds','0','--plan').returncode==2
 
 

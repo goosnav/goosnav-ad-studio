@@ -138,7 +138,7 @@ def test_preserves_explicit_starts_and_beats(setup):
 def test_overflow_keeps_takes_and_changed_plan_needs_fresh_folder(setup):
     work, plan, config, tone, _ = setup
     authored = json.loads(plan.read_text())
-    authored['direction']['lines'][1]['start'] = 1.8
+    authored['direction']['lines'][1]['start'] = 6.8   # past the 8 s maximum minus the card
     write(plan, authored)
     with pytest.raises(ValueError, match='Shorten dialogue'):
         production.audio(plan, config, work / 'audio')
@@ -516,3 +516,31 @@ def test_cli_reuses_audio_and_submits_schema(setup):
     done = subprocess.run(command, cwd=work, env=env, text=True, capture_output=True)
     assert done.returncode == 0, done.stderr
     validate('animate', json.loads(done.stdout), work, {})
+
+
+def test_story_led_duration_grows_to_fit_measured_takes(setup):
+    work, plan, config, _, _ = setup
+    authored = json.loads(plan.read_text())
+    authored['direction']['duration'] = 2   # one second of story for two measured takes
+    write(plan, authored)
+    result = production.audio(plan, config, work / 'audio')
+    direction = result['direction']
+    last_end = direction['lines'][-1]['end']
+    assert direction['duration'] > 2 and 'Grew from the planned 2 s' in direction['duration_note']
+    assert direction['duration'] - 1 >= last_end + 0.5
+    assert direction['beats'][-1]['end'] == pytest.approx(direction['duration'] - 1)
+
+
+def test_planned_sounds_become_a_foley_bed_and_timeline_events(setup):
+    work, plan, config, _, _ = setup
+    authored = json.loads(plan.read_text())
+    authored['direction']['sounds'] = {'ambience': 'hall', 'events': [
+        {'name': 'page_turn', 'after_line': 0, 'offset': 0.1}, {'name': 'slam', 'at': 1.5}]}
+    write(plan, authored)
+    production.audio(plan, config, work / 'audio')
+    mixed = next((work / 'audio').glob('mix-*'))
+    audit = json.loads((mixed / 'audit.json').read_text())
+    assert audit['bed']['mode'] == 'supplied' and audit['bed']['gain_db'] == -12
+    timeline = json.loads((mixed / 'timeline.json').read_text())
+    assert [e['name'] for e in timeline['events']] == ['page_turn', 'slam']
+    assert 'harness.foley' in timeline['sound_rationale']

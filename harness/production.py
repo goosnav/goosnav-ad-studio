@@ -36,8 +36,23 @@ CHARACTERS AND DIALOGUE FIRST. Establish what someone wants; the reply must resp
 Give them a recognizable small need, choice or disagreement, not a catalog-description recital.
 An average viewer should understand the exchange on first hearing without decoding a prop,
 tiny gesture, card rule or visual trick. Assume physical animation will be rough: the words
-must still carry the situation and why the product matters. No compulsory joke or twist.
-Dry, direct, specific speech; no puns, anatomy jokes, coy/cutesy banter or clever non sequiturs.
+must still carry the situation and why the product matters.
+PRODUCT TASTE FIRST. Build the scene around one or more specific real items from
+PRODUCT_CONTENT (a drawn invention, a card, a printed line, a rule situation), described
+exactly as the source shows it. The item causes the want: someone sees it and reacts, and
+the other wants it too. Give the audience a genuine taste, then a reason to own it. Use only
+"confirmed" items as things the product contains; an "unconfirmed" item must not be presented
+as printed in the product. Never invent pages, cards, rules or offers. Carry a one-line
+'Taste:' note (item, locator, status) in visual_direction.
+MAKE IT FUNNY. What works for Goosnav: deadpan sincerity about something absurd and real
+("There's a machine that oils your feet." / "Why?" / "Doesn't say."); withholding, so one
+character can see the content and the other only hears it described; escalation, where each
+item or reply is stranger or more desperate than the last; reactions, often in tight
+close-ups, that let a line land; a short button after the punchline (a look, a sound from
+offscreen, a beat of silence). When it comes naturally, let the closing line double as the
+call to action ("Get your own."). These are tools, not a formula: one good sample can be
+enough. Dry, direct, specific speech; no puns, anatomy jokes, coy/cutesy banter or clever
+non sequiturs.
 An interesting world can be mysterious; the conversation and product must not be confusing.
 Default to ordinary active characters. Astronauts belong with astronauts in space or a
 genuinely relevant setting; skeletons/exotic characters require a story-specific reason,
@@ -51,13 +66,16 @@ a response beat. This is a planning estimate, not a rejection limit: coherent co
 thoughts matter more than hitting an exact count. The animator will measure real speech
 before building the scene and shorten only exchanges that actually do not fit.
 Do not turn sentences into cryptic fragments to hit the estimate.
+TARGET_SECONDS is a guideline, not a limit: the measured performance sets the length, up to
+the configured maximum. Never cut the product sample or the reaction to save seconds.
 Before submitting, mentally read ONLY the dialogue: does the exchange make sense and tell
 the truth about the product? If not, rewrite it now, not after animation. The premise must
 describe what these actual words establish. No separate critique report.
-One well-framed conversation in an existing early-3D world is enough. Background and props
-are secondary. No essential handoff, card reveal, book opening or tiny readable object text.
-The product can be identified in dialogue and the closing clip; a story prop is optional.
-Describe 1-3 shots briefly; the animator owns timing and staging. Keep the guide concise.
+One well-framed scene in an existing early-3D world is enough; background is secondary.
+The real item must be seen legibly: plan a full-frame insert of the page or card (lettering
+printed on it is product content), cut against the reactions. Book Two can open and turn its
+pages (blender/book2.py), and a card can be held up or laid on a table; no other tiny text
+should carry meaning. Describe 2-5 shots briefly; the animator owns timing and staging.
 Immediately write result.json: {"summary":"...","files":[],"scripts":[
 {"id":"unique-id","title":"short unique title","premise":"one sentence",
 "script":"brief shots and exact dialogue/action","visual_direction":"setting and key visual",
@@ -71,17 +89,26 @@ ANIMATOR_JOB = '''Make the complete animated ad from SCRIPT. You own staging, sc
 voice takes, timing, action and the finished render. Keep one working scene and build script;
 inspect a few useful frames yourself. No separate storyboard submission or board-review agent.
 Reuse active assets from active-assets.json. Start with a suitable existing environment and
-real character models; add a product prop only when it helps. Dialogue and the closing product
-clip can identify the product without constructing or manipulating another prop. Author scenery
-and action when they materially help the story.
+real character models. The SCRIPT's Taste item (see PRODUCT_CONTENT) must be legible on a
+phone: show the real page or card full-frame in an insert, square to the camera and well lit,
+cut against the reactions it causes. For Book Two use the openable model with
+blender/book2.py (retime the spread, turn_page_by_hand, slam_by_hand); catalog
+book2-reading-desk-blocking is a ready reader-and-listener desk set with page cameras. Author
+scenery and action when they materially help the story.
 Work within the requested effort: low uses a simple existing setup, medium a distinctive
 variation, high can develop more ambitious staging. Give the film early-game atmosphere and
 readable characters, not photorealism. Dialogue carries the story; background and props support
 it. Prefer a medium two-shot or readable speaker/reaction framing. Do not make tiny prop
-handling carry essential meaning. Ordinary cast by default; preserve justified casting,
+handling carry essential meaning beyond the planned insert. Ordinary cast by default; preserve justified casting,
 not random astronaut/skeleton substitutions. Never redraw product art.
 
-1. Write plan.json: {summary,direction:{duration:TARGET_SECONDS,cast,lines,beats?,end_card,mix}}.
+1. Write plan.json: {summary,direction:{duration:TARGET_SECONDS,cast,lines,beats?,end_card,mix,sounds?}}.
+duration is a starting guideline: AUDIO grows it to fit the measured takes plus a reply beat
+(up to the configured maximum), so never rush or cut a line to hit it.
+sounds (optional, recommended) makes the world audible: {ambience: hall|room|outdoor|none,
+events:[{name: page_turn|slam|thud|shush|tick|creak, after_line|before_line: line index, or
+at: seconds, offset?, gain_db?}]}. AUDIO synthesizes them (harness.foley) under the dialogue:
+room tone, the page that turns, the book that slams and echoes, an offscreen reaction.
 cast entries: {speaker,character,model:active character path,gender,voice,performance}.
 lines: {speaker,text,delivery,start?}; keep text short. Male Kokoro voices include am_michael,
 bm_lewis; female voices bf_emma, af_heart. Distinct characters should sound distinct.
@@ -105,6 +132,12 @@ options. Hand-written normalization must include each object's matrix_world, not
 bounding boxes under an already-scaled parent. Inspect a small EEVEE frame before the
 full render and correct obvious product scale, occlusion and face orientation first.
 Use actual armature names from imported actors. Put these in rigs.json: {speaker:armature}.
+CAMERA AND ACTING: tight close-ups for reactions are funny; use them. Long-nosed characters
+read in three-quarter view; never put the camera on the nose axis (the nose hides the mouth).
+blender/shots.py face_camera(name, rig, seconds) aims a close-up at where a moving face points.
+Key body acting first (leans, a hand on the product via the rig's IK), then run
+performance.apply: it keeps those authored channels and adds idle, gaze, talk motion, blinks
+and mouths. For a page insert, hide the nearest actor's head/torso for that shot only.
 Use blender/performance.py apply(timeline,mouths,rigs,models={speaker:source_model}) for measured
 speech, idle and blinks. Preserve intentional poses/actions. Apply verified library motions
 where useful. Frame speakers' upper bodies and faces clearly at phone size, not the entire
@@ -137,6 +170,9 @@ what will a first-time viewer understand about the product? Compare with SCRIPT.
 Missing connecting words, unexplained non sequiturs or contradictory response timing are
 story defects, even if the script summary claims a joke lands. Judge what is shown/said,
 not intended lore or a hidden prop. Plain sincere dialogue needs no joke. Preserve its meaning.
+Protect the product sample (the insert of the real page/card) and the reaction it causes, and
+keep the comic timing: the beat before a punchline, the reaction after it, the button. Length
+is a guideline; cut empty time, never the sample or a laugh, to save seconds.
 Listen only if your tools support it; do not claim listening otherwise.
 Keep a good cut unchanged. Cut only dead time or improve an actual issue; no compulsory second
 render. Use measured timeline entries to keep spoken lines intact. Do not add captions/URLs;
@@ -170,6 +206,9 @@ def production_brief(state, task, work, timeout, home, store=None):
                'EFFORT': c['generation']['effort'], 'ATTEMPT_SECONDS': round(timeout, 1),
                'WORKSPACE': str(work), 'products': c['products'], 'concept': c['concept'],
                'brand': c['brand']['direction'], 'look': out['look']}
+    if stage in ('script', 'animate'):
+        from .content import product_content
+        project['PRODUCT_CONTENT'] = product_content(c)
     execution = state.get('execution', {})
     project['PERFORMANCE'] = {key: execution[key] for key in
                               ('target_seconds', 'active_seconds', 'mode') if key in execution}
