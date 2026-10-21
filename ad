@@ -43,11 +43,16 @@ def latest():
 
 def summary(run_id):
     from harness.delivery import _completed_ads
+    from harness.delivery_queue import _pending
+    from harness.gui import delivery_summary, display_status
+    from harness.store import Store
     s = harness('status', run_id)
+    store = Store(HOME)
+    pending = _pending(s)
     done = len(_completed_ads(s))
     current = next((t for t in s['tasks'] if t['status'] in ('running', 'waiting_provider', 'failed', 'needs_review')), None)
     where = f" | {current['id']} {current['status']}" if current else ''
-    print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
+    print(f"{time.strftime('%H:%M')}  {run_id}  {display_status(s)}  {done}/{s['config']['count']} ads{where}", flush=True)
     if s.get('execution'):
         b = s['execution']
         soft = b.get('version', 1) >= 2
@@ -66,24 +71,14 @@ def summary(run_id):
               f'elapsed {seconds//60}m {seconds%60}s | {activity}')
         if current.get('waiting_for_resource'):
             print('  Waiting for the shared render resource; generation is still active.')
-    if s.get('delivery'):
-        d = s['delivery']
-        uploaded = len(d.get('verified', {}))
-        if not uploaded and d['status'] == 'uploaded':
-            uploaded = sum(name.endswith('.mp4') for name in d.get('files', []))
-        if d['status'] == 'uploaded':
+    if s.get('delivery') or pending:
+        d = s.get('delivery')
+        d = d if isinstance(d, dict) else {}
+        if d.get('status') == 'uploaded' and not pending:
+            uploaded = len(d.get('verified', {})) or sum(name.endswith('.mp4') for name in d.get('files', []))
             print(f'Drive: {uploaded}/{s["config"]["count"]} videos uploaded | {d["remote"]}')
-        elif d['status'] == 'uploading':
-            print(f'Drive: {uploaded}/{s["config"]["count"]} videos verified | uploading finished ads')
-        elif d['status'] == 'retrying':
-            from harness.delivery_queue import describe
-            from harness.store import Store
-            print('Drive: ' + describe(Store(HOME), s))
-        elif d['status'] == 'failed':
-            print(f'Drive: {uploaded}/{s["config"]["count"]} videos verified | '
-                  f'delivery pending: {d.get("error", "unknown error")[:240]}')
-            if s['status'] in DONE:
-                print(f'Retry upload: ./ad upload {run_id}')
+        else:
+            print('Drive: ' + delivery_summary(store, s))
     for publication in s.get('asset_publications', {}).values():
         print(f"  Assets: {publication['status']} | {publication.get('error') or publication.get('commit', '')}")
         for key in ('adoption_error', 'parent_error'):
@@ -107,10 +102,8 @@ def summary(run_id):
                   f"python3 -m harness retry {run_id} --task {current['id']})")
         elif s['status'] in ('failed', 'needs_review') and s.get('error'):
             print(f"Why: {s['error'][:600]}\nThen: fix the source/configuration issue and ./ad resume {run_id}")
-    from harness.delivery_queue import _pending
-    from harness.store import Store
-    if (s['status'] in DONE and s['status'] not in ('paused', 'cancelled') and _pending(s)
-            and Store(HOME).control_value(run_id) == 'run'):
+    if (s['status'] in DONE and s['status'] not in ('paused', 'cancelled') and pending
+            and store.control_value(run_id) == 'run'):
         return 'waiting_delivery'
     return s['status']
 
@@ -144,8 +137,10 @@ def main():
         if command == 'cancel' and options.all and options.run_id is not None:
             parser.error('Use cancel --all OR cancel RUN_ID, not both')
         if command == 'list':
-            for r in harness('list')[:15]:
-                print(time.strftime('%m-%d %H:%M', time.localtime(r['created'])), r['id'], r['status'])
+            from harness.gui import display_status
+            from harness.store import Store
+            for r in Store(HOME).list()[:15]:
+                print(time.strftime('%m-%d %H:%M', time.localtime(r['created'])), r['id'], display_status(r))
             return 0
         if command == 'cancel' and (options.all or options.run_id == 'all'):
             result = harness('cancel', '--all')

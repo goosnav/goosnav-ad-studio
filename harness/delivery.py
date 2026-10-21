@@ -5,8 +5,9 @@ Rendering never depends on Drive: failures are saved as delivery state so
 """
 from copy import deepcopy
 from datetime import datetime, timezone
-from hashlib import sha256
+from hashlib import md5, sha1, sha256
 from pathlib import Path
+import json
 import os
 import re
 import shutil
@@ -16,10 +17,14 @@ import unicodedata
 from urllib.parse import urlparse
 
 
-_NETWORK_FLAGS = ['--retries', '1', '--low-level-retries', '1',
+_NETWORK_FLAGS = ['--retries', '1', '--low-level-retries', '5',
                   '--contimeout', '10s', '--timeout', '30s',
                   '--tpslimit', '1', '--tpslimit-burst', '1',
                   '--transfers', '1', '--checkers', '1']
+
+
+class _DeliveryStopped(RuntimeError):
+    """A control change stops new I/O without discarding transport receipts."""
 
 
 def _destination(value, run_id=None):
@@ -91,11 +96,29 @@ def _completed_ads(state):
 
 
 def _file_receipt(path, name):
-    digest = sha256()
+    return _file_details(path, name)[0]
+
+
+def _file_details(path, name):
+    """Keep the public receipt stable; content metadata is separate."""
+    digests = {'sha256': sha256(), 'sha1': sha1(), 'md5': md5(usedforsecurity=False)}
+    size = 0
     with path.open('rb') as video:
         for chunk in iter(lambda: video.read(1024 * 1024), b''):
-            digest.update(chunk)
-    return {'name': name, 'sha256': digest.hexdigest()}
+            size += len(chunk)
+            for digest in digests.values():
+                digest.update(chunk)
+    hashes = {key: digest.hexdigest() for key, digest in digests.items()}
+    return {'name': name, 'sha256': hashes['sha256']}, {'size': size, 'hashes': hashes}
+
+
+def _proof_matches(proof, details):
+    if not isinstance(proof, dict) or not isinstance(proof.get('id'), str) or not proof['id'].strip():
+        return False
+    checksum = proof.get('checksum', {})
+    return (type(proof.get('size')) is int and proof['size'] == details['size']
+            and isinstance(checksum, dict) and checksum.get('algorithm') in details['hashes']
+            and checksum.get('value') == details['hashes'][checksum['algorithm']])
 
 
 def _already_verified(state):
@@ -108,10 +131,16 @@ def _already_verified(state):
         return False
     names = _names(state, _completed_ads(state))
     folder = Path(state['config']['output']['folder']) / state['id']
+    # Historical uploaded receipts already established name/hash/target trust.
+    # Re-probing all of them on upgrade would flood Drive and delay new work.
+    strict = info.get('verification_version', 1) >= 2
     try:
-        return bool(names) and all(
-            info.get('verified', {}).get(local) == _file_receipt(folder / local, name)
-            for local, name in names.items())
+        for local, name in names.items():
+            receipt, details = _file_details(folder / local, name)
+            if (info.get('verified', {}).get(local) != receipt
+                    or (strict and not _proof_matches(info.get('remote_proofs', {}).get(local), details))):
+                return False
+        return bool(names)
     except OSError:
         return False
 
@@ -120,7 +149,24 @@ def _error(exc):
     detail = getattr(exc, 'stderr', None) or str(exc)
     if isinstance(detail, bytes):
         detail = detail.decode(errors='replace')
-    return detail.strip()[-700:] or type(exc).__name__
+    detail = detail.strip()
+    if not detail:
+        return type(exc).__name__
+    # Keep the first diagnostic, rather than replacing it with trailing retry
+    # noise. Preserve compact quota/project context for the durable retry policy.
+    parts = [detail.splitlines()[0][:350]]
+    for pattern in (r'ratelimitexceeded|rate_limit_exceeded|rate limit exceeded|quota exceeded|too many requests|429',
+                    r'projects/[A-Za-z0-9_.:-]+|project[\s\"\x27:=]+[A-Za-z0-9_.:-]+'):
+        match = re.search(pattern, detail, re.IGNORECASE)
+        if match:
+            line = detail[detail.rfind('\n', 0, match.start()) + 1:]
+            line = line.splitlines()[0]
+            if len(line) > 180:
+                start = max(0, match.start() - 40)
+                line = detail[start:start + 180].splitlines()[0]
+            if line not in parts and line not in parts[0]:
+                parts.append(line)
+    return ' | '.join(parts)[:700]
 
 
 def _rate_limited(error):
@@ -169,8 +215,8 @@ def upload_run(store, state, *, run=None, which=None):
 def _upload_run(store, state, *, run=None, which=None):
     """Deliver finished MP4s, durably acknowledging each successful copy.
 
-    Verified receipts survive partial failures. An acknowledged copy whose
-    listing was interrupted is listed again before any retry copies it.
+    Copies are marked uncertain before transport. Recovery proves remote
+    identity/content before repeating a copy whose outcome may have been lost.
     Production callers must hold store.worker_lock(state['id']). The public
     wrapper also excludes transfers belonging to other runs.
     """
@@ -195,17 +241,24 @@ def _upload_run(store, state, *, run=None, which=None):
             raise ValueError('No packaged ads yet; finish a run before uploading')
         folder = Path(output) / state['id']
         names = _names(state, ads)
-        receipts, errors = {}, []
+        receipts, details, errors = {}, {}, []
         for local, name in names.items():
             try:
-                receipts[local] = _file_receipt(folder / local, name)
+                receipts[local], details[local] = _file_details(folder / local, name)
             except OSError as exc:
                 errors.append(_error(exc))
         same_target = previous.get('target') == target
         verified = {local: receipt for local, receipt in receipts.items()
-                    if same_target and previous.get('verified', {}).get(local) == receipt}
+                    if same_target and previous.get('verified', {}).get(local) == receipt
+                    and _proof_matches(previous.get('remote_proofs', {}).get(local), details[local])}
+        proofs = {local: previous['remote_proofs'][local] for local in verified}
         acknowledged = {local: receipt for local, receipt in receipts.items()
                         if same_target and previous.get('acknowledged', {}).get(local) == receipt}
+        # Also reconcile old plans written by releases without uncertain markers.
+        # A different current hash does not prove the previous transport failed.
+        recovery = {local for local in receipts if same_target and local in previous.get('names', {})}
+        uncertain = {local: receipt for local, receipt in receipts.items()
+                     if same_target and local in previous.get('uncertain', {}) and local not in verified}
         # Old uploaded receipts verified names only. Re-list those names once;
         # never infer success from a failed legacy plan's `files` list.
         legacy = (not previous.get('target') and not drive_flags
@@ -214,9 +267,12 @@ def _upload_run(store, state, *, run=None, which=None):
             acknowledged.update({local: receipt for local, receipt in receipts.items()
                                  if previous.get('names', {}).get(local) == receipt['name']
                                  and receipt['name'] in previous.get('files', [])})
-        info.update(status='uploading', remote=remote, target=target, names=names,
+        recovery.update(acknowledged)
+        recovery.update(uncertain)
+        recovery.difference_update(verified)
+        info.update(status='uploading', verification_version=2, remote=remote, target=target, names=names,
                     files=sorted(names.values()), hashes={k: v['sha256'] for k, v in receipts.items()},
-                    verified=verified, acknowledged=acknowledged)
+                    verified=verified, acknowledged=acknowledged, uncertain=uncertain, remote_proofs=proofs)
         state['delivery'] = info
         # Save every intended name/hash before calling any remote operation.
         store.save(state, 'delivery_started', info)
@@ -228,23 +284,78 @@ def _upload_run(store, state, *, run=None, which=None):
         lock_fds = store.upload_lock_fds(state['id'])
         inheritance = {'pass_fds': lock_fds} if lock_fds else {}
 
-        def verify(candidates):
-            result = run([*command, 'lsf', '--max-depth', '1', remote, '--files-only'],
-                         check=True, capture_output=True, text=True, timeout=60, **inheritance)
-            found = set(result.stdout.splitlines())
-            for local in candidates:
-                if receipts[local]['name'] in found:
-                    verified[local] = receipts[local]
-                else:
-                    acknowledged.pop(local, None)
-            # Persist verified successes even if a sibling video is absent.
-            store.save(state, 'delivery_verified', info)
-
-        old_pending = set(acknowledged) - set(verified)
         prefix = remote + ('' if remote.endswith(':') else '/')
 
+        def check_control():
+            action = store.control_value(state['id'])
+            if action != 'run':
+                raise _DeliveryStopped('Drive delivery ' + action + '; pending files and receipts retained')
+
+        def inspect(local):
+            check_control()
+            name = receipts[local]['name']
+            try:
+                result = run([*command, 'lsjson', prefix + name, '--stat', '--hash'],
+                             check=True, capture_output=True, text=True, timeout=60, **inheritance)
+            except subprocess.CalledProcessError as exc:
+                if exc.returncode in (3, 4) and not _rate_limited(exc):
+                    return None, False  # rclone's directory/file-not-found exit codes.
+                raise
+            item = json.loads(result.stdout)
+            if not isinstance(item, dict):
+                raise ValueError('Ambiguous or duplicate remote objects: ' + name)
+            if ('duplicate' in (getattr(result, 'stderr', '') or '').lower()
+                    or item.get('Name') != name or item.get('IsDir') is not False
+                    or not isinstance(item.get('ID'), str) or not item['ID'].strip()
+                    or type(item.get('Size')) is not int or item['Size'] < 0):
+                raise ValueError('Invalid or ambiguous remote identity: ' + name)
+            # Drive's stat selects the first same-name object silently. Enumerate
+            # the exact sibling name to prove uniqueness before trusting it.
+            # Filtering may be client-side; this still enumerates the parent.
+            check_control()
+            siblings = run([*command, 'lsjson', remote, '--files-only', '--max-depth', '1',
+                            '--include', '/' + name], check=True, capture_output=True,
+                           text=True, timeout=60, **inheritance)
+            entries = json.loads(siblings.stdout)
+            if not isinstance(entries, list) or len(entries) != 1:
+                raise ValueError('Missing or duplicate remote objects: ' + name)
+            if (not isinstance(entries[0], dict) or entries[0].get('ID') != item['ID']
+                    or entries[0].get('Name') != name):
+                raise ValueError('Remote identity changed during verification: ' + name)
+            hashes = item.get('Hashes')
+            if not isinstance(hashes, dict):
+                raise ValueError('Remote checksum unavailable: ' + name)
+            hashes = {key.lower().replace('-', ''): value.lower() for key, value in hashes.items()
+                      if isinstance(key, str) and isinstance(value, str) and value}
+            common = [key for key in ('sha256', 'sha1', 'md5') if key in hashes]
+            if not common:
+                raise ValueError('Remote checksum unavailable: ' + name)
+            proof = {'id': item['ID'], 'size': item['Size'],
+                     'checksum': {'algorithm': common[0], 'value': hashes[common[0]]}}
+            matches = (item['Size'] == details[local]['size']
+                       and all(hashes[key] == details[local]['hashes'][key] for key in common))
+            return proof, matches
+
+        def verify(local):
+            proof, matches = inspect(local)
+            if matches:
+                verified[local] = receipts[local]
+                proofs[local] = proof
+                uncertain.pop(local, None)
+                store.save(state, 'delivery_verified', info)
+            else:
+                acknowledged.pop(local, None)
+                uncertain[local] = receipts[local]
+                store.save(state, 'delivery_reconciled', info)
+            return matches
+
         def copy(local):
+            check_control()
             receipt = receipts[local]
+            uncertain[local] = receipt
+            acknowledged.pop(local, None)
+            # Must commit before the child can create or update any remote object.
+            store.save(state, 'delivery_copy_started', info)
             try:
                 run([*command, '--ignore-times', 'copyto', str(folder / local), prefix + receipt['name']],
                     check=True, capture_output=True, text=True, timeout=120, **inheritance)
@@ -256,22 +367,30 @@ def _upload_run(store, state, *, run=None, which=None):
                 errors.append(local + ': ' + _error(exc))
                 return
             acknowledged[local] = receipt
+            uncertain.pop(local, None)
             store.save(state, 'delivery_acknowledged', info)
 
         # New completions go first, even when an older copy awaits verification.
         for local in receipts:
-            if local not in verified and local not in acknowledged:
+            if local not in verified and local not in recovery:
                 copy(local)
-        pending = set(acknowledged) - set(verified)
-        if pending:
-            verify(pending)
-        # An interrupted copy may have been removed remotely. Only recopy old
-        # acknowledgements after a successful listing has proved them absent.
-        for local in sorted(old_pending - set(acknowledged) - set(verified)):
-            copy(local)
-        pending = set(acknowledged) - set(verified)
-        if pending:
-            verify(pending)
+        for local in receipts:
+            if local in verified or (local not in recovery and local not in acknowledged):
+                continue
+            try:
+                matches = verify(local)
+                if not matches and local in recovery:
+                    copy(local)  # Default rclone destination checks remain enabled.
+                    if local in acknowledged:
+                        matches = verify(local)
+                if not matches:
+                    errors.append('Remote content not verified: ' + local)
+            except _DeliveryStopped:
+                raise  # Stop the batch; the outer save preserves acknowledgements/uncertainty.
+            except Exception as exc:
+                if _rate_limited(exc):
+                    raise RuntimeError(_error(exc)) from exc
+                errors.append(local + ': ' + _error(exc))
         missing = sorted(names[local] for local in names if local not in verified)
         if missing:
             errors.append('Upload not verified on Drive; missing: ' + ', '.join(missing))

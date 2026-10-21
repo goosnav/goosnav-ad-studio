@@ -35,6 +35,8 @@ every run lives in the harness home, default `~/.local/share/goosnav-ad-studio`:
 
 ```text
 state.sqlite3                 run state, events, provider cooldowns
+delivery-worker.log           delivery attempts and worker diagnostics
+delivery-worker-health.json   worker PID, source fingerprint, phase and heartbeat
 runs/<id>/sources/            text snapshots of brand docs, script banks, inspiration
 runs/<id>/workspaces/<task>/  each worker's sandbox: TASK.md, handoff.md, result.json
 runs/<id>/artifacts/<task>/   read-only accepted copies (hash-checked before reuse)
@@ -95,9 +97,105 @@ started before this update retains its old workspace-wide lock until it exits.
 The GUI uses the same commands, so a run started
 in the browser can be paused from a terminal and vice versa.
 
-Exit codes: 0 complete, 1 the run stopped in a non-complete state (`partial`,
+Generation exit codes: 0 complete, 1 the run stopped in a non-complete state (`partial`,
 `needs_review`, `waiting_provider`, `failed`, `cancelled`), 2 input or setup
-error, 130 interrupted (state is saved; `resume`).
+error, 130 interrupted (state is saved; `resume`). A successful generation exit
+does not confirm Drive delivery; check the separate delivery receipt/status below.
+
+## Automatic Drive delivery
+
+Set `output.folder` and `delivery.drive` in the run configuration and authorize
+the rclone remote on the render host. Normal `./ad "description"` then delivers
+each completed MP4 automatically; ZIP review packages remain local. No manual
+upload, retry reset or approval is needed for a queued run. Filenames retain the
+script title, UTC timestamp and stable run/ad suffix across attempts.
+
+The presentation status is `awaiting_upload` when generation is complete but
+configured Drive delivery remains pending. The internal generation status stays
+`complete`. CLI status/list and GUI use this distinction; `./ad watch RUN_ID`
+continues through pending uploads, stopping when delivery is verified or its
+retries are paused/cancelled. `./ad status RUN_ID` shows the verified count,
+error, effective maximum of the run and shared retry deadlines, and worker health.
+Queued entries without a receipt and orphaned `uploading` records expose worker
+health too. `./ad upload RUN_ID` remains an optional diagnostic command; it respects
+saved cooldowns and is not a required recovery step.
+
+`harness.streaming` persists exponential backoff of 2–3 seconds initially, capped
+at 64–65 seconds including jitter, with no attempt limit. Existing long waits,
+including legacy 18-minute deadlines, and their obsolete shared delivery cooldown
+are normalized to at most 64 seconds ahead. Current-policy deadlines remain
+authoritative across restarts. The fair queue favors least-recently-attempted
+runs, skips busy/deferred/broken entries, and serializes all transfers. While a
+controller owns its run during the next animator stage, its worker-monitor callback
+checks earlier packaged ads for due delivery about every five seconds. These
+intervals govern scheduling, not time to successful delivery: API quota, transfer
+duration, verification and contention can delay an attempt or its success.
+
+New receipts (`verification_version=2`) require a unique remote object ID,
+matching byte size and a supported checksum. Verification rejects ambiguous or
+duplicate objects and missing checksums. An uncertain-copy marker is saved before
+transport; after timeout, lost acknowledgement or process death, remote content is
+reconciled before another copy. Matching remote bytes are acknowledged without
+recopying; proved absence or mismatch permits a copy. Historical uploaded receipts
+retain their prior trust without an API re-probe merely because code was upgraded;
+this does not retroactively give them the new proof format. Matching current
+receipts avoid repeated remote verification. For receipts carrying a target,
+local bytes, names and destination must still match that saved receipt.
+
+### Worker supervision and recovery
+
+The detached singleton worker survives controller/terminal exit. Without a usable
+user service manager, process death still requires CLI/GUI recovery; persisted
+receipts alone do not restart a dead process. Opening make/run/resume/upload/status
+or the GUI recovers saved work. A living worker fingerprints `delivery_queue.py`,
+`delivery.py`, `streaming.py` and `store.py`; it adopts changes by self-exec between
+attempts, retaining the open singleton lease. Code adoption never overlaps an old
+transfer. Delivery I/O uses bounded watchdogs, retains transfer leases until exit,
+and is excluded from the generation budget.
+
+Optional, explicit Linux setup installs a restarting user service for the chosen
+harness home:
+
+```sh
+python3 -m harness.delivery_service
+# For a non-default harness home, use the same path as generation:
+python3 -m harness.delivery_service --home /absolute/path/to/harness-home
+```
+
+The unit name is `goosnav-ad-delivery-<home-hash>.service`; setup enables it with
+`Restart=always`. Normal CLI recovery respects the installed service and its
+restart delay instead of spawning a competing detached worker. Without a usable
+user manager, detached delivery remains available. This render host's unit is
+enabled and active as of 2026-10-21. Review confirmed a user-owned `0600` unit,
+valid systemd syntax, a service PID owning the singleton lease, and a fresh heartbeat.
+The installer does not elevate privileges or copy credential contents into the unit.
+It also does not create an OAuth client or authorize Drive.
+
+User-unit startup follows the user's service manager: without separately configured
+lingering it normally starts at login after logout/reboot. Setup does not enable
+lingering. A powered-off host cannot upload. Changed unit settings (repository
+location, interpreter or environment) require restarting the service; rerunning
+setup reloads/enables the unit but does not restart an already-running process.
+Source self-exec applies delivery code changes, not these unit settings.
+
+Shared rclone client-project quotas can materially delay delivery. Rclone's
+[official own-client guidance](https://rclone.org/drive/#making-your-own-client-id)
+states its shared client is retiring during 2026; configure your own OAuth client
+to avoid that dependency. The service does not change this prerequisite. Revoked
+credentials or a full Drive also require correcting their cause, not resetting
+the queue. Keep tokens and credential-file contents out of diagnostics and Git.
+
+### Observed delivery on this host
+
+Run `20261021-054836-2aaeeb2d` reached verified Drive delivery on automatic attempt
+6 at **2026-10-21 06:37:38 PDT** after prior `rateLimitExceeded` failures. Its saved
+version-2 receipt contains remote identity, size and checksum proof. The final
+attempt took about 19 seconds: roughly 15 seconds through acknowledgement,
+including pre-copy reconciliation, then 4 seconds for verification. The transport
+copy itself took about 5 seconds. No manual upload or retry reset was used.
+This is one observed recovery, not a promise that future outages clear within a
+few minutes. For validation coverage, see [STATE.md](STATE.md); this section
+records the delivery evidence only.
 
 ## What happens in a run
 
@@ -161,9 +259,10 @@ to the configured repair allowance. Modern runs honor `board_repairs` and
 `review_repairs`, then use a bounded `autonomous_replans` allowance to adapt the
 affected ad to supported capabilities. They never require operator review for
 ordinary findings. Unresolved important/blocking defects fail that ad after
-automatic recovery is spent; other ads continue. Every successful package is
-uploaded immediately, independently of sibling ads. Verified videos are not
-copied again, and delivery time is tracked outside the generation budget.
+automatic recovery is spent; other ads continue. Every successful package becomes
+eligible for automatic upload independently of sibling ads, subject to API quota
+and transfer availability. Matching verified videos are not copied again, and
+delivery time is tracked outside the generation budget.
 
 ### Models and fallback
 

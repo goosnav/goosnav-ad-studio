@@ -140,8 +140,8 @@ MODEL INTENSITY / PROVIDER (NEW RUNS)
   # another project's config; existing duration/count/concept flags still work.
 
 STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
-  ./ad status [RUN_ID]         quick status and failure reason
-  ./ad watch [RUN_ID]          watch until stopped/finished
+  ./ad status [RUN_ID]         generation/delivery status, failure reason and worker health
+  ./ad watch [RUN_ID]          follow rendering and pending Drive delivery until stopped/verified
   ./ad list                    recent runs / IDs
   ./ad pause [RUN_ID]          pause after current stage
   ./ad resume [RUN_ID]         continue
@@ -195,53 +195,90 @@ GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # 2. In harness.local.json, set delivery.drive to an rclone path or a
   #    Google Drive folder URL. Folder URLs use the configured agent-exchange remote.
   #    "delivery": {"drive": "https://drive.google.com/drive/folders/FOLDER_ID"}
-  # 3. Run ./ad "..." normally. EACH ad uploads as soon as its package passes;
-  #    it does not wait for other ads in a multi-ad run. It uploads
+  # 3. Run ./ad "..." normally. EACH packaged ad becomes eligible immediately;
+  #    delivery waits for quota and the transfer slot, not for the whole batch.
+  #    A controller checks earlier packages during the next animator's work. It uploads
   #    finished videos ONLY into the configured Drive folder automatically.
   #    Names use the selected script title, a UTC date/time stamp, run suffix
   #    and ad index. Retry keeps the same name. MP4/ZIP source packages stay local.
   # 4. Upload outages recover automatically; no manual resume/approval is needed.
   ./ad status [RUN_ID]                  # verified count, last error, retry time, worker health
   ./ad watch [RUN_ID]                   # keep watching through queued uploads, not just rendering
-  ./ad upload [RUN_ID]                  # explicit upload request; honors saved cooldowns
-  # Status shows the verified video count independently of generation progress.
-  # Failures enter a durable queue. Retries start after 60-75 seconds, then
-  # back off exponentially with random jitter, capped at 30 minutes between
-  # attempts. There is NO attempt limit: queued videos keep retrying until
+  # No manual upload, resume or retry reset is needed for queued deliveries.
+  # ./ad upload RUN_ID remains an optional diagnostic request, honoring cooldowns.
+  # A generation-complete run with pending Drive delivery displays awaiting_upload
+  # in status/list and the GUI; its saved generation status remains complete.
+  # Status shows verified count, last error, effective max(own/shared) retry
+  # deadline and worker health, including queued entries without a first receipt.
+  # Failures enter a durable queue. Persisted exponential backoff starts at 2-3
+  # seconds and reaches 64-65 seconds including jitter. There is NO attempt limit.
+  # Legacy long waits (including old 18-minute entries) and obsolete shared
+  # delivery cooldowns are normalized to no more than 64 seconds ahead.
+  # Current-policy deadlines survive restarts. These intervals are NOT a delivery
+  # SLA: quota, transfer/verification time and contention can delay success.
+  # Queued videos keep retrying until
   # verified uploaded, or until you explicitly pause/cancel the run or disable
   # that run's saved Drive destination.
-  # A detached, single-worker queue keeps running after the render/controller
-  # exits or you close the terminal. Startup of make/run/resume/upload/status
-  # or the GUI recovers saved pending uploads if the worker was stopped.
-  # A powered-off computer cannot upload; reopen the CLI/GUI after a reboot.
+  # The fair queue gives least-recently-attempted runs a turn, skipping busy,
+  # deferred or malformed entries instead of starving other eligible deliveries.
+  # A detached singleton worker survives controller/terminal exit. If that worker
+  # process dies without a service manager, reopening make/run/resume/upload/status
+  # or the GUI is required to recover it; saved receipts/deadlines remain durable.
+  # OPTIONAL explicit Linux setup for automatic worker restart:
+  python3 -m harness.delivery_service
+  # Or select the same harness home used by generation:
+  # python3 -m harness.delivery_service --home /absolute/path/to/harness-home
+  # Installs/enables a user unit named goosnav-ad-delivery-<home-hash>.service
+  # with Restart=always. Enabled and active on this render host (2026-10-21).
+  # Normal CLI recovery asks an installed service to start rather than racing
+  # its restart delay with another detached worker. No user manager: detached fallback.
+  # User units normally start at login after logout/reboot; lingering is not enabled
+  # by this installer. A powered-off computer cannot upload. The service installer
+  # does not create an OAuth client, authorize Drive, or copy credentials into the unit.
   # The worker log is delivery-worker.log under the harness home (the same
   # STUDIO_HARNESS_HOME used by generation); the queue/receipts live in state.sqlite3.
   # Copies are serialized across ALL runs, including inline/manual uploads,
-  # with one rclone API transaction per second and a
-  # burst size of one. A quota response stops the batch and sets a shared
+  # with rclone TPS limiting set to one and burst size one per command.
+  # A quota response stops the batch and sets a shared
   # cooldown for other runs, instead of immediately trying every remaining ad.
-  # Automatic delivery skips already-verified video bytes. A copied video
-  # awaiting verification is listed again before recopying. All attempts use
+  # New receipts require a unique remote object ID, matching byte size and checksum;
+  # a filename-only listing is not sufficient. Missing hashes/duplicate identities
+  # remain pending with a diagnostic. Copies are marked uncertain BEFORE transport.
+  # After a lost acknowledgement/restart, matching remote content is reconciled
+  # without another copy; a proved absence/mismatch permits copying again.
+  # Matching verified receipts are reused. Historical uploaded receipts are not
+  # API-reprobed simply because delivery code was upgraded. All attempts use
   # affected run's lock, so stale delivery state cannot overwrite its rendering.
   # A separate global transfer lock excludes overlapping uploads. A busy run
   # does not block another run's generation or eligible queued delivery.
   # Drive I/O has bounded timeouts and is excluded from the generation budget.
+  # Controller upload time is also excluded from native worker total/stall
+  # watchdogs, so retrying an earlier ad cannot time out the next animator.
   # An independent timeout watchdog kills a stalled uploader even if its
   # controller dies; the uploader retains its run and transfer locks until exit
   # so recovery cannot overlap the copy. Other runs can keep generating.
+  # Fresh private Python cache prefixes prevent stale bytecode on launch/reload;
+  # shared caches are neither trusted nor deleted by the delivery worker.
+  # A living worker fingerprints delivery_queue.py, delivery.py, streaming.py and
+  # store.py. Changes trigger self-exec BETWEEN attempts, retaining its singleton
+  # lease. This adopts delivery code, not new unit/interpreter/environment settings;
+  # those still require a service restart to apply to a running service.
   # The rclone copy never deletes files on Drive. If Drive is down, the
   # local MP4/ZIP remain intact and the render is still marked successful,
-  # but delivery is explicitly marked RETRYING, not successfully delivered.
+  # but pending delivery is not reported as successful: top-level awaiting_upload,
+  # with the separate delivery receipt showing retrying/uploading/queued state.
   # Authentication/configuration/storage errors remain visible and queued too;
   # retries cannot repair revoked credentials or a permanently full Drive.
-  # Prefer your own Google Drive client ID instead of rclone's shared API project:
+  # Shared rclone client-project rate limits can materially delay uploads.
+  # Official rclone docs say the shared client is retiring during 2026: use your
+  # own OAuth client. The restarting worker cannot create or repair that client.
   # https://rclone.org/drive/#making-your-own-client-id
   # Partial runs with some packaged ads upload the successfully packaged ads.
   # To disable upload for NEW runs, leave delivery.drive blank or remove the
   # delivery key. To stop a saved pending queue entry, ./ad pause RUN_ID or
   # ./ad cancel RUN_ID (cancel all also stops pending deliveries).
-  # You can also upload a prior local-only run by setting the delivery.drive
-  # of that run using the saved run config, or by running rclone copy manually.
+  # To deliver a prior local-only run, explicitly configure that saved run's
+  # delivery.drive. Normal pending delivery does not require manual rclone copies.
 
 FLOATING PRODUCT END CARDS
   # Reuse existing Minecraft-style item-drop videos; Frame trims them to the

@@ -13,6 +13,20 @@ import pytest
 from harness.workers import supervise
 
 
+def test_delivery_control_callback_does_not_consume_native_worker_watchdog(tmp_path):
+    polls = [0]
+    def controller():
+        polls[0] += 1
+        if polls[0] == 2:
+            time.sleep(.5)  # A bounded upload while the animator continues.
+        return False
+    result = supervise([sys.executable, '-c', 'import time; time.sleep(.7)'],
+                       cwd=tmp_path, prompt='', log=tmp_path / 'log',
+                       timeout=.4, idle_timeout=.3, cancelled=controller)
+    assert result['kind'] == 'ok', result
+    assert result['elapsed'] >= .5
+
+
 WRITER = """
 from pathlib import Path
 import signal, time

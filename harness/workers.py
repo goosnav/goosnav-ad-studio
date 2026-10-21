@@ -396,6 +396,7 @@ def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, star
               idle_timeout=None, ownership_token=None):
     token = uuid.uuid4().hex if ownership_token is None else _validate_ownership_token(ownership_token)
     start = time.monotonic()
+    controller_seconds = 0.0
     log = Path(log); log.parent.mkdir(parents=True, exist_ok=True)
     kind = None
     # A file for stdin avoids blocking the supervisor on a large pipe write.
@@ -416,10 +417,15 @@ def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, star
                 progress = _WorkspaceProgress(cwd, log)
                 stamps = {}
                 while _worker_running(proc):
-                    if cancelled():
+                    callback_started = time.monotonic()
+                    stop = cancelled()
+                    control_elapsed = time.monotonic() - callback_started
+                    controller_seconds += control_elapsed
+                    last_progress += control_elapsed
+                    if stop:
                         kind = 'cancelled'; break
                     now = time.monotonic()
-                    if now - start > timeout:
+                    if now - start - controller_seconds > timeout:
                         kind = 'timeout'; break
                     if log.stat().st_size > max_log_mb * 1024 * 1024:
                         kind = 'log_limit'; break
@@ -443,6 +449,8 @@ def supervise(argv, *, cwd, prompt, log, timeout, cancelled, max_log_mb=32, star
         if kind in ('timeout', 'idle_timeout'):
             error_text = f'{kind}: worker exceeded {timeout}s total or {idle_timeout}s without observable progress. ' + error_text
         return {'kind': kind or classify(proc.returncode, error_text), 'code': proc.returncode,
-                'elapsed': round(time.monotonic() - start, 2), 'detail': error_text[-4000:], **metadata}
+                'elapsed': round(time.monotonic() - start, 2),
+                'controller_seconds': round(controller_seconds, 3),
+                'detail': error_text[-4000:], **metadata}
     except OSError as e:
         return {'kind': 'dependency', 'code': None, 'elapsed': 0, 'detail': str(e)}

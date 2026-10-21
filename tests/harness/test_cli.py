@@ -183,6 +183,7 @@ def test_ad_status_shows_source_failure_before_a_worker_started(tmp_path):
 def test_upload_accepts_drive_folder_link_and_uses_folder_id(tmp_path):
     from harness.delivery import upload_run
     from harness.store import Store
+    from tests.harness.test_delivery import Drive
     store = Store(tmp_path)
     state = store.create({'delivery': {'drive': 'https://drive.google.com/drive/folders/folder123'},
                           'output': {'folder': str(tmp_path)}})
@@ -190,22 +191,17 @@ def test_upload_accepts_drive_folder_link_and_uses_folder_id(tmp_path):
     (run_folder / 'ad-01.mp4').write_bytes(b'video')
     (run_folder / 'ad-01.zip').write_bytes(b'zip')
     state['tasks'] = [{'stage': 'package', 'status': 'succeeded', 'ad': 0}]
-    calls = []
-    uploaded = []
-    def fake_run(args, **kwargs):
-        calls.append(args)
-        if 'copyto' in args:
-            uploaded.append(args[args.index('copyto') + 2].split(':', 1)[1])
-        class Result: stdout = '\n'.join(uploaded) + '\n'
-        return Result()
-    result = upload_run(store, state, run=fake_run, which=lambda _: '/usr/bin/rclone')
+    transport = Drive()
+    result = upload_run(store, state, run=transport, which=lambda _: '/usr/bin/rclone')
+    calls = transport.calls
     assert result['delivery']['status'] == 'uploaded'
     assert calls[0][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
-    assert calls[1][:3] == ['rclone', '--drive-root-folder-id', 'folder123']
+    assert all(call[:3] == ['rclone', '--drive-root-folder-id', 'folder123'] for call in calls)
     assert calls[0][-1].startswith('agent-exchange:ad-video-')
     assert calls[0][-1].endswith('-ad-01.mp4')
-    assert 'agent-exchange:' in calls[1]
-    assert '--files-only' in calls[1]
+    assert '--stat' in calls[1] and '--hash' in calls[1]
+    assert 'agent-exchange:' in calls[2]
+    assert '--files-only' in calls[2]
 
 
 def test_manual_upload_cannot_overwrite_a_running_controllers_state(tmp_path):

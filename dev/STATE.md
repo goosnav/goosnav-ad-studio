@@ -1,8 +1,78 @@
 # Development state
 
-Updated: 2026-10-20
+Updated: 2026-10-21
 
-## Current position
+## Current delivery correction
+
+Contract: a normal ad command delivers each completed MP4 automatically to the
+configured Drive destination, with honest pending status and unattended recovery.
+Baseline 946c76f was clean. The latest run 20261021-054836-2aaeeb2d completed its
+generation at 06:02:06 PDT but had five Drive project rate-limit failures. The
+fifth failure at 06:19:58 scheduled 1,075.95 seconds of waiting, until 06:37:54.
+The old worker was alive and retrying on schedule. Read-only folder/file API
+checks succeeded at 06:24, while the saved cooldown still blocked transport.
+The problem was excessive recovery latency, not a missing MP4 or dead worker.
+
+| Issue | Reproduced consequence | Repair / acceptance |
+| --- | --- | --- |
+| D1: minute-scale quota produces half-hour backoff | Drive available while a finished ad waits ~18 minutes | Persistent 2–3s exponential retries capped at 64–65s; migrate legacy deadlines/shared delivery cooldown only |
+| D2: run lease held throughout next animator | Previous finished ad cannot retry until stage boundary | Controller-owned snapshot retries through its monitor callback, with upload time excluded from both budget and native worker watchdog |
+| D3: stale/dead detached worker | Updated code never loads; worker death needs another CLI action | Idle-boundary source reload retains singleton lease; restarting user service enabled on this render host; CLI respects managed restart |
+| D4: oldest failure renews shared cooldown | Newer healthy deliveries starve | Least-recently-attempted fairness; busy/deferred/broken entries do not monopolize ticks |
+| D5: lost copy acknowledgement | Redundant upload before remote reconciliation | Persist uncertainty before copy; reconcile exact destination identity/content before repeating it |
+| D6: filename presence called verification | Wrong bytes / ambiguous duplicate names can pass | New version-2 remote ID, size and checksum proof, with uniqueness check |
+| D7: render complete hides delivery state | No receipt or orphaned uploading looks successful | CLI/list/GUI show awaiting_upload and worker health; watch follows delivery |
+| D8: malformed retry metadata / transfer lease errors | Repeated non-attempts or an animator failure | Normalize numeric fields, isolate queue entries, and contain delivery lease exceptions |
+
+Live recovery: the new supervised worker automatically migrated the pending job
+at 06:36:13. Attempt 6 started 06:37:19, acknowledged the copy 06:37:34, and verified
+delivery 06:37:38. No manual upload, resume, cooldown clearing or receipt reset was
+used. The only uploaded file was the existing title/timestamp MP4:
+`nothing-to-read-20261021T124836Z-636f95d55688-ad-01.mp4`.
+Remote object `1pcD03fpglN3axrqSBlR1rAKvl8R3zN_n` has size 2,826,334 and SHA-256
+`a08706b793f3487213b0f86d9c8ff7d828b056225ab9232489409b5aef42d28f`, matching
+the local video. After delivery, a controlled kill of the idle service worker
+was recovered automatically in 5.62s (PID 2728528 -> 2731813), without any CLI
+recovery trigger. The receipt/file identity remained unchanged.
+
+Installed user unit: goosnav-ad-delivery-fc1ca689a298.service; enabled, Restart=always,
+five-second restart delay. Unit generation is checked with systemd's real parser.
+Credentials remain in the existing rclone configuration, not the unit or repository.
+This host still uses rclone's shared OAuth project; project quota can delay a
+successful request, and the published 2026 retirement requires eventual own-client
+configuration. No delivery-time SLA is claimed. User units start at login unless
+lingering is separately configured; this installer does not enable lingering.
+Other hosts without a user service manager retain detached-worker fallback and
+need a CLI/GUI recovery trigger after that process dies.
+
+Historical uploaded receipts are preserved without a mass API re-probe. New
+verification is stronger; it does not retroactively strengthen historical proof.
+The audit collector passed its three available checks; 12 checks were skipped
+for unavailable tools/opt-in coverage. No comprehensive security-scanner claim.
+Additional checks: source reload/launch tests preseed timestamp-valid stale
+bytecode and replace source with equal-size/equal-timestamp bytes. Private unused
+cache prefixes force current source without deleting shared caches. Callback
+upload time is excluded from both total and idle native watchdogs; elapsed wall
+time remains recorded separately. Pause/cancel stops subsequent batch I/O while
+retaining prior acknowledgements and uncertain outcomes.
+
+Independent final checks accepted the repaired scheduling/watchdog/error paths
+(28 focused tests), queue reload/lease/fairness paths (35 tests), and transport
+proof/control paths (63 tests); counts overlap. A previous complete sweep found
+only two old filename-only transport doubles; those were updated to reflect the
+new metadata interface and passed their focused reruns. Final combined suite on
+the frozen code: **898 passed, 2 skipped in 404.78s**, using
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q`. Independent review accepted
+the corrected callback/watchdog and retry failure paths. No runtime blocker remains
+in this delivery repair; external quota/authentication availability is still required.
+
+Operational boundaries retained deliberately: changed service-unit settings
+(interpreter, repository location, environment) require a service restart; code
+reload alone does not adopt unit settings. Processing heartbeats update between
+queue attempts, so an active bounded batch can age the heartbeat until it returns.
+The enabled service was explicitly restarted after its final settings update.
+
+## Prior dialogue/parallel correction
 
 2026-10-20 dialogue/parallel reliability correction verified.
 The owner's latest quality report supersedes the earlier "passed" creative verdicts:

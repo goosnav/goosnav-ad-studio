@@ -177,15 +177,41 @@ Configure `output.folder` (a local absolute path) and `delivery.drive` (an
 rclone destination such as `agent-exchange:deliverables/ad-studio`) in
 `harness.local.json`, then authorize that remote with `rclone config` on the
 render machine. `./ad "prompt"` uploads only the finished MP4s to the configured
-folder as each ad finishes packaging and the shared transfer slot is available,
-using script-title filenames with stable UTC timestamps
-and run/ad suffixes to avoid collisions. Source ZIPs remain local. It verifies the names via rclone,
-and records the delivery status. Upload errors never delete local renders or
-change a successful render status. Pending uploads retry automatically with saved
-receipts and shared quota cooldowns, including after controller restart. Check
-`./ad status RUN_ID`; request a retry without rerendering via `./ad upload RUN_ID`.
-Pause/cancel the run to stop its automatic retries. Leave `delivery.drive` blank to disable
-Drive delivery entirely. See [`CLI.txt`](CLI.txt).
+folder once packaging succeeds and quota and the shared transfer slot allow. Script-title
+filenames have stable UTC timestamps and run/ad suffixes; source ZIPs remain local.
+New delivery receipts prove a unique remote object ID, matching size and checksum.
+Uncertain copies are reconciled before another copy, so a lost acknowledgement
+does not require retransmitting matching remote bytes. Historical uploaded receipts
+retain their prior trust without an API re-probe merely because the code upgraded.
+
+Failed deliveries retry automatically with persisted exponential delays of 2–65
+seconds, including jitter, and no attempt limit. Legacy long retry deadlines and
+their obsolete shared delivery cooldown are normalized to at most 64 seconds ahead.
+The fair queue skips blocked entries; a controller also checks earlier packaged
+ads during the next animator's work. These are retry intervals, not a delivery SLA:
+API availability, transfer time and contention can delay success. A render-complete
+run awaiting Drive displays `awaiting_upload` in CLI/GUI; its internal generation
+status stays `complete`. `./ad status RUN_ID` shows delivery progress, effective
+retry time and worker health; `./ad watch RUN_ID` continues through pending uploads.
+No manual upload or retry reset is required. Pause/cancel stops that run's retries.
+Leaving `delivery.drive` blank disables Drive for new runs.
+
+For automatic worker restart on Linux, explicitly run
+`python3 -m harness.delivery_service` (optionally `--home PATH`). This installs and
+enables a user unit with `Restart=always`; it is enabled and active on the current
+render host. CLI recovery respects that installed service. Without a usable user
+service manager, the detached-worker fallback survives terminal/controller exit,
+but worker process death requires reopening the CLI/GUI to recover. The user unit
+normally starts at login after logout/reboot; a powered-off host cannot upload.
+Source fingerprints let a living queue worker adopt changed delivery code between
+attempts while retaining its singleton lease.
+
+Shared-client project rate limits can materially delay uploads. Rclone's
+[official Drive guidance](https://rclone.org/drive/#making-your-own-client-id)
+says its shared client is retiring during 2026; configure your own OAuth client
+to avoid that dependency. Installing the user service does not create an OAuth
+client or change credentials. See [`CLI.txt`](CLI.txt) and
+[delivery operations](dev/OPERATIONS.md#automatic-drive-delivery).
 
 For floating product end cards, configure `output.end_card_clips` with product
 names and active `end_card_video` catalog IDs. `output.end_card_library` can point

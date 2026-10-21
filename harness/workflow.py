@@ -779,7 +779,9 @@ class Engine:
                 def started(pid):
                     attempt['pid'] = pid; attempt['identity'] = process_identity(pid)
                     self.store.save(state, 'worker_started', {'task': task['id'], 'pid': pid})
+                next_delivery_check = time.monotonic() + 5
                 def cancelled():
+                    nonlocal next_delivery_check
                     if budget:
                         waiting = False
                         if compact:
@@ -798,6 +800,12 @@ class Engine:
                                     'instruction': 'Performance target exceeded. Finish the existing meaningful '
                                     'conversation and usable scene. Reuse takes/frames; omit optional construction '
                                     'and polish. Do not replace the story or discard progress.'}))
+                    # This controller owns the run snapshot during a long model
+                    # stage. Retry its earlier packaged ads here rather than
+                    # making the queue wait until the next stage boundary.
+                    if time.monotonic() >= next_delivery_check:
+                        self.deliver_finished(state)
+                        next_delivery_check = time.monotonic() + 5
                     return self.store.control_value(state['id']) == 'cancel'
                 try:
                     outcome = self.execute({**invocation_profile, 'log_mb': c['limits']['log_mb'],

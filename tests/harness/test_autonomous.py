@@ -90,8 +90,8 @@ def test_delivery_time_is_not_charged_against_generation_budget(tmp_path, monkey
 
 
 def test_engine_uploads_first_package_before_starting_the_second(tmp_path, monkeypatch):
-    from types import SimpleNamespace
     import harness.delivery as delivery
+    from tests.harness.test_delivery import Drive
     from tests.harness.test_workflow import fake_models
     config = load_config(overrides={'count': 2, 'output': {'folder': str(tmp_path / 'videos')},
                                     'delivery': {'drive': 'agent-exchange:ads'}})
@@ -99,14 +99,13 @@ def test_engine_uploads_first_package_before_starting_the_second(tmp_path, monke
     state = store.create(config)
     state['tasks'] = [t for t in build_tasks(2) if t['stage'] == 'package']
     store.save(state, 'fixture')
-    names, events = set(), []
+    transport, events = Drive(), []
     def remote(command, **kwargs):
         if 'copyto' in command:
             local, target = command[command.index('copyto')+1:command.index('copyto')+3]
             snapshot = store.get(state['id'])
             events.append(('upload', snapshot['tasks'][1]['status']))
-            names.add(target.rsplit('/', 1)[-1])
-        return SimpleNamespace(stdout='\n'.join(names))
+        return transport(command, **kwargs)
     monkeypatch.setattr(delivery, '_bounded_run', remote)
     monkeypatch.setattr(delivery.shutil, 'which', lambda _: 'rclone')
     engine = Engine(store, resolve=fake_models, auth=lambda _: True, preflight=lambda _: [])
