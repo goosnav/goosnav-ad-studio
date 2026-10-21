@@ -48,3 +48,29 @@ The compact harness's fixed target/range and worker contracts remain implemented
 ## Efficiency improvements to pursue without weakening the film
 
 Reuse the source packet across related ads; retain successful takes and scene assets; preview the risky interaction or camera angle at low resolution; cache completed work; repair the weakest actual defect; leave production notes for the next film. Track rework separately from necessary creative effort. Do not build a new ad engine merely to encode this lesson.
+
+## Automated handoff and visual follow-up
+
+The modern worker briefs now carry this direction through `harness.creative.job`;
+no extra agent, schema field or research pass is added. Within the existing two-source
+budget, research puts a compact `Taste:` note in `creative_directions` (exact product,
+source locator, observed detail and membership evidence). Writing retains it in
+`visual_direction`; direction puts it in the relevant `beat.picture`. Those existing
+fields survive the scoped handoffs. Selection and final review check the resulting
+sample and reaction as part of their existing jobs, not a separate report.
+
+The supplied video was inspected visually across its cut: page inserts around 8–10 s
+and 14–16 s return to character reactions. The transferable lesson is that connection,
+not the exact sequence. This observation does not claim independent listening or an
+audience-performance measurement. Its small uploaded copy is not a readability standard.
+Make the chosen detail legible on a phone with an accurate crop, angle and lighting;
+a washed-out spread is not enough. Printed lettering on actual pages/cards is product
+content, not a promotional overlay to remove. Preserve original art and match spoken
+references to the displayed detail. A simple source-art insert may replace expensive
+page-turn/hand-contact work without deleting the joke. When editing, protect the sample
+and the setup/reaction it supports rather than only preserving the closing product shot.
+
+These are short stage-specific creative instructions, not deterministic proof of
+source membership or humor. Existing runtime validators, watchdogs, voices, animation
+helpers, contracts and legacy brief paths remain unchanged. Focused prompt regression
+coverage: `python -m pytest -q tests/harness/test_product_taste.py`.

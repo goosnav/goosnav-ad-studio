@@ -35,7 +35,69 @@ def scope(config):
             'A product/end-card video is ONLY the short closing segment, never a substitute for the story.\n')
 
 
+# These notes stay stage-local: no extra agents, schema fields or source sweeps.
+PRODUCT_TASTE = {
+    'research': """Within the existing two-source budget, prioritize an actual product sample over
+brand prose: a comic/page, card/rule, design detail or demonstrated function. In
+creative_directions include a compact 'Taste:' note: product/edition; exact source
+path or URL plus page/card ID; observed detail; evidence it belongs to that product.
+Inspect only enough supplied material to choose 1-2 useful details, then stop.
+A model's texture folder or a drawing's date alone does not prove edition membership.
+If unverified, say so; use another verified product detail or report the missing
+sample. Never invent book contents, card rules, exclusivity or purchase benefits.""",
+    'write': """Give a small taste of the actual product BEFORE the CTA. Build the humor from a
+verified excerpt, game interaction or distinctive feature, not generic praise or
+people merely saying the product's name. One good sample is enough; no montage quota.
+Carry the research Taste note (source, edition, specific detail) in visual_direction
+so selection and production retain it. The script must say what the audience actually
+sees/hears and how the reaction or riff follows. An original riff is not a quote or
+claim about printed content. No verified sample? Use an evidenced product experience
+or flag the gap, never manufacture an excerpt. Reference films are not story templates.""",
+    'select': """As part of this same short check, identify the candidate's sourced product taste
+and the response it causes. A generic cover shot, 'this is funny', or a random sketch followed
+by a logo is not a taste. Read the source/edition note in visual_direction; reject
+unsupported content claims or an absent product experience. No new research pass.
+Do not require the reference film's setting, cast count, lines, shot count or length.""",
+    'direct': """Carry the chosen source/edition/detail into the relevant beat.picture. Stage a
+legible sample and its motivated reaction, not just characters explaining the brand.
+A source-art insert or supported static spread can do the job; book opening, page
+turning and hand IK are optional verified capabilities, not requirements. Preserve
+the SAME content-based joke when simplifying staging. Let measured speech and sample
+readability determine beat lengths within configured delivery bounds; don't copy a
+reference runtime, rush the excerpt or add empty seconds to imitate its pacing.""",
+    'assets': """Verify the chosen sample belongs to the advertised product/edition, not merely
+to the asset library. Use and pack the original source art; preserve exact words and
+images. A faithful crop/insert is preferable to inventing art or a complicated prop
+interaction. Lettering printed on a real page/card IS product content, not a banned
+promotional overlay. Check the relevant detail at phone size: crop/angle/light it so
+the joke reads. Do not make a tiny washed-out full spread count as product exposure.""",
+    'animate': """Preserve the sourced content insert and the reaction it motivates. Real lettering
+on the product is allowed; invented captions/marketing overlays still belong to Frame.
+Use the approved rigs and supported actions. If simplifying motion, keep the same
+sample visible/readable rather than replacing it with a generic cover shot.""",
+    'edit': """Protect the content-to-reaction connection when trimming: leave enough time to
+perceive the actual excerpt/interaction, then cut once it lands. Remove empty time,
+not the only product sample or the setup that makes the reply intelligible. Match
+spoken references to the visible sample; use motivated sound, not canned laughter to
+assert a joke worked. The CTA should follow the scene, without copying the reference
+line or unverified offers. No mandatory music, page turn, sample count or runtime.""",
+    'creative_qa': """During this existing review, identify the exact pre-CTA moment where the viewer
+experiences a real product detail. Check it against the source/edition note and the
+spoken reference: recognizable at phone size, coherent reaction, no fabricated art
+or benefits. Cite that moment briefly in summary/findings, not a new report. A product
+name or cover alone cannot stand in for the promised taste. Judge entertainment and
+clarity, not resemblance to GET YOUR OWN. Report unsupported observations honestly.""",
+}
+
+
 def job(stage, original):
+    """Add only the relevant product-content instruction to the existing worker job."""
+    assignment = _production_job(stage, original)
+    note = PRODUCT_TASTE.get(stage)
+    return assignment + '\n\nPRODUCT TASTE\n' + note if note else assignment
+
+
+def _production_job(stage, original):
     if stage == 'write':
         return '''Write TWO distinct candidate scripts per ad. Character comedy is central: a specific
 want, causally connected exchange/action, readable reaction and payoff that leads to the real
