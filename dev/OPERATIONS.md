@@ -405,6 +405,13 @@ and only with the voices `studio/vo.py` lists as commercially cleared.
   checks or review findings. Its allowance is durable across resume; quota waits
   do not spend it. Valid empty diagnostic `.log` files declared as `notes` are
   accepted; production media and sources must still be nonempty.
+- Script timing: the word count is an advisory planning estimate, not a hard
+  rejection threshold. Each accepted guide carries `timing_guidance` with its
+  story window, actual word count and target. Exceeding the target must not
+  discard the campaign or rewrite otherwise usable guides. The animator measures
+  full voice takes and reply gaps before scene construction, then shortens only
+  its own exchange if necessary. Measured duration, intelligibility and media
+  validation remain required; this is not permission to truncate or rush speech.
 - `waiting_provider`: both CLIs are out of quota, logged out, or in cooldown.
   `python3 -m harness doctor`, then `resume` when a provider is back.
 - `failed` task: `status RUN_ID` shows the attempt kind (`invalid`, `crash`,

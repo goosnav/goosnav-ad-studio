@@ -47,6 +47,11 @@ DEFAULT WORKFLOW (EVERY NEW CLI RUN)
   # The writer keeps the chosen model but uses low reasoning. A single 9-second
   # writer invocation has a 60-second watchdog; larger batches allow up to 120.
   # Repair gets a real invocation allowance, not a tiny leftover time slice.
+  # Spoken-word counts are planning targets, NOT campaign rejection limits.
+  # One script over its target does not discard/rewrite the other guides.
+  # Each guide carries timing_guidance to its animator. Before scene building,
+  # actual full voice takes plus reply gaps must fit the story window. Only an
+  # exchange that really does not fit needs shortening; no clipping or rushing.
   # The animator keeps the selected effort. Performance targets never terminate
   # a compact run; configured process/stall watchdogs still catch runaway jobs.
   # Compact context retains the three recent results and character voice memory.

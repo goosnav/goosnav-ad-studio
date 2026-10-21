@@ -2,6 +2,49 @@
 
 Updated: 2026-10-21
 
+## Current script timing correction
+
+Observed: run `20261021-072511-7cecb788` requested ten seven-second low-effort ads
+and failed in `campaign-script` after 176.99s of writer invocations, before any
+animation or upload. The configured 2.5s closing clip leaves a 4.5s story. A rough
+two-words/second estimate became a hard nine-word rejection gate for the entire
+campaign. Attempts failed at 13, 10 and 12 words respectively. The second draft
+had nine guides at/below the target and one at ten words, but none were accepted;
+the next repair rewrote good guides and introduced more over-target exchanges.
+The preceding run `20261021-072245-f26973fd` completed and uploaded its MP4.
+
+Contract correction: word counts guide concise writing, but do not establish
+actual speech duration or authorize rejecting a campaign. Each guide now carries
+controller-derived `timing_guidance` into its own animator without changing the
+dialogue or discarding sibling guides. Full measured WAVs and reply gaps must
+still fit before scene construction; speed, audio, story and media gates remain
+unchanged. Product/cast identity and complete script schemas are still required.
+This does not isolate arbitrary malformed script schemas within a campaign.
+
+Regression: a ten-guide batch with one ten-word exchange reproduced the failed
+campaign on the old code. The repaired boundary accepts all guides in one worker
+attempt, preserves their words/order and forwards timing guidance to the matching
+animator.
+Real Kokoro checks at default speed rejected both overflowing saved exchanges
+before scene construction. The original borrow exchange measured 2.1s + 0.18s
+reply gap + 2.8s = 5.08s, exceeding the 4.5s story. A local meaning-preserving
+shortening, "Can I borrow it? / I'm still reading.", produced a complete verified
+audio receipt ending at 4.005s. No duration extension, voice speed-up or clipping
+was used. This timing demonstration is not a claim about artistic voice quality.
+Independent review caught a long-feedback truncation that could remove the
+obsolete-limit clarification on resume. Its new regression failed before the
+repair and passed afterwards; the notice now has reserved space within 2,200
+characters. Fresh compact checks: 14 passed. Earlier focused production/audio
+checks: 47 passed. Full controller suite during this repair: **899 passed, 2 skipped
+in 429.17s**; final compact rerun after the feedback correction: **14 passed**.
+The existing batch was resumed with `./ad resume 20261021-072511-7cecb788`.
+Its writer accepted all ten guides in one 24.6s attempt, including five above the
+advisory target, and moved into the first animator. That worker detected actual
+speech overflow locally instead of restarting campaign writing. Rendering and
+delivery of the resumed batch are not yet claimed complete. No manually edited
+run state or manually uploaded substitute is used. Both managed submodules were
+fetched and checked: their HEADs already match origin/main; no asset changes.
+
 ## Current delivery correction
 
 Contract: a normal ad command delivers each completed MP4 automatically to the
@@ -94,9 +137,9 @@ unconfirmed cleanup blocks that workspace with explicit feedback, rather than
 starting a second writer. Scrubbed/unreadable markers remain an explicit limitation,
 not a sandbox guarantee.
 
-Scripts require explicit cast reasons, exact dialogue and viewer_takeaway. A cheap
-pre-animation word limit requests a coherent shorter exchange, never chopped-up
-fragments. Writer/animator/editor instructions prioritize ordinary characters,
+Scripts require explicit cast reasons, exact dialogue and viewer_takeaway. The
+initial pre-animation word limit was too strict and is superseded by the advisory
+timing correction above. Writer/animator/editor instructions prioritize ordinary characters,
 plain dialogue and readable faces over prop mechanics. The editor must evaluate
 actual words and must not demand the end card before Frame adds it. Local-motion
 freeze calibration retains still/slideshow rejection without rewarding camera drift.

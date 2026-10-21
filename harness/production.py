@@ -46,8 +46,11 @@ Do NOT invent a space setting merely to justify using the astronaut. Unless the 
 concept actually requires an exotic role, choose the ordinary plate/beady people.
 Do not repeat a recent premise from past_results_reference_only unless the user explicitly
 asks for a variation. Reuse techniques, not the same story. Usually write two short turns
-between two people. Stay within MAX_SPOKEN_WORDS total, including product names;
-leave a response beat. Use complete thoughts, not cryptic one-word fragments to fit time.
+between two people. Aim for SPOKEN_WORD_TARGET total, including product names, and leave
+a response beat. This is a planning estimate, not a rejection limit: coherent complete
+thoughts matter more than hitting an exact count. The animator will measure real speech
+before building the scene and shorten only exchanges that actually do not fit.
+Do not turn sentences into cryptic fragments to hit the estimate.
 Before submitting, mentally read ONLY the dialogue: does the exchange make sense and tell
 the truth about the product? If not, rewrite it now, not after animation. The premise must
 describe what these actual words establish. No separate critique report.
@@ -91,6 +94,9 @@ viewer_takeaway. Never strip connecting words until it becomes cryptic ("Dead / 
 is not a meaningful conversation). Reduce turns before dropping meaning. Commands must precede
 compliance; leave a response beat. Reuse verified takes; changed wording uses new takes.
 Use the AUDIO command below. Its audio/production.json is the authoritative measured plan.
+SCRIPT.timing_guidance is only a word-count estimate, never proof of speech duration.
+Measure before scene construction. If a take is too long, shorten this ad's exchange
+locally, preserving its meaning; do not restart or rewrite the other ads' scripts.
 2. Build scene.blend and reproducible build.py in this workspace. The repo's docs/worlds.md
 documents blender.staging.import_actor and frame_subjects. Read only the relevant recipe
 and chosen asset metadata once, not the entire repository.
@@ -160,7 +166,7 @@ def production_brief(state, task, work, timeout, home, store=None):
     card = min(out['end_card_seconds'], out['target_seconds'] / 2) if out['cta'] else 0
     project = {'COUNT': c['count'], 'TARGET_SECONDS': out['target_seconds'],
                'STORY_SECONDS': out['target_seconds'] - card, 'CARD_SECONDS': card,
-               'MAX_SPOKEN_WORDS': max(1, math.floor((out['target_seconds'] - card) * 2)),
+               'SPOKEN_WORD_TARGET': max(1, math.floor((out['target_seconds'] - card) * 2)),
                'EFFORT': c['generation']['effort'], 'ATTEMPT_SECONDS': round(timeout, 1),
                'WORKSPACE': str(work), 'products': c['products'], 'concept': c['concept'],
                'brand': c['brand']['direction'], 'look': out['look']}
@@ -253,9 +259,14 @@ def production_brief(state, task, work, timeout, home, store=None):
         } for row in memory]
         if stage == 'animate':
             project['previous_voices_by_asset_id'] = character_voices(store, c)
-    feedback = task.get('feedback', '')
+    feedback = task.get('feedback', '')[:2200]
+    if stage == 'script' and 'spoken words; maximum' in feedback:
+        notice = ('\nThe previous word-count-only rejection is obsolete. SPOKEN_WORD_TARGET is '
+                  'advisory; preserve complete thoughts. Actual speech is measured per ad by '
+                  'the animator. Do not repeat whole-campaign rewrites to hit that old limit.')
+        feedback = feedback[:2200 - len(notice)] + notice
     return common + '\nJOB\n' + job + '\nPROJECT\n' + json.dumps(project, separators=(',', ':')) + (
-        '\nREPAIR: Continue existing local files; resubmit a complete result.json.\n' + feedback[:2200] if feedback else '')
+        '\nREPAIR: Continue existing local files; resubmit a complete result.json.\n' + feedback if feedback else '')
 
 
 def validate_production_media(engine, state, task, data, work, config):
@@ -269,13 +280,17 @@ def validate_production_media(engine, state, task, data, work, config):
             raise ContractError('Script cast must use supplied active character names: ' + ', '.join(sorted(characters)))
         out = config['output']
         card = min(out['end_card_seconds'], out['target_seconds'] / 2) if out['cta'] else 0
-        limit = max(1, math.floor((out['target_seconds'] - card) * 2))
+        story_seconds = out['target_seconds'] - card
+        target = max(1, math.floor(story_seconds * 2))
         for script in data['scripts']:
             words = sum(len(line['text'].split()) for line in script['dialogue'])
-            if words > limit:
-                raise ContractError(f'Script has {words} spoken words; maximum {limit} for the story window. '
-                                    'Rewrite a shorter complete exchange, preserving its meaning. Do not delete '
-                                    'connecting words into fragments; simplify the premise or reduce turns.')
+            # Word count is not a measured duration. Rejecting a whole campaign
+            # here caused repeated rewrites of good guides over a single word.
+            # The audio helper still requires full WAVs and reply gaps to fit
+            # before scene construction; animation/media gates remain strict.
+            script['timing_guidance'] = {'spoken_words': words, 'target_words': target,
+                                         'story_seconds': story_seconds,
+                                         'over_target': words > target}
         return
     if stage == 'edit':
         if data['verdict'] == 'revise':

@@ -63,13 +63,60 @@ def test_new_graph_reaches_animator_immediately_after_script(tmp_path):
         'animate', 'edit', 'frame', 'qa', 'package']
 
 
-def test_overlong_dialogue_is_rewritten_before_expensive_animation(tmp_path):
+def test_script_word_estimate_is_advisory_and_never_truncates_dialogue(tmp_path):
+    import copy
     from harness.production import validate_production_media
-    config = load_config(overrides={'output': {'target_seconds': 9}})
+    config = load_config(overrides={'output': {'target_seconds': 7}})
     guide = script()
-    guide['dialogue'][0]['text'] = ' '.join(['word'] * 20)
-    with pytest.raises(ContractError, match='Rewrite a shorter complete exchange'):
-        validate_production_media(None, {}, {'stage': 'script'}, {'scripts': [guide]}, tmp_path, config)
+    guide['dialogue'] = [{'speaker': 'Customer', 'text': 'Lend me the book tonight?'},
+                         {'speaker': 'Clerk', 'text': "No, I'm keeping these drawings."}]
+    before = copy.deepcopy(guide)
+    validate_production_media(None, {}, {'stage': 'script'}, {'scripts': [guide]}, tmp_path, config)
+    assert guide['timing_guidance'] == {'spoken_words': 10, 'target_words': 9,
+                                       'story_seconds': 4.5, 'over_target': True}
+    assert {k: v for k, v in guide.items() if k != 'timing_guidance'} == before
+
+
+def test_one_script_above_word_target_does_not_discard_ten_ad_batch(tmp_path):
+    import copy
+    store = Store(tmp_path)
+    config = load_config(overrides={'count': 10, 'output': {'target_seconds': 7}})
+    state = store.create(config)
+    state.update(tasks=build_tasks(10, compact=True), sources=[],
+                 models={'workers': {'writer': [{'provider': 'codex', 'model': 'chosen-writer'}]}})
+    guides = [script(f'ad-{i}') for i in range(10)]
+    guides[-1]['dialogue'] = [{'speaker': 'Customer', 'text': 'Lend me the book tonight?'},
+                             {'speaker': 'Clerk', 'text': "No, I'm keeping these drawings."}]
+    before = copy.deepcopy(guides)
+
+    def worker(profile, work, prompt, log, **kwargs):
+        (work / 'result.json').write_text(json.dumps({'summary': 'Ten guides', 'files': [],
+                                                    'scripts': guides}))
+        return {'kind': 'ok'}
+
+    engine = Engine(store, execute=worker, auth=lambda _: True)
+    task = state['tasks'][0]
+    engine.agent_task(state, task, store.path(state['id']))
+    assert task['status'] == 'succeeded'
+    assert len(task['attempts']) == 1
+    assert [s['id'] for s in task['result']['scripts']] == [s['id'] for s in before]
+    assert [s['dialogue'] for s in task['result']['scripts']] == [s['dialogue'] for s in before]
+    animator = next(t for t in state['tasks'] if t['stage'] == 'animate' and t['ad'] == 9)
+    selected = engine.inputs(state, animator)['selected_script']
+    assert selected['timing_guidance']['over_target'] is True
+    assert selected['dialogue'] == before[-1]['dialogue']
+
+
+def test_obsolete_word_limit_is_corrected_even_when_saved_feedback_is_long(tmp_path):
+    from harness.production import production_brief
+    state = {'config': load_config(), 'tasks': build_tasks(1, compact=True)}
+    task = state['tasks'][0]
+    task['feedback'] = ('Previous claude attempt: invalid. Script has 10 spoken words; '
+                        'maximum 9 for the story window. ' + 'Keep complete thoughts. ' * 150)
+    prompt = production_brief(state, task, tmp_path, 60, tmp_path)
+    repair = prompt.split('\nREPAIR: Continue existing local files; resubmit a complete result.json.\n')[1]
+    assert 'word-count-only rejection is obsolete' in repair
+    assert len(repair) <= 2200
 
 
 def test_editor_can_request_one_focused_animation_repair_without_media(tmp_path):
