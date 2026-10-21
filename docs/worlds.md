@@ -247,6 +247,24 @@ upper_body["min"][2] += .65 * b["size"][2]  # worker-chosen crop, not a helper r
 report = staging.frame_subjects(camera, [upper_body], .1, view_direction=(.3, 1, -.1))
 ```
 
+For a dialogue two-shot, stage the partners near each other and fit both upper-body
+regions, not the entire set or distant environment spawn anchors:
+
+```python
+conversation = []
+for name, actor in (("A", actor_a), ("B", actor_b)):
+    b = staging.world_bounds(actor)
+    region = {"name": name, "min": b["min"][:], "max": b["max"][:]}
+    region["min"][2] += .5 * b["size"][2]  # chosen waist-up crop
+    conversation.append(region)
+staging.frame_subjects(camera, conversation, .08, view_direction=(.3, 1, -.05))
+```
+
+Choose the horizontal direction for the actual actors' orientation; this example
+is not a universal facing direction. Start near eye level rather than looking
+down at the tops of heads. Inspect a delivery-size frame: both expressions should
+be legible. More ambitious staging remains available when it serves the exchange.
+
 For a moving shot, measure the intended poses/frames and fit their union as an
 explicit region, or author the camera motion deliberately and inspect its framing.
 Do not refit every animation frame automatically: that can introduce camera pumping.
@@ -264,6 +282,94 @@ rig/mesh hierarchy, independent imports, shape keys/NLA, offset and scaled geome
 ambiguous rigs, portrait perspective/orthographic projection, camera shifts,
 non-square pixels, chosen angles and explicit upper-body regions. They inspect
 actual projected vertices independently of the helper's own report.
+
+## Dialogue motion cues
+
+`blender/performance.py` consumes the active asset library's declarative
+`scripts/conversation_motion.py` bank. The caller supplies the library root from
+configuration/catalog resolution, or supplies model paths whose ancestor contains
+that file. There is no machine path or sibling-checkout fallback, and archived
+paths are rejected. The adapter reads a literal `BANK` with `ast.literal_eval`;
+it never executes asset-library Python. Keep the bank with the selected active
+library when relocating it. The managed submodule contains the bank; an older
+external checkout may not.
+
+```python
+import performance
+
+# timeline/mouths are accepted measured audio artifacts (paths or dictionaries).
+# rigs maps speaker IDs to actual imported armatures (objects or names).
+report = performance.apply(
+    timeline, mouths, rigs,
+    models={"A": character_path, "B": other_path},
+    library_root=active_library_root,
+    cues=[
+        {"speaker": "A", "kind": "talk", "start": 0, "end": 2},
+        {"speaker": "B", "kind": "listen", "start": 0, "end": 2},
+        {"speaker": "A", "kind": "gesture", "start": .5, "end": 1.5},
+        {"speaker": "B", "kind": "look_at", "start": 0, "end": 2, "target": "A"},
+        {"speaker": "B", "kind": "talk", "start": 2, "end": 4},
+    ],
+)
+```
+
+Times are seconds from the measured timeline start, not absolute scene frames.
+Adjust these example windows to the actual accepted dialogue. All cues must fit
+the timeline. Optional `intensity` is in [0, 1]. Request `talk` for each intended
+speaking window; it is gated by that speaker's actual dialogue. `listen` supplies
+quiet idle. `gesture` uses the existing take once, fitted to its window. `look_at`
+accepts another speaker or a fixed Blender-world XYZ point. Speaker gaze targets
+are sampled at the beginning of the bake, not tracked continuously.
+
+For ordinary conversation, avoid hand-writing speaking windows:
+
+```python
+cues = performance.conversation_cues(timeline, speakers=rigs)
+# Optional: append one deliberately timed gesture for a meaningful line.
+report = performance.apply(timeline, mouths, rigs, models=models,
+                           library_root=active_library_root, cues=cues)
+```
+
+`conversation_cues(timeline, speakers=None)` accepts a timeline path or dictionary.
+It merges adjacent/overlapping lines, fills each actor's listen gaps and adds mild
+listener gaze during another actor's line. Omit `speakers` to infer the speaking
+cast; pass IDs or the rig map to include silent listeners. It does not generate
+speech or automatic gestures, and it does not change Blender state. A listener
+missing from `mouths["speakers"]` gets an explicit closed-mouth curve.
+
+`walk` reuses the in-place take at its source 24 fps, including when rendering at
+30 fps. Author placement-root travel separately (roughly 0.4 m/s times actor scale
+for the native cycle). There is no navigation, prop contact or hand IK inference.
+Prefer a simple planted conversation when travel adds nothing to the dialogue.
+
+Cue motion is baked into a single owned composite action, leaving authored action,
+active NLA and driver channels protected. Idle and cues are offsets from the
+existing pose; constraint settings and non-XYZ bone rotations are preserved.
+`report[speaker]["skipped_authored_paths"]` identifies channels that the adapter
+could not own. Check it when an intentional cue is not visible. Measured mouth
+curves run last and own the jaw/visemes. Body recipes never open mouths. Each
+actor's face data is isolated so speech does not leak across instances.
+
+Repeated `apply` calls replace generated channels and preserve the original
+baseline across save/reopen. Pass `cues=[]` to remove prior cue motion while
+keeping quiet idle and measured speech. Omit `cues` to retain the legacy idle/nod
+behavior. Use cues for composed conversation instead of layering `play_clip`
+after `apply`; the older raw-NLA helper can be masked by an active body action.
+Exact duplicate cues are deduplicated; same-kind overlaps and talk/listen overlap
+on one speaker fail explicitly. The existing bank's character catalog capabilities
+remain unchanged: these are consumer recipes, not newly embedded character takes.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q \
+  -p no:cacheprovider tests/harness/test_motion_bank.py \
+  tests/harness/test_performance.py tests/harness/test_performance_pose.py
+```
+
+Set `MOTION_REVIEW=1` for three optional 360x450 review stills under pytest's
+temporary output directory. Checks evaluate visible hand/head/foot movement,
+silent-mouth ownership, source fps, protected authored channels, repeat/reopen,
+relocated libraries and refusal to execute a nonliteral bank. Preview stills are
+visual evidence only; review dialogue timing on the parent's finished ad trials.
 
 ## Publication boundary
 

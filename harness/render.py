@@ -1,5 +1,6 @@
 """Resumable EEVEE render/encode helper. All scene dependencies must be packed/local."""
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -9,6 +10,7 @@ import time
 from .contracts import contained, digest
 from .learning import signature
 from .blender_dependencies import EXTERNAL_PATH_SCAN
+from .resources import render_lock_path, resource_lease
 
 
 # Run inside Blender on EVERY invocation, including complete cache hits. A scene
@@ -99,17 +101,13 @@ def render(scene, audio, output, *, width=1080, height=1350, fps=24, seconds=9,
     if not (64 <= width <= 4096 and 64 <= height <= 4096 and width % 2 == height % 2 == 0
             and 1 <= fps <= 60 and 0 < seconds <= 300 and timeout > 0):
         raise ValueError('Invalid render dimensions, frame rate, duration or timeout')
-    started = time.monotonic()
-    def left():
-        available = timeout - (time.monotonic() - started)
-        if available <= 0:
-            raise TimeoutError('Render allowance exhausted; hashed frames retained for resume')
-        return available
+    wall_started = time.monotonic()
     checked_scene = digest(scene)
-    validate_dependencies(scene, blender, left())
+    validate_dependencies(scene, blender, timeout - (time.monotonic() - wall_started))
     if digest(scene) != checked_scene:
         raise ValueError('Scene changed during dependency validation; retry with a stable saved scene')
-    left()
+    if time.monotonic() - wall_started >= timeout:
+        raise TimeoutError('Render allowance exhausted; hashed frames retained for resume')
     scale = 2 if fast or effort != 'high' else 1.5
     settings = {'width': math.ceil(width / scale / 2) * 2, 'height': math.ceil(height / scale / 2) * 2,
                 'fps': fps, 'samples': 4 if fast or effort == 'low' else 8 if effort == 'medium' else 16}
@@ -117,6 +115,32 @@ def render(scene, audio, output, *, width=1080, height=1350, fps=24, seconds=9,
     output.parent.mkdir(parents=True, exist_ok=True)
     cache = output.parent / '.render-cache' / key
     cache.mkdir(parents=True, exist_ok=True)
+    output_key = hashlib.sha256(str(output).encode()).hexdigest()
+    output_lock = output.parent / '.render-writers' / (output_key + '.lock')
+    remaining = timeout - (time.monotonic() - wall_started)
+    # Always acquire output -> cache -> GPU. Distinct outputs can share a cache;
+    # distinct caches can still target the same output. Protect both through encode.
+    with resource_lease(output_lock) as output_lease, resource_lease(cache / 'writer.lock') as cache_lease:
+        return _render_owned(scene, audio, output, checked_scene, settings, key, cache,
+                             width, height, fps, seconds, blender, ffmpeg, remaining,
+                             (output_lease.fd, cache_lease.fd),
+                             output_lease.wait_seconds + cache_lease.wait_seconds, wall_started)
+
+
+def _render_owned(scene, audio, output, checked_scene, settings, key, cache,
+                  width, height, fps, seconds, blender, ffmpeg, timeout, writer_fds, initial_wait, wall_started):
+    started = time.monotonic()  # Writer-lease waits consume no render allowance.
+    resource_wait = 0.0
+
+    def left():
+        available = timeout - (time.monotonic() - started - resource_wait)
+        if available <= 0:
+            raise TimeoutError('Render allowance exhausted; hashed frames retained for resume')
+        return available
+
+    if digest(scene) != checked_scene:
+        raise ValueError('Scene changed while waiting for render ownership; retry with a stable saved scene')
+    left()
     journal = cache / 'frames.json'
     hashes = json.loads(journal.read_text()) if journal.exists() else {}
     end = round(seconds * fps)
@@ -126,8 +150,13 @@ def render(scene, audio, output, *, width=1080, height=1350, fps=24, seconds=9,
     # Keep Blender/shaders alive for the entire contiguous missing range.
     for start, stop in missing_ranges(cache, 1, end, hashes):
         request.write_text(json.dumps({**settings, 'start': start, 'end': stop, 'folder': str(cache)}))
-        subprocess.run([blender, '--factory-startup', '--disable-autoexec', '-b', str(scene), '--python-exit-code', '1',
-                        '--python', str(helper), '--', str(request)], check=True, timeout=left())
+        with resource_lease(render_lock_path()) as gpu:
+            resource_wait += gpu.wait_seconds
+            if digest(scene) != checked_scene:
+                raise ValueError('Scene changed while waiting for render resource; retry with a stable saved scene')
+            subprocess.run([blender, '--factory-startup', '--disable-autoexec', '-b', str(scene), '--python-exit-code', '1',
+                            '--python', str(helper), '--', str(request)], check=True, timeout=left(),
+                           pass_fds=(*writer_fds, gpu.fd))
         hashes = json.loads(journal.read_text()) if journal.exists() else {}
         if missing_ranges(cache, start, stop, hashes):
             raise ValueError('Unverified rendered frames; helper checkpoint is missing or changed')
@@ -139,9 +168,11 @@ def render(scene, audio, output, *, width=1080, height=1350, fps=24, seconds=9,
                     '-i', str(cache / '%06d.png'), '-i', str(audio), '-t', str(seconds),
                     '-vf', f'scale={width}:{height}:flags=neighbor', '-c:v', 'libx264', '-preset', 'veryfast',
                     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-movflags', '+faststart',
-                    str(output)], check=True, timeout=left())
+                    str(output)], check=True, timeout=left(), pass_fds=writer_fds)
     return {'video': str(output), 'scene_sha256': digest(scene), 'cache_key': key,
-            'frames': end, 'settings': settings, 'wall_seconds': round(time.monotonic() - started, 2)}
+            'frames': end, 'settings': settings,
+            'resource_wait_seconds': round(initial_wait + resource_wait, 3),
+            'wall_seconds': round(time.monotonic() - wall_started, 2)}
 
 
 def main(argv=None):

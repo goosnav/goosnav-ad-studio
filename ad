@@ -50,8 +50,10 @@ def summary(run_id):
     print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
     if s.get('execution'):
         b = s['execution']
-        print(f"  Budget: {b['active_seconds']/60:.1f}/{b['target_seconds']/60:g} min active "
-              f"(ceiling {b['hard_seconds']/60:g}) | {b['mode']} | waiting {b['waiting_seconds']/60:.1f} min")
+        soft = b.get('version', 1) >= 2
+        limit = 'target, not a cutoff' if soft else f"ceiling {b['hard_seconds']/60:g}"
+        print(f"  {'Time' if soft else 'Budget'}: {b['active_seconds']/60:.1f}/{b['target_seconds']/60:g} min active "
+              f"({limit}) | {b['mode']} | waiting {b['waiting_seconds']/60:.1f} min")
         if s['status'] == 'budget_exhausted':
             print(f"  {s.get('error', '')}")
     if current and current['status'] == 'running' and current['attempts']:
@@ -62,6 +64,8 @@ def summary(run_id):
                     if log.is_file() else 'CLI has not written a log yet')
         print(f'  Worker: {attempt["provider"]}/{attempt["model"]} | '
               f'elapsed {seconds//60}m {seconds%60}s | {activity}')
+        if current.get('waiting_for_resource'):
+            print('  Waiting for the shared render resource; generation is still active.')
     if s.get('delivery'):
         d = s['delivery']
         uploaded = len(d.get('verified', {}))

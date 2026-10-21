@@ -155,6 +155,7 @@ def main(argv=None):
                 overrides.update(model_overrides(a))
                 if a.seconds is not None:overrides['output']={'target_seconds':a.seconds}
                 result=store.create(load_config(a.config,overrides));result['tasks']=build_tasks(result['config']['count'], modern=True, compact=True)
+                result['execution']['version'] = 2  # target, not a global termination deadline
                 result['config_path'] = str(Path(a.config).resolve()) if a.config else None
                 store.save(result,'planned')
                 if a.cmd=='make' and not a.plan:

@@ -201,3 +201,17 @@ def test_compact_picture_counts_short_stills_across_multiple_shots(tmp_path):
                     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(slideshow)], check=True)
     with pytest.raises(ContractError, match='picture frozen'):
         check_picture(slideshow, load_config(), story_end=6, max_frozen_fraction=.5)
+
+
+def test_dialogue_picture_detects_local_acting_without_camera_drift(tmp_path):
+    from harness.config import load_config
+    from harness.media import check_picture
+    import subprocess
+    path = tmp_path / 'local-motion.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                    'smptebars=size=640x800:rate=24:duration=3', '-vf',
+                    "drawbox=x=300:y=300:w=20:h=20:color=black:t=fill:enable='lt(mod(t,0.4),0.2)'",
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(path)], check=True)
+    # Like mouth/head acting against a stationary set. No invented camera move
+    # is necessary to pass; true stills/slideshows remain covered above.
+    check_picture(path, load_config(), story_end=3, max_frozen_fraction=.5)

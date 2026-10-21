@@ -11,7 +11,7 @@ from .briefs import brief
 from .contracts import ContractError, validate, promote, verify_accepted, digest, copy_checked
 from .models import resolve_workers
 from .sources import archived_asset, reconcile_sources, snapshot
-from .workers import CODEX_CLI_DEFAULT, command, last_actions, reset_delay, subscription_status, supervise
+from .workers import CODEX_CLI_DEFAULT, WorkerCleanupError, command, last_actions, reset_delay, subscription_status, supervise
 from .execution import Budget, BudgetExceeded, FinishRequired, deadline, bounded_timeout
 from .delivery import _completed_ads
 from .production import compact_run
@@ -36,14 +36,20 @@ INTERRUPTIONS = {'quota': 'ran out of usage', 'capacity': 'hit provider capacity
 
 def continuation_note(task, attempt, work):
     since = min(a['started'] for a in task['attempts'] if a['revision'] == task['revision'])
-    written = sorted(str(p.relative_to(work)) for p in work.rglob('*')
+    candidates = list(work.iterdir()) + list(work.glob('*/production.json')) + list(work.glob('*/timeline.json'))
+    important = ('build.py', 'scene.blend', 'plan.json', 'rigs.json', 'preview.mp4', 'production.json',
+                 'timeline.json', 'handoff.md', 'result.json')
+    written = sorted((str(p.relative_to(work)) for p in candidates
                      if p.is_file() and p.stat().st_mtime >= since
-                     and p.name not in ('TASK.md', '.worker-input.txt') and not p.name.startswith('result.previous-'))
+                     and p.name != 'TASK.md' and not p.name.startswith(('.', 'result.previous-'))),
+                     key=lambda name: (Path(name).name not in important, name))
     lines = [f'HANDOFF: the previous {attempt["provider"]} worker {INTERRUPTIONS[attempt["kind"]]} mid-task. '
              'Continue its work in this workspace; do not start over. Check and reuse what it built, '
              'finish the remaining steps, then write result.json.']
     if written:
         lines.append('Files written so far: ' + ', '.join(written[:15]) + (' ...' if len(written) > 15 else ''))
+    if (work / '.render-cache').is_dir():
+        lines.append('Hashed frame cache: .render-cache/; rerun the same render command to resume. Do not delete it.')
     handoff = work / 'handoff.md'
     if handoff.is_file():
         lines.append('Its handoff.md ends: ' + ' '.join(handoff.read_text(errors='replace')[-500:].split()))
@@ -95,7 +101,8 @@ def execute_worker(profile, work, prompt, log, cancelled, timeout, started):
     return supervise(command(profile, work), cwd=work, prompt=prompt, log=log,
                      timeout=timeout, cancelled=cancelled, started=started,
                      max_log_mb=profile.get('log_mb', 32),
-                     idle_timeout=profile.get('idle_timeout'))
+                     idle_timeout=profile.get('idle_timeout'),
+                     ownership_token=profile.get('ownership_token'))
 
 
 class Engine:
@@ -393,7 +400,47 @@ class Engine:
         state['models']['catalog'] = refreshed.get('catalog', state['models'].get('catalog', []))
         self.store.save(state, 'model_routes_refreshed', {'count': len(stale)})
 
+    def _block_cleanup(self, state, task, attempt, detail):
+        attempt.update(kind='cleanup_failed', cleanup_pending=True, cleanup_error=str(detail))
+        attempt.setdefault('ended', time.time())
+        feedback = (f'Worker cleanup is pending for attempt {attempt.get("ownership_token")!r}: {detail}. '
+                    'Workspace retries are blocked. Resolve the process/permission issue, then resume or retry; '
+                    'the original ownership token must be cleaned successfully before work can continue.')
+        task.update(status='failed', feedback=feedback)
+        state.update(status='failed', error=feedback)
+        self.store.save(state, 'worker_cleanup_failed', {'task': task['id'], 'error': str(detail)})
+        raise WorkerCleanupError(attempt.get('ownership_token'), feedback)
+
+    def _cleanup_pending(self, state, *, include_running=False):
+        from .workers import cleanup_owned_attempt
+        for task in state['tasks']:
+            interrupted = include_running and task['status'] == 'running'
+            pending = [a for a in task.get('attempts', []) if a.get('cleanup_pending') or
+                       (interrupted and a.get('ownership_token'))]
+            for attempt in pending:
+                # Save the obligation BEFORE attempting cleanup. A failure or a
+                # second controller crash cannot lose it when task status changes.
+                attempt['cleanup_pending'] = True
+            if pending:
+                self.store.save(state, 'worker_cleanup_pending', {'task': task['id']})
+            for attempt in pending:
+                try:
+                    cleanup_owned_attempt(attempt.get('ownership_token'))
+                except Exception as exc:
+                    self._block_cleanup(state, task, attempt, exc)
+            # Keep every obligation durable until all tokens for this task are
+            # confirmed. Clear them and restore eligibility in the SAME save;
+            # a crash must leave either cleanup pending or a resumable task.
+            for attempt in pending:
+                attempt.pop('cleanup_pending', None)
+                attempt.pop('cleanup_error', None)
+            if pending:
+                if not interrupted:
+                    task.update(status='pending', feedback='Previous worker cleanup confirmed; continue checkpointed work.')
+                self.store.save(state, 'worker_cleanup_confirmed', {'task': task['id']})
+
     def reconcile(self, state):
+        self._cleanup_pending(state, include_running=True)
         for task in state['tasks']:
             if task['stage'] == 'package' and (task.get('result') or {}).get('delivery_mode') == 'product_only':
                 task['previous'] = task['result']; task['result'] = None
@@ -415,6 +462,8 @@ class Engine:
                             os.killpg(pid, signal.SIGKILL)
                         except ProcessLookupError:
                             pass
+                        except OSError as exc:
+                            self._block_cleanup(state, task, attempt, exc)
                 task['status'] = 'pending'
                 task['feedback'] = 'Controller interrupted. Inspect checkpoint/handoff and complete the task; no output was accepted.'
         self.verify_history(state)
@@ -460,10 +509,12 @@ class Engine:
             if target is None:raise ValueError('Unknown task ID')
             if target['status'] not in ('failed','needs_review','waiting_provider','succeeded'):
                 raise ValueError('Retry failed, review, waiting or finished tasks')
-            if target['status']=='succeeded':
+            previous_status = target['status']
+            self._cleanup_pending(state)
+            if previous_status=='succeeded':
                 # Redo from here: this stage and everything after it for the same ad.
                 self.rewind(state,target['ad'],target['stage'],f'Operator asked to redo {target["stage"]} and later stages.')
-            elif target['status']=='needs_review':
+            elif previous_status=='needs_review':
                 feedback=json.dumps(target['result'],indent=2)
                 if target['ad'] is None:
                     start = 'script' if compact_run(state) else 'write' if target['stage'] == 'select' and any(
@@ -535,7 +586,7 @@ class Engine:
         """
         attempts = [a for a in task['attempts'] if a['revision'] == task['revision']
                     and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'auth', 'model',
-                                              'permission', 'dependency', None)]
+                                              'permission', 'dependency', 'cleanup_failed', None)]
         if not attempts or attempts[-1].get('failure_phase') != 'contract':
             return False
         used = sum(bool(a.get('contract_repair')) for a in attempts)
@@ -545,6 +596,7 @@ class Engine:
                        for p in routes[route + 1:])
 
     def agent_task(self, state, task, root):
+        self._cleanup_pending(state)
         budget = getattr(self, 'budget', None)
         c = state['config']
         if state.get('execution', {}).get('finishing'):
@@ -622,9 +674,11 @@ class Engine:
             # Attempts are durable. Resume cannot silently reset a consumed budget.
             # Budgets are per route; attempts from before routes were recorded count against
             # the provider's first route.
+            # Cleanup failures are not route attempts: the durable cleanup gate
+            # above must succeed before any allowance here can be used.
             used = sum(on_route(a, route)
                        and a['revision'] == task['revision']
-                       and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'model', None)
+                       and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'model', 'cleanup_failed', None)
                        for a in task['attempts'])
             # Cheap tasks never retry the same expensive session repeatedly. They may
             # fall back to the next configured provider once.
@@ -658,6 +712,7 @@ class Engine:
                 invocation_profile = {**profile, 'effort': 'low'} if compact and task['stage'] == 'script' else profile
                 attempt = {'number': number, 'route': route, 'provider': provider, 'model': profile['model'],
                            'route_id': profile['route_id'],
+                           'ownership_token': uuid.uuid4().hex,
                            'effort': invocation_profile.get('effort'), 'revision': task['revision'], 'started': time.time()}
                 if repairing_contract:
                     attempt['contract_repair'] = True
@@ -671,7 +726,14 @@ class Engine:
                 timeout, idle = agent_deadline(c, task['stage'])
                 if budget and budget.data:
                     timeout = budget.stage_seconds(task, timeout)
-                    idle = None if compact and task['stage'] == 'animate' else min(idle or 120, timeout)
+                    if compact:
+                        # Progress-aware stall protection is independent of the
+                        # performance target, including quiet local rendering.
+                        if task['stage'] == 'edit':
+                            timeout = min(timeout, c['limits']['review_timeout_seconds'])
+                        idle = min(c['limits']['idle_timeout_seconds'], timeout)
+                    else:
+                        idle = min(idle or 120, timeout)
                 if compact:
                     from .production import production_brief
                     prompt = production_brief(state, task, work, timeout, self.store.root, self.store)
@@ -719,14 +781,32 @@ class Engine:
                     self.store.save(state, 'worker_started', {'task': task['id'], 'pid': pid})
                 def cancelled():
                     if budget:
-                        budget.tick()
+                        waiting = False
+                        if compact:
+                            try:
+                                marker = json.loads((work / '.resource-wait.json').read_text())
+                                waiting = 0 <= time.time() - marker['updated_at'] < 10
+                            except (OSError, ValueError, KeyError, TypeError):
+                                pass
+                            task['waiting_for_resource'] = waiting
+                        budget.tick(waiting=waiting)
                         budget.check_production()
+                        if compact and budget.data and budget.data['mode'] == 'finish_existing':
+                            notice = work / '.performance-target.json'
+                            if not notice.exists():
+                                notice.write_text(json.dumps({'mode': 'finish_existing',
+                                    'instruction': 'Performance target exceeded. Finish the existing meaningful '
+                                    'conversation and usable scene. Reuse takes/frames; omit optional construction '
+                                    'and polish. Do not replace the story or discard progress.'}))
                     return self.store.control_value(state['id']) == 'cancel'
                 try:
                     outcome = self.execute({**invocation_profile, 'log_mb': c['limits']['log_mb'],
-                                            'idle_timeout': idle}, work, prompt, log,
+                                            'idle_timeout': idle,
+                                            'ownership_token': attempt['ownership_token']}, work, prompt, log,
                         cancelled=cancelled,
                         timeout=timeout, started=started)
+                except WorkerCleanupError as exc:
+                    self._block_cleanup(state, task, attempt, exc)
                 except (FinishRequired, BudgetExceeded):
                     attempt.update(kind='finishing', detail='Creative deadline reached; controller finishing', ended=time.time())
                     attempt.pop('pid', None); attempt.pop('identity', None)
@@ -735,6 +815,14 @@ class Engine:
                     # Unexpected provider/CLI failures are an attempt failure,
                     # not a crash of the entire state machine.
                     outcome = {'kind': 'dependency', 'detail': f'{type(exc).__name__}: {exc}'}
+                finally:
+                    # The child may have exited immediately after a queued poll.
+                    # Controller validation/promotion is active work, not GPU wait.
+                    if budget:
+                        budget.tick(True, waiting=False)
+                    task.pop('waiting_for_resource', None)
+                if outcome.get('kind') == 'cleanup_failed' or outcome.get('cleanup_pending'):
+                    self._block_cleanup(state, task, attempt, outcome.get('detail', 'Cleanup could not be confirmed'))
                 attempt.update(outcome, ended=time.time()); attempt.pop('pid', None); attempt.pop('identity', None)
                 # Claude aliases move over time. Pin the concrete observed model for the rest of this run.
                 observed=outcome.get('observed_models',[])
@@ -848,7 +936,8 @@ class Engine:
         # An earlier malformed result must not turn a later quota interruption
         # into a terminal failure. Wait only if a blocked route still has work
         # allowance; exhausted routes cannot keep a broken task waiting forever.
-        current_attempts = [a for a in task['attempts'] if a['revision'] == task['revision']]
+        current_attempts = [a for a in task['attempts'] if a['revision'] == task['revision']
+                            and a.get('kind') != 'cleanup_failed']
         transient = ('quota', 'capacity', 'auth', 'model', 'permission', 'dependency')
         # A merely skipped cooldown must not hide a subsequent real failure on
         # the usable route (such as never writing result.json).
@@ -858,7 +947,7 @@ class Engine:
             provider = routes[route]['provider']
             spent = sum(on_route(a, route)
                         and a['revision'] == task['revision']
-                        and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'model', None)
+                        and a.get('kind') not in ('cancelled', 'quota', 'capacity', 'model', 'cleanup_failed', None)
                         for a in task['attempts'])
             cap = (c['limits']['repairs'] + 1 if task['stage'] in HEAVY_STAGES
                    else 1 if usable > 1 else 2)
@@ -1113,6 +1202,7 @@ class Engine:
         self.store.save(state, 'autonomous_replan', {'task': task['id'], 'round': used + 1})
 
     def builtin_task(self, state, task, root, final_only=False):
+        self._cleanup_pending(state)
         from .media import finish_frame, check_video, package
         work = root/'workspaces'/task['id']; work.mkdir(parents=True, exist_ok=True)
         inputs = self.inputs(state, task); ad = task['ad']

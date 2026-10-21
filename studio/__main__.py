@@ -15,9 +15,11 @@
 A film lives in films/<film>/ with film.py (Blender scene exposing update(t)), sound.py, type.py,
 lines.txt, edit.json and SCRIPT.md. See films/the_dilemma for the reference implementation.
 """
-import argparse, fcntl, glob, os, subprocess, sys, time
+import argparse, glob, os, subprocess, sys
+from contextlib import ExitStack
 from pathlib import Path
 from studio import config
+from harness.resources import render_lock_path, resource_lease
 
 REPO = config.REPO
 
@@ -26,16 +28,12 @@ def blender_cmd(film, fmt, extra):
             '--format', fmt] + extra
 
 def with_lock(cmd, log=None):
-    """serialize GPU renders across every agent and session on the machine"""
-    lock = open(config.get('render_lock'), 'w')
-    print('waiting for render lock', config.get('render_lock'), flush=True)
-    fcntl.flock(lock, fcntl.LOCK_EX)
-    try:
-        print('lock acquired', time.strftime('%H:%M:%S'), flush=True)
-        out = open(log, 'a') if log else None
-        return subprocess.run(cmd, stdout=out, stderr=subprocess.STDOUT if out else None).returncode
-    finally:
-        fcntl.flock(lock, fcntl.LOCK_UN)
+    """Serialize expensive Blender work with harness renders for this user."""
+    with ExitStack() as stack:
+        lease = stack.enter_context(resource_lease(render_lock_path()))
+        out = stack.enter_context(open(log, 'a')) if log else None
+        return subprocess.run(cmd, stdout=out, stderr=subprocess.STDOUT if out else None,
+                              pass_fds=(lease.fd,)).returncode
 
 def main():
     ap = argparse.ArgumentParser(prog='studio')
@@ -73,7 +71,8 @@ def main():
             extra += ['--times', a.times]
         else:
             extra += ['--step', str(a.every or 12)]
-        rc = subprocess.run(blender_cmd(a.film, a.format, extra + a.rest)).returncode
+        cmd = blender_cmd(a.film, a.format, extra + a.rest)
+        rc = subprocess.run(cmd).returncode if a.no_lock else with_lock(cmd)
         from studio.qa import contact_sheet
         sheet = work / 'preview_sheet.jpg'
         contact_sheet(sorted(glob.glob(str(out / '*.png'))), sheet, cols=8 if a.format != '16x9' else 6, thumb_w=240)

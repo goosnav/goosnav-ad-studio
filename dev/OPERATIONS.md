@@ -47,7 +47,8 @@ gui-logs/                     output of controllers started from the GUI
 New runs give a short script guide directly to an animator that owns scene,
 voices, timing and rendering, followed by an editor and deterministic finishing.
 The writer has at most 60 seconds for one guide (up to 120 for larger batches);
-the animator gets most of the available time. The requested creative model tier
+the animator gets most of the production effort. Targets are soft: a late compact
+run finishes existing work, with no shrinking repair allowance. The requested creative model tier
 remains in use instead of switching to a cheaper storyboard recovery at 12 minutes.
 Legacy runs retain their original graphs and finishing policy. Neither replaces the story with a
 full-length floating-item end card. The closing card remains short; QA/packaging
@@ -55,7 +56,7 @@ check that the preceding story picture matches the edited source. Upload/retry
 filters reject the prior product_only package type. Resuming such a run restores
 its skipped story stages, preserving old files/receipts. Completed real ads are
 untouched and upload individually through the normal durable Drive queue.
-Old runs already at their hard ceiling need an explicit finishing allowance:
+Only historical pre-compact runs at their hard ceiling need an explicit finishing allowance:
 `./ad resume RUN_ID --extra-minutes 10`. This preserves checkpoints/spending.
 
 ```sh
@@ -192,10 +193,11 @@ Animation has its own `workers.animator` routes, selected by the preset alongsid
 writer and director. Timeout/quota fallback applies immediately. Saved runs
 created before this role retain their original producer routing.
 
-New scripts default to spoken scenes with one or two planted characters. The
-animator uses `blender/performance.py` to reuse library idle motion, add small
-timed nods/blinks and apply the measured mouth curves. Existing named walk and
-gesture clips are optional. Static props remain intact; unsupported actions such
+New scripts default to ordinary characters and a clear spoken exchange. The
+animator uses `blender/performance.py` and the asset-owned conversation motion bank:
+`conversation_cues(timeline, rigs)` supplies talk/listen windows and gentle partner
+gaze; `apply(..., cues=cues, library_root=...)` preserves measured mouths and authored
+poses. Explicit gesture and in-place walk cues are optional. Static props remain intact; unsupported actions such
 as opening an unrigged book are simplified before animation. No new stages or
 changes to the retry/review state machine are involved. See the reproducible
 [speaking example](WORKER_GUIDE.md#talking-characters-and-reusable-motion).

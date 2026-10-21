@@ -116,7 +116,10 @@ class Store:
     def cooldown(self, provider, seconds=None):
         with self.connect() as db:
             if seconds is not None:
-                db.execute('INSERT OR REPLACE INTO cooldowns VALUES (?,?)', (provider, time.time() + seconds))
+                db.execute('''INSERT INTO cooldowns(provider, until) VALUES (?,?)
+                              ON CONFLICT(provider) DO UPDATE
+                              SET until = MAX(cooldowns.until, excluded.until)''',
+                           (provider, time.time() + seconds))
             row = db.execute('SELECT until FROM cooldowns WHERE provider=?', (provider,)).fetchone()
         return max(0, row[0] - time.time()) if row else 0
 

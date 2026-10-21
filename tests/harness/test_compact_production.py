@@ -14,7 +14,11 @@ def script(identifier='one'):
     return dict(id=identifier, title='The Last Copy', premise='A clerk keeps reading the lost book',
                 script='Customer: My book? Clerk: One more page.',
                 visual_direction='Two characters at a counter; book is clearly visible.',
-                product='Book', cta='See the book')
+                product='Book', cta='See the book', viewer_takeaway='A book worth continuing to read.',
+                cast=[{'speaker': 'Customer', 'character': 'ordinary', 'reason': 'Customer in a shop'},
+                      {'speaker': 'Clerk', 'character': 'ordinary', 'reason': 'Clerk in a shop'}],
+                dialogue=[{'speaker': 'Customer', 'text': 'My book?'},
+                          {'speaker': 'Clerk', 'text': 'One more page.'}])
 
 
 def test_script_contract_needs_exactly_one_usable_guide_per_ad(tmp_path):
@@ -24,6 +28,25 @@ def test_script_contract_needs_exactly_one_usable_guide_per_ad(tmp_path):
     for scripts in ([], [script(), script('two')], [{'id': 'broken'}]):
         with pytest.raises(ContractError):
             validate('script', {**good, 'scripts': scripts}, tmp_path, context)
+
+
+def test_script_needs_explicit_dialogue_and_cast_not_a_visual_riddle(tmp_path):
+    import copy
+    for key in ('dialogue', 'cast', 'viewer_takeaway'):
+        bad = script(); bad.pop(key)
+        with pytest.raises(ContractError):
+            validate('script', {'summary': 'guide', 'files': [], 'scripts': [bad]}, tmp_path, {})
+    bad = copy.deepcopy(script()); bad['dialogue'][0]['speaker'] = 'Mystery person'
+    with pytest.raises(ContractError, match='speaker'):
+        validate('script', {'summary': 'guide', 'files': [], 'scripts': [bad]}, tmp_path, {})
+
+
+def test_animator_brief_prioritizes_conversation_framing_over_prop_mechanics():
+    from harness.production import ANIMATOR_JOB
+    assert 'Frame speakers\' upper bodies and faces clearly at phone size' in ANIMATOR_JOB
+    assert 'Start near their eye level' in ANIMATOR_JOB
+    assert 'not at distant environment spawn anchors' in ANIMATOR_JOB
+    assert 'without constructing or manipulating another prop' in ANIMATOR_JOB
 
 
 def test_new_graph_reaches_animator_immediately_after_script(tmp_path):
@@ -38,6 +61,15 @@ def test_new_graph_reaches_animator_immediately_after_script(tmp_path):
     assert engine.inputs(state, task)['selected_script']['id'] == 'one'
     assert [t['stage'] for t in state['tasks'] if t['ad'] == 0] == [
         'animate', 'edit', 'frame', 'qa', 'package']
+
+
+def test_overlong_dialogue_is_rewritten_before_expensive_animation(tmp_path):
+    from harness.production import validate_production_media
+    config = load_config(overrides={'output': {'target_seconds': 9}})
+    guide = script()
+    guide['dialogue'][0]['text'] = ' '.join(['word'] * 20)
+    with pytest.raises(ContractError, match='Rewrite a shorter complete exchange'):
+        validate_production_media(None, {}, {'stage': 'script'}, {'scripts': [guide]}, tmp_path, config)
 
 
 def test_editor_can_request_one_focused_animation_repair_without_media(tmp_path):
@@ -97,7 +129,7 @@ def test_actual_script_job_is_short_and_retains_chosen_model(tmp_path):
     profile, prompt, kwargs = calls[0]
     assert profile['model'] == 'chosen-writer' and profile['effort'] == 'low'
     assert state['models']['workers']['writer'][0]['effort'] == 'high'
-    assert len(prompt) < 4500 and kwargs['timeout'] <= 60
+    assert len(prompt) < 6500 and kwargs['timeout'] <= 60
     assert 'exactly COUNT guides' in prompt
     assert 'Do not repeat a recent premise' in prompt
 
@@ -128,7 +160,8 @@ def test_explicit_script_resume_gets_new_stage_allowance_not_new_run_budget():
     state['execution']['active_seconds'] = 60
     budget = Budget(state, lambda *args: None)
     assert 59 <= budget.stage_seconds(task, 3600) <= 60
-    assert budget.remaining() < state['execution']['hard_seconds'] - 59
+    assert budget.remaining() == float('inf')
+    assert budget.spent() >= 60
 
 
 def test_full_frame_cta_brief_agrees_with_existing_direction_contract(tmp_path):

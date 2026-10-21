@@ -5,6 +5,7 @@ are tools of the creative worker, not additional agent jobs or approval gates.
 """
 import copy
 import json
+import math
 from pathlib import Path
 import shlex
 import sys
@@ -31,27 +32,51 @@ def animation_result(state, ad):
 SCRIPT_JOB = '''Write one concise, chosen script guide per requested ad, in array order.
 Use the supplied product facts and active character names. No research, file exploration,
 voice synthesis, Blender, storyboard rendering, alternative candidates or separate plan.
-Choose an interesting concrete situation with a clear turn/payoff and a reason the product
-is present. Do not repeat a recent premise from past_results_reference_only unless the
-user explicitly asks for a variation; reuse successful techniques, not the same story.
-Write short, natural dialogue that fits the STORY_SECONDS; aim for at most
-two spoken words per story second and leave a reaction. One or two characters and a
-readable product are enough. Describe the action and 1-3 shots briefly. The animator owns
-actual staging, measured timing and technical choices. Keep each entire guide under 120 words.
+CHARACTERS AND DIALOGUE FIRST. Establish what someone wants; the reply must respond to it.
+Give them a recognizable small need, choice or disagreement, not a catalog-description recital.
+An average viewer should understand the exchange on first hearing without decoding a prop,
+tiny gesture, card rule or visual trick. Assume physical animation will be rough: the words
+must still carry the situation and why the product matters. No compulsory joke or twist.
+Dry, direct, specific speech; no puns, anatomy jokes, coy/cutesy banter or clever non sequiturs.
+An interesting world can be mysterious; the conversation and product must not be confusing.
+Default to ordinary active characters. Astronauts belong with astronauts in space or a
+genuinely relevant setting; skeletons/exotic characters require a story-specific reason,
+not an anatomy gag or random decoration. Explain casting briefly, never invent brand lore.
+Do NOT invent a space setting merely to justify using the astronaut. Unless the user's
+concept actually requires an exotic role, choose the ordinary plate/beady people.
+Do not repeat a recent premise from past_results_reference_only unless the user explicitly
+asks for a variation. Reuse techniques, not the same story. Usually write two short turns
+between two people. Stay within MAX_SPOKEN_WORDS total, including product names;
+leave a response beat. Use complete thoughts, not cryptic one-word fragments to fit time.
+Before submitting, mentally read ONLY the dialogue: does the exchange make sense and tell
+the truth about the product? If not, rewrite it now, not after animation. The premise must
+describe what these actual words establish. No separate critique report.
+One well-framed conversation in an existing early-3D world is enough. Background and props
+are secondary. No essential handoff, card reveal, book opening or tiny readable object text.
+The product can be identified in dialogue and the closing clip; a story prop is optional.
+Describe 1-3 shots briefly; the animator owns timing and staging. Keep the guide concise.
 Immediately write result.json: {"summary":"...","files":[],"scripts":[
 {"id":"unique-id","title":"short unique title","premise":"one sentence",
 "script":"brief shots and exact dialogue/action","visual_direction":"setting and key visual",
-"product":"exact supplied product name","cta":"short product CTA"}]}.
+"product":"exact supplied product name","cta":"short product CTA",
+"cast":[{"speaker":"A","character":"supplied active character name","reason":"role fits setting"}],
+"dialogue":[{"speaker":"A","text":"exact words"}],
+"viewer_takeaway":"what the spoken exchange plainly establishes about the product"}]}.
 Return exactly COUNT guides, no surrounding report.'''
 
 ANIMATOR_JOB = '''Make the complete animated ad from SCRIPT. You own staging, scene construction,
 voice takes, timing, action and the finished render. Keep one working scene and build script;
 inspect a few useful frames yourself. No separate storyboard submission or board-review agent.
 Reuse active assets from active-assets.json. Start with a suitable existing environment and
-real character/product models; author scenery and action when they materially help the story.
+real character models; add a product prop only when it helps. Dialogue and the closing product
+clip can identify the product without constructing or manipulating another prop. Author scenery
+and action when they materially help the story.
 Work within the requested effort: low uses a simple existing setup, medium a distinctive
 variation, high can develop more ambitious staging. Give the film early-game atmosphere and
-clear action. Do not build photorealistic detail, invent rig capabilities or redraw product art.
+readable characters, not photorealism. Dialogue carries the story; background and props support
+it. Prefer a medium two-shot or readable speaker/reaction framing. Do not make tiny prop
+handling carry essential meaning. Ordinary cast by default; preserve justified casting,
+not random astronaut/skeleton substitutions. Never redraw product art.
 
 1. Write plan.json: {summary,direction:{duration:TARGET_SECONDS,cast,lines,beats?,end_card,mix}}.
 cast entries: {speaker,character,model:active character path,gender,voice,performance}.
@@ -61,7 +86,10 @@ end_card: {seconds,title,picture,product}; reserve CARD_SECONDS at the end, with
 mix explains sound. Optional beats describe contiguous shots before the card:
 {start,end,shot,picture,sound,faces:[speaker IDs]}. The audio helper generates measured line
 times, a default two-shot when beats are omitted, mix/timeline/mouths, and a portable receipt.
-If dialogue doesn't fit, shorten the lines and use a new audio folder; reuse verified takes.
+If dialogue doesn't fit, simplify the exchange while preserving complete thoughts and the
+viewer_takeaway. Never strip connecting words until it becomes cryptic ("Dead / This / Dead"
+is not a meaningful conversation). Reduce turns before dropping meaning. Commands must precede
+compliance; leave a response beat. Reuse verified takes; changed wording uses new takes.
 Use the AUDIO command below. Its audio/production.json is the authoritative measured plan.
 2. Build scene.blend and reproducible build.py in this workspace. The repo's docs/worlds.md
 documents blender.staging.import_actor and frame_subjects. Read only the relevant recipe
@@ -73,7 +101,14 @@ full render and correct obvious product scale, occlusion and face orientation fi
 Use actual armature names from imported actors. Put these in rigs.json: {speaker:armature}.
 Use blender/performance.py apply(timeline,mouths,rigs,models={speaker:source_model}) for measured
 speech, idle and blinks. Preserve intentional poses/actions. Apply verified library motions
-where useful. Show faces and the product clearly at phone size; inspect the payoff.
+where useful. Frame speakers' upper bodies and faces clearly at phone size, not the entire
+set. Start near their eye level; a high overhead view hides faces and is not a default
+conversation shot. A different angle is welcome when it improves this specific scene.
+frame_subjects accepts explicit min/max upper-body bounds from world_bounds; avoid
+shrinking the actors merely to fit a building. Keep product scale plausible and secondary,
+and stage conversation partners near each other, not at distant environment spawn anchors.
+Never use a giant billboard blocking their bodies. The closing clip supplies the product close-up;
+cover text need not be readable throughout the conversation. Inspect the actual response.
 3. Pack resources, save the scene, then use RENDER below. It checks speaking faces/rigs
 before expensive frames. Fix a reported staging defect in the existing scene and retry.
 Set scene duration/fps to the
@@ -84,21 +119,27 @@ the last CARD_SECONDS. Keep a full-duration picture/audio master; a short closin
 can hold the final story composition for Frame to replace. Never replace the story with a card.
 4. Write used-assets.json as an array of catalog IDs actually used. Run SUBMIT with your
 actual audio receipt, scene, source, preview and rig map. This writes the complete result.json.
-Keep the full dialogue, story action, reaction and payoff. Report any timing/staging adaptation
+Keep the full meaningful exchange and response. Report any timing/staging adaptation
 in summary so the editor judges this measured version. Finish the first usable cut promptly;
 spend remaining effort on meaningful action and readability, not extra process documents.'''
 
 EDITOR_JOB = '''Inspect the animator's actual video across its story and transitions. Edit picture
-and sound for clear action, natural response timing, readable faces/product and a convincing
-payoff. The animator's measured direction and dialogue are authoritative: the earlier SCRIPT
-is a guide, not an obligation to restore lines deliberately shortened for timing. Preserve the
-central premise/product. Listen only if your tools support it; do not claim listening otherwise.
+and sound for clear dialogue, natural response timing, readable faces and a convincing
+payoff. Measured timings are authoritative, but shortened wording is NOT automatically good.
+Read the ACTUAL spoken words alone: what does someone want, how does the reply answer, and
+what will a first-time viewer understand about the product? Compare with SCRIPT.viewer_takeaway.
+Missing connecting words, unexplained non sequiturs or contradictory response timing are
+story defects, even if the script summary claims a joke lands. Judge what is shown/said,
+not intended lore or a hidden prop. Plain sincere dialogue needs no joke. Preserve its meaning.
+Listen only if your tools support it; do not claim listening otherwise.
 Keep a good cut unchanged. Cut only dead time or improve an actual issue; no compulsory second
 render. Use measured timeline entries to keep spoken lines intact. Do not add captions/URLs;
-Frame supplies the short product end card afterwards. Judge the complete story, not perfection
+Frame supplies the short product end card afterwards: its absence here is NOT a defect and
+must never cause an animator repair. Judge the complete story, not perfection
 of minor décor. Low-resolution early-game art is intentional. A brief held reaction
-shot is not automatically a defect: use the picture freeze diagnostics with the
-actual video to judge its purpose. A mostly frozen movie is not animation.
+shot is not automatically a defect: local mouth, gaze and gesture animation is enough
+for a clear conversation. Do not demand walking, prop tricks or camera drift to add motion.
+Use picture diagnostics with the actual video; a truly frozen movie is not animation.
 
 Write cut-plan.json: {segments:[{start,end,reason}],removed_lines:[{index,reason}],
 sound_plan:"...",review:{verdict:"pass",summary:"specific observations",findings:[]}}.
@@ -119,9 +160,13 @@ def production_brief(state, task, work, timeout, home, store=None):
     card = min(out['end_card_seconds'], out['target_seconds'] / 2) if out['cta'] else 0
     project = {'COUNT': c['count'], 'TARGET_SECONDS': out['target_seconds'],
                'STORY_SECONDS': out['target_seconds'] - card, 'CARD_SECONDS': card,
+               'MAX_SPOKEN_WORDS': max(1, math.floor((out['target_seconds'] - card) * 2)),
                'EFFORT': c['generation']['effort'], 'ATTEMPT_SECONDS': round(timeout, 1),
                'WORKSPACE': str(work), 'products': c['products'], 'concept': c['concept'],
                'brand': c['brand']['direction'], 'look': out['look']}
+    execution = state.get('execution', {})
+    project['PERFORMANCE'] = {key: execution[key] for key in
+                              ('target_seconds', 'active_seconds', 'mode') if key in execution}
     prefix = ('cd ' + shlex.quote(str(work)) + ' && env PYTHONPATH=' + shlex.quote(str(REPO)) + ' ')
     controller = prefix + shlex.quote(sys.executable)
     audio_python = prefix + shlex.quote(c['audio']['python'] or sys.executable)
@@ -129,7 +174,11 @@ def production_brief(state, task, work, timeout, home, store=None):
               'Repository/shared assets are read-only; never use archived assets or modify originals. '
               'Other runs may be active: keep temporary scripts/media inside WORKSPACE too. '
               'Do not launch agents, publish, install services or access secrets. Write result.json in '
-              'WORKSPACE; a prose completion message is not a submission. Save reusable work early.\n')
+              'WORKSPACE; a prose completion message is not a submission. Save reusable work early. '
+              'PERFORMANCE is a speed target, not a deadline. ATTEMPT_SECONDS is a runaway watchdog, '
+              'not time to fill. Aim to finish promptly. Before optional new construction/polish, check '
+              'whether .performance-target.json exists: if so, finish existing work and omit optional '
+              'scope. Never delete frame caches to retry; hashes select the correct frames automatically.\n')
     if stage == 'script':
         project['characters'] = [Path(p).stem for p in c['sources']['characters']]
         job = SCRIPT_JOB
@@ -151,6 +200,13 @@ def production_brief(state, task, work, timeout, home, store=None):
         project.update(repo=str(REPO), active_characters=c['sources']['characters'],
                        format={k: out[k] for k in ('width', 'height', 'fps')})
         if stage == 'animate':
+            from .library import library_root
+            candidates = [library_root(c)]
+            if out.get('end_card_library'):
+                candidates.append(Path(out['end_card_library']))
+            motion = next((root for root in candidates if (root / 'scripts/conversation_motion.py').is_file()), None)
+            if motion:
+                project['MOTION_LIBRARY'] = str(motion.resolve())
             project['AUDIO'] = (audio_python + ' -m harness.production_tools audio plan.json '
                 '--config production-config.json --output audio --cache-dir ' + shlex.quote(str(home/'cache'/'voices')))
             project['RENDER'] = (controller + ' -m harness.render --scene scene.blend --production audio/production.json --rigs rigs.json '
@@ -158,11 +214,20 @@ def production_brief(state, task, work, timeout, home, store=None):
                 ' --fps ' + str(out['fps']) + ' --seconds ' + str(out['target_seconds']) +
                 ' --effort ' + c['generation']['effort'] + (' --fast' if c['generation']['fast'] else '') +
                 ' --blender ' + shlex.quote(c['tools']['blender']) + ' --ffmpeg ' + shlex.quote(c['tools']['ffmpeg']) +
-                ' --timeout ' + str(max(1, round(timeout * .65))))
+                ' --timeout ' + str(c['limits']['production_timeout_seconds']))
             project['SUBMIT'] = (controller + ' -m harness.production_tools submit audio/production.json '
                 '--scene scene.blend --source build.py --preview preview.mp4 --rigs rigs.json '
                 '--assets used-assets.json --catalog active-assets.json --output result.json')
             job = ANIMATOR_JOB
+            if motion:
+                job += ('\nREUSABLE GAME-STYLE ACTING: use cues=performance.conversation_cues(timeline, rigs), '
+                        'then performance.apply(timeline, mouths, rigs, models=models, cues=cues, '
+                        'library_root=MOTION_LIBRARY). This supplies measured talk/listen and gentle partner '
+                        'gaze; add an explicit gesture cue only if useful. docs/worlds.md has the cue example. '
+                        'This reuses asset-library '
+                        'recipes and the matching actor clips instead of inventing body keyframes. '
+                        'Use a planted conversation by default; walking or prop contact is optional. '
+                        'Do not use camera drift to compensate for missing character acting.')
             project['publication_id'] = state['id'] + ':' + task['id']
             job += ('\nIf you create a genuinely reusable asset, optionally declare candidate_manifest '
                     'and all its dependencies in result.json following repo docs/library.md. Use '
@@ -199,6 +264,18 @@ def validate_production_media(engine, state, task, data, work, config):
         names = {p['name'] for p in config['products']}
         if names and any(s['product'] not in names for s in data['scripts']):
             raise ContractError('Script product must name one of the configured products')
+        characters = {Path(p).stem for p in config['sources']['characters']}
+        if characters and any(a['character'] not in characters for s in data['scripts'] for a in s['cast']):
+            raise ContractError('Script cast must use supplied active character names: ' + ', '.join(sorted(characters)))
+        out = config['output']
+        card = min(out['end_card_seconds'], out['target_seconds'] / 2) if out['cta'] else 0
+        limit = max(1, math.floor((out['target_seconds'] - card) * 2))
+        for script in data['scripts']:
+            words = sum(len(line['text'].split()) for line in script['dialogue'])
+            if words > limit:
+                raise ContractError(f'Script has {words} spoken words; maximum {limit} for the story window. '
+                                    'Rewrite a shorter complete exchange, preserving its meaning. Do not delete '
+                                    'connecting words into fragments; simplify the premise or reduce turns.')
         return
     if stage == 'edit':
         if data['verdict'] == 'revise':

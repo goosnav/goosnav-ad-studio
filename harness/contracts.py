@@ -94,6 +94,28 @@ def validate(stage, data, workspace, context):
                 raise ContractError('Each script guide must be an object')
             for key in ('id', 'title', 'premise', 'script', 'visual_direction', 'product', 'cta'):
                 text(script, key)
+            text(script, 'viewer_takeaway')
+            cast = script.get('cast')
+            if not isinstance(cast, list) or not cast:
+                raise ContractError('Script needs cast: [{speaker,character,reason}] using supplied active characters')
+            speakers = set()
+            for actor in cast:
+                if not isinstance(actor, dict):
+                    raise ContractError('Script cast entries must be objects')
+                for key in ('speaker', 'character', 'reason'):
+                    text(actor, key)
+                if actor['speaker'] in speakers:
+                    raise ContractError('Script cast speaker IDs must be unique')
+                speakers.add(actor['speaker'])
+            dialogue = script.get('dialogue')
+            if not isinstance(dialogue, list) or not dialogue:
+                raise ContractError('Script needs exact dialogue: [{speaker,text}]; the words must carry the meaning')
+            for line in dialogue:
+                if not isinstance(line, dict):
+                    raise ContractError('Dialogue entries must be objects')
+                text(line, 'speaker'); text(line, 'text')
+                if line['speaker'] not in speakers:
+                    raise ContractError('Dialogue speaker must name a cast speaker')
             if script['id'] in ids:
                 raise ContractError('Script guide IDs must be unique')
             ids.add(script['id'])

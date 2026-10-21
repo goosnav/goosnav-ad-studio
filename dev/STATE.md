@@ -4,6 +4,90 @@ Updated: 2026-10-20
 
 ## Current position
 
+2026-10-20 dialogue/parallel reliability correction verified.
+The owner's latest quality report supersedes the earlier "passed" creative verdicts:
+the 20:24 batch ran concurrently, but two films failed. Animator repairs were killed
+by shrinking wall-time allowances (one received only 40s then 11s). Two previews
+also failed whole-frame freeze detection despite local acting. The completed film
+reduced "Dead end / Try this / Still dead" to "Dead / This / Dead"; technical success
+and its editor pass did not establish comprehensible advertising.
+
+Repairs: compact execution v2 uses soft performance targets and finite independent
+process/stall watchdogs; old compact resumes migrate without resetting spending.
+Over-target work finishes the existing scene rather than rebuilding or replacing
+the story. Shared render/output/cache leases coordinate actual graphics work,
+including across different worker TMPDIRs; wait is visible and accounted separately.
+Provider cooldown updates preserve the longest reset deadline atomically. Linux
+attempt markers/pidfds clean up inherited detached descendants before retries;
+ownership is persisted before launch for controller-crash recovery too. An
+unconfirmed cleanup blocks that workspace with explicit feedback, rather than
+starting a second writer. Scrubbed/unreadable markers remain an explicit limitation,
+not a sandbox guarantee.
+
+Scripts require explicit cast reasons, exact dialogue and viewer_takeaway. A cheap
+pre-animation word limit requests a coherent shorter exchange, never chopped-up
+fragments. Writer/animator/editor instructions prioritize ordinary characters,
+plain dialogue and readable faces over prop mechanics. The editor must evaluate
+actual words and must not demand the end card before Frame adds it. Local-motion
+freeze calibration retains still/slideshow rejection without rewarding camera drift.
+
+Homunculus inspected at e52576f: useful reference is rest-relative behavior, not its
+sealed-face mesh or approximate speech. The active asset library now owns literal
+conversation-motion/v1 recipes; the harness samples existing actor clips and measured
+speech for talk/listen, gaze, gesture and in-place walk. Authored poses remain protected.
+The artist's separate asset checkout is untouched; main and nested brain pins were
+checked against upstream and already current before this addition.
+
+Initial writer-only probes took 7.7–15.6s; they caught overlong dialogue and default
+exotic casting before animation. Those probe jobs were cancelled after inspection,
+not delivered. Full concurrent verification IDs: 20261020-215344-16b557a8 (low/open
+brief), 20261020-215345-30d1631e (low/Goosklerf), 20261020-215347-e76f6a9d (medium/book).
+All three completed autonomously, with one successful invocation at each creative
+stage. No manual verdict, workspace repair or time extension was used. Writers
+took 13.3/12.1/16.9s and all cast ordinary characters. Measured takes preserved
+the complete scripted lines. All three full nine-second films include 6.5 seconds
+of story and a 2.5-second rotating-product card; all three MP4s are verified in
+Drive under distinct script-derived names (no source ZIP/folder uploads).
+
+| Run suffix / film | Script | Animate (wall) | Edit | Active total | Resource wait | Upload attempt |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16b557a8 / The Quiet Seat (low) | 13.33s | 574.56s | 31.99s | 696.59s | 0 | 2 |
+| 30d1631e / One Quiet Round (low) | 12.09s | 249.73s | 20.22s | 358.80s | 0 | 1 |
+| e76f6a9d / Not Lending It (medium) | 16.87s | 745.81s | 40.64s | 723.31s | 148.62s | 2 |
+
+The low open-brief film crossed its 10-minute target and finished instead of being
+killed. The medium animator waited for the shared GPU; this did not consume its
+active target. One Quiet Round uploaded while the other two were still generating.
+Drive rate-limited the other uploads; the existing durable queue retried and
+verified them without intervention.
+
+Actual frame/dialogue inspection: ordinary conversations now carry the meaning
+without a required handoff, card reveal or physical gag. The medium film has a
+warm observatory setting and readable actor exchange. Low framing remains basic:
+The Quiet Seat looks down on heads and One Quiet Round gives the corridor too much
+space. Their words are coherent, not evidence of great acting. The latter also has
+about 1.16s between measured active speech and its ASR suggests a possible Goosklerf
+pronunciation issue; no firsthand listening claim is made. Follow-up instructions
+and a reusable two-shot recipe explicitly favor nearby actors and eye-level,
+upper-body framing. Those final instruction refinements are regression-tested,
+not claimed to have been demonstrated by these already-rendered films.
+
+Assets commit 77d422e (conversation motion bank) is pushed to main and pinned here.
+Final combined suite: **832 passed, 2 skipped in 389.23s**, using
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q` on the completed code tree.
+The asset bank's standalone checks passed 3/3. Independent final review passed
+102 focused regressions with no remaining blockers; counts overlap and are not
+additive. Earlier 825/808-test runs predate the final recovery additions.
+
+Crash tests cover detached writers/leases, independent-worker survival, durable
+ownership before launch, denied cleanup blocking fallback, ordinary single-route
+resume without an explicit retry, atomic recovery eligibility, and preservation
+of earlier genuine failure allowances. No historical failed ad was relabeled as
+successful. Current evidence supports reliability and dialogue improvements, not
+a guarantee of advertising effectiveness or polished acting.
+
+## Prior compact-workflow evidence (superseded where noted above)
+
 2026-10-20 production simplification: the user contract is a short
 script guide -> animator-owned scene/audio/render -> editor -> deterministic
 finish/technical checks -> immediate per-ad MP4 upload. Independent CLI launches

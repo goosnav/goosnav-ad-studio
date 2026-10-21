@@ -4,14 +4,38 @@ Approved plan: faster ads, richer worlds, and a growing production library (2026
 
 Constraints: preserve current asset refactor; use configurable roots and stable asset identities;
 never reuse retired assets; keep dynamic providers; local voice first; character comedy central.
-Normal nine-second budgets low/medium/high 10/20/40 minutes, fast 5/10/20,
-with at most 25% overtime, scope reduction and checkpoint recovery.
+Normal nine-second performance targets low/medium/high 10/20/40 minutes,
+fast 5/10/20. Owner correction: these are soft targets, not deadlines.
 
 User contract: the CLI turns a product premise and approved assets into a reviewed,
 playable nine-second advertisement, with bounded execution and recoverable failures.
 Test fixtures are not proof of creative quality.
 
 ## Current compact workflow (2026-10-20)
+
+Latest reported failure: the three 20:24 parallel runs did overlap,
+but two failed. 2494991d rejected local acting as frozen then timed out its repair
+during render; 49dd6cea timed out, recovered a cut, then had only 40/11 seconds for
+an editor-requested repair. b343aec5 completed but reduced "Dead end / Try this /
+Still dead" to "Dead / This / Dead" and was incorrectly accepted as coherent.
+The prior successful-run evidence below does not establish acceptable creativity.
+
+Current repair scope: soft production targets with real per-invocation watchdogs;
+dialogue-first script/animator/editor contracts and contextual casting; local-motion
+freeze calibration; stable shared render coordination and per-attempt cleanup;
+reusable conversation behaviors informed by Homunculus, in the asset library.
+Acceptance requires fresh concurrent CLI generations, actual dialogue/frame review,
+full-story outputs and delivery receipts, in addition to regression tests.
+
+Fresh verification: all three 21:53 concurrent CLI launches completed and their
+full nine-second MP4s were verified in Drive. Writing took 12–17 seconds. Active
+totals were 6.0 and 11.6 minutes for low, 12.1 minutes for medium; medium also waited
+2.5 minutes for the GPU. The 11.6-minute low run finished beyond its target instead
+of being killed. Two uploads recovered automatically from rate limits. Dialogue
+is coherent and independent of prop mechanics; low-effort framing/acting remains
+basic. See dev/STATE.md for exact evidence and limitations, not an aesthetic guarantee.
+Final combined regression suite: **832 passed, 2 skipped** (389.23s). Independent
+cleanup/recovery review found no remaining blockers after the final fixes.
 
 New CLI runs now use one concise script guide, an animator-owned scene/audio/render,
 an editor, and deterministic finishing/QA/packaging. Each finished ad uploads
@@ -61,7 +85,8 @@ describes earlier graphs, not the current default workflow.
 
 - Work in the shared feature workspace; preserve concurrent edits and the user's dirty asset checkout.
 - Use parallel agents only for disjoint modules; main agent owns integration and scheduling.
-- Existing saved runs retain legacy execution policy. New runs receive versioned budgets.
+- Existing saved runs retain their graphs. Compact runs migrate to soft targets
+  without resetting spending; pre-compact graphs retain legacy execution policy.
 - Time targets scale linearly with ad duration and count; cold dependency downloads are
   reported separately and should be completed by preflight before a timed benchmark.
 - Asset publication is a post-production operation and cannot invalidate a completed ad.

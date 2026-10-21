@@ -45,13 +45,15 @@ DEFAULT WORKFLOW (EVERY NEW CLI RUN)
   # editor judges brief held reactions; controller QA still rejects mostly
   # frozen films, broken speech, black/unreadable footage and missing story.
   # The writer keeps the chosen model but uses low reasoning. A single 9-second
-  # script stage gets <=60 seconds per revision; larger batches get <=120 seconds,
-  # bounded by the remaining run budget. The animator keeps the selected effort.
+  # writer invocation has a 60-second watchdog; larger batches allow up to 120.
+  # Repair gets a real invocation allowance, not a tiny leftover time slice.
+  # The animator keeps the selected effort. Performance targets never terminate
+  # a compact run; configured process/stall watchdogs still catch runaway jobs.
   # Compact context retains the three recent results and character voice memory.
 
 PARALLEL RUNS (USE THE PRINTED IDS)
-  ./ad "A character struggles to open Book Two"  # detached; prints first ID
-  ./ad "A Goosklerf game gets interrupted"      # detached; starts independently
+  ./ad "Two people discuss Goosnav Book Two"    # detached; prints first ID
+  ./ad "Two friends talk about playing Goosklerf" # starts independently
   ./ad list
   RUN_A=REPLACE_WITH_FIRST_RUN_ID
   RUN_B=REPLACE_WITH_SECOND_RUN_ID
@@ -60,6 +62,12 @@ PARALLEL RUNS (USE THE PRINTED IDS)
   ./ad pause "$RUN_A"
   ./ad resume "$RUN_A"
   # Omitting an ID selects the latest run: use IDs with concurrent jobs.
+  # Writing, audio preparation, scene setup and editing can overlap. Expensive
+  # renders share one per-user GPU lease; a queued render waits, not fails.
+  # Render wait is reported separately from active work. Different worker
+  # TMPDIRs do not create different GPU locks. STUDIO_RENDER_LOCK can override
+  # the shared lock location; all workers must use the same override.
+  # Per-output/cache leases also prevent overlapping retries corrupting frames.
   # Only one controller can own a given run. Different runs share hardware and
   # provider quotas; concurrency is not a completion-time guarantee.
   # Drive transfers remain globally serialized, with durable automatic retries.
@@ -288,7 +296,8 @@ PROVIDER FAILOVER / WAITING_PROVIDER
   # repairs use limits.review_repairs (default 2). Fast mode uses one per round.
   # If those repairs fail, one bounded autonomous replan adapts the affected ad
   # to verified asset capabilities while preserving completed ads. Review and
-  # technical gates still apply. The existing hard time ceiling is unchanged.
+  # technical gates still apply. Historical multi-stage graphs retain their
+  # explicit ceilings; compact script/animate/edit runs use soft time targets.
   # Exhausted automatic recovery records a failed ad and continues other ads;
   # it does not request manual review. Automatic waits never reset budgets.
   # A repair that fixes evidence but forgets to resubmit result.json can reuse
@@ -298,10 +307,18 @@ PROVIDER FAILOVER / WAITING_PROVIDER
   # Note: manual workers profiles with ONLY Claude cannot fall back to Codex.
 
 AGENT STALLS / TIMEOUTS
-  # Attempts are bounded by their stage limits and the run's remaining budget.
+  # Attempts have process/stall watchdogs, not shrinking performance allowances.
   # Compact runs concentrate production work in animation, with brief scripting
   # and an editor pass before deterministic finishing. No speed is guaranteed.
   # On a timeout/stall the next provider/cheaper route is tried immediately.
+  # Quiet scene/audio/frame-journal changes count as progress. On Linux with
+  # pidfds, inherited attempt markers identify detached children for cleanup;
+  # unrelated parallel runs are not killed. This is not a security sandbox:
+  # a detached process that removes its marker cannot be tracked this way.
+  # Cleanup ownership is saved before launch so interrupted controllers can
+  # recover detached workers too. If cleanup cannot be confirmed, the error is
+  # visible and that workspace stays blocked; fallback must not race an old
+  # writer. Resume/retry rechecks the saved token before allowing more work.
   # A COMPLETE, contract-valid result.json is kept even if its worker timed out.
   # These can be tuned in harness.local.json under limits:
   # "limits": {"quick_timeout_seconds": 600, "review_timeout_seconds": 900,
@@ -322,21 +339,24 @@ NOTES
   - harness.local.json and studio.local.json are separate configs.
   - A completed pipeline does not guarantee an aesthetically good ad;
     review the MP4 before publishing.
-PRODUCTION BUDGETS, WORLDS AND REUSE
+PRODUCTION TARGETS, WORLDS AND REUSE
 ----------------------------------
   ./ad "A character comedy in a strange outpost" -s 9 -e high
   ./ad "A quick Goosklerf exchange" -s 9 -e low --fast
 
-Effort selects production scope/model intensity. Base budgets per 9-second ad:
-  EFFORT     NORMAL       --fast       HARD CEILING (NORMAL / --fast)
-  low        10 minutes   5 minutes    12.5 / 6.25 minutes
-  medium     20 minutes   10 minutes   25 / 12.5 minutes
-  high       40 minutes   20 minutes   50 / 25 minutes
---fast halves the base budget while keeping the model tier/provider. The hard
-ceiling adds 25% to that budget. Budgets scale with duration/count. These are
-budget ceilings, NOT measured speeds or promised completion times. Provider
-waiting is accounted separately. Rendering hardware and scene complexity also
-affect completion time. Use ./ad metrics RUN_ID for actual work.
+Effort selects production scope/model intensity. Performance targets per 9-second ad:
+  EFFORT     NORMAL       --fast
+  low        10 minutes   5 minutes
+  medium     20 minutes   10 minutes
+  high       40 minutes   20 minutes
+These are targets, NOT termination deadlines, measured speeds or promises.
+--fast halves the target while keeping the model tier/provider. Targets scale
+with duration/count. Crossing one records finish_existing: preserve meaningful
+dialogue, voices, scene and frame cache; drop optional construction/polish.
+It does not kill the animator, downgrade the chosen model or starve editing/QA.
+Each invocation still has configured process/stall limits for hung workers;
+limits.production_timeout_seconds is the safety watchdog, not a time to fill.
+Use ./ad metrics RUN_ID for actual work, and ./ad status RUN_ID for target state.
 
 The animator handles measured audio, scene construction and rendering together.
 The editor checks the resulting film and makes needed edits before deterministic
@@ -348,12 +368,26 @@ An animator may also declare an optional candidate_manifest for reusable asset
 publication after its ad packages successfully; this is separate from MP4 upload.
 
 Existing saved runs retain their graph, accepted artifacts and delivery receipts.
-Resume does not reset spending. If a run has exhausted its saved allowance, an
-explicit extension is available:
+Resume preserves spending. Existing compact runs automatically adopt soft targets.
+Only historical pre-compact graphs retain the old hard budget; for those an
+explicit extension remains available:
   ./ad resume RUN_ID --extra-minutes 10
 
-Low favors tested sets/performances; higher effort permits more construction and
-variation within the available budget. Active catalog roots may move: configure
+Low favors tested sets/performances; higher effort permits more ambitious framing
+and atmosphere. No extra planning stages are added. New script guides include
+explicit cast/reason, exact dialogue and viewer_takeaway. Default casting is
+ordinary characters: astronaut/skeleton/exotic roles need relevant story context.
+The spoken exchange must make sense even if physical animation is rough. Props,
+tiny gestures and hidden game rules must not carry the meaning. Timing edits
+must preserve complete thoughts; the editor judges the actual spoken version.
+Backgrounds remain evocative early-3D worlds; clarity does not require photorealism.
+Reusable talk/listen, gesture, look-at and in-place walk recipes live in the
+3D asset library's scripts/conversation_motion.py; see docs/conversation-motion.md
+there and this repository's docs/worlds.md. The harness reads literal recipe
+data, never executes asset-library Python. Measured speech owns the mouth;
+authored poses/animations remain protected. Optional new reusable assets still
+go through validated publication after a finished ad, not direct worker pushes.
+Active catalog roots may move: configure
 sources.assets / sources.characters and resolve stable catalog IDs rather than
 copying old paths.
 output.look: retro_world (new default), ps1, or clean. retro_world uses original

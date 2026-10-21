@@ -1,4 +1,4 @@
-"""Versioned active-time budgets. Pauses and provider waits never reset spending."""
+"""Performance targets for production; historical graphs retain v1 budgets."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 import time
@@ -62,20 +62,39 @@ class Budget:
         self.state, self.save = state, save
         self.data = state.get('execution')
         self.last = time.monotonic()
+        self.waiting = False
+        if self.data and any(t['stage'] == 'script' for t in state.get('tasks', [])):
+            # Preserve recorded spending/checkpoints on resume. The old ceiling
+            # is historical data, not authority to kill a productive compact run.
+            self.data['version'] = 2
 
-    def tick(self, force=False):
+    @property
+    def soft(self):
+        return bool(self.data and self.data.get('version', 1) >= 2)
+
+    def tick(self, force=False, waiting=False):
         if not self.data:
             return
         now = time.monotonic()
         elapsed = now - self.last
-        if force or elapsed >= 2:
-            self.data['active_seconds'] += elapsed
+        if force or elapsed >= 2 or waiting != self.waiting:
+            if self.waiting:
+                self.data['waiting_seconds'] += elapsed
+                self.data['resource_wait_seconds'] = self.data.get('resource_wait_seconds', 0) + elapsed
+            else:
+                self.data['active_seconds'] += elapsed
             self.last = now
+            self.waiting = waiting
+            if self.soft and self.data['active_seconds'] >= self.data['target_seconds'] and self.data['mode'] != 'finish_existing':
+                self.data['mode'] = 'finish_existing'
+                self.data['changes'].append({'at_seconds': round(self.data['active_seconds'], 1),
+                    'reason': 'performance target exceeded',
+                    'scope': 'finish existing dialogue and scene; no optional rebuilds or polish'})
             self.data['heartbeat_at'] = time.time()
             self.save(self.state, 'budget_checkpoint')
 
     def spent(self):
-        return self.data['active_seconds'] + time.monotonic() - self.last if self.data else 0
+        return self.data['active_seconds'] + (0 if self.waiting else time.monotonic() - self.last) if self.data else 0
 
     @contextmanager
     def external(self, metric):
@@ -92,6 +111,8 @@ class Budget:
                 self.save(self.state, 'external_time', {'metric': metric})
 
     def remaining(self):
+        if self.soft:
+            return float('inf')
         return max(0, self.data['hard_seconds'] - self.spent()) if self.data else float('inf')
 
     def check(self):
@@ -146,6 +167,10 @@ class Budget:
         if not self.data:
             return ceiling
         self.check()
+        if self.soft:
+            # Each invocation keeps its configured runaway/stall protection.
+            # Previous work must not leave a useful repair only 11 seconds.
+            return min(ceiling, min(120, 45 + 15 * self.state['config']['count'])) if task['stage'] == 'script' else ceiling
         if any(t['stage'] == 'script' for t in self.state['tasks']):
             if task['stage'] == 'script':
                 spent = sum(max(0, a.get('ended', a['started']) - a['started'])

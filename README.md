@@ -5,10 +5,11 @@
 Quick start: `./ad "what the ad should be"` (see [`CLI.txt`](CLI.txt) for the variations).
 
 Use `-e low|medium|high` for production scope/model intensity. Per 9-second ad,
-the base budgets are **10/20/40 minutes** for low/medium/high; `--fast` halves
-them to **5/10/20 minutes** while retaining the model tier. The hard ceiling is
-the base budget plus **25%**. These are budget limits, not measured speeds or
-completion promises; scene complexity, hardware and provider availability matter.
+the performance targets are **10/20/40 minutes** for low/medium/high; `--fast` halves
+them to **5/10/20 minutes** while retaining the model tier. These are soft targets,
+not termination deadlines or completion promises. Crossing a target prioritizes
+finishing existing work, not discarding it. Scene complexity, hardware and provider
+availability matter; process/stall watchdogs still protect against runaway workers.
 `./ad metrics RUN_ID` reports actual work; `./ad feedback RUN_ID --rating good --note
 "The reaction worked"` supplies traceable guidance for later ads.
 
@@ -41,10 +42,14 @@ film, makes needed cuts and preserves accurate speech timing. There are no human
 production approval gates; an end-card-only video cannot substitute for the ad.
 Existing saved runs retain their workflow and accepted work when resumed.
 For new runs, the writer keeps the chosen model but uses low reasoning: a single
-9-second script gets at most 60 seconds per revision; larger batches are capped
-at 120 seconds per revision, subject to the remaining run budget. The animator
+9-second writer invocation has a 60-second watchdog; larger batches allow up to
+120 seconds. Repairs receive real allowances, not tiny leftover time slices. The animator
 keeps the selected effort. Compact context retains the three recent results and
 character voice memory.
+Scripts now include exact dialogue, justified casting and a plain viewer takeaway.
+Ordinary characters are the default; exotic characters need relevant story context.
+Words must carry the meaning even if physical animation is rough. Small gestures,
+prop handling and jokes are optional, not the foundation of comprehension.
 
 Creative workers use your Codex/Claude subscriptions. `-p openai|anthropic`
 selects a preferred provider while preserving automatic fallback. Models resolve
@@ -55,7 +60,7 @@ Separate launches generate concurrently. Each prints its own run ID; use explici
 IDs for controls when several runs are active (omitting an ID selects the latest):
 
 ```sh
-./ad "A character struggles to open Book Two"  # detached; prints first run ID
+./ad "Two people discuss Book Two"            # detached; prints first run ID
 ./ad "A Goosklerf game gets interrupted"      # detached; starts independently
 ./ad list
 RUN_A=REPLACE_WITH_FIRST_RUN_ID
@@ -145,10 +150,11 @@ every invocation including cache hits, and resumes only verified frame checkpoin
 An MP4 from this helper is not evidence of creative approval.
 
 `harness.execution` accounts for active work and provider waiting separately;
-ordinary resume retains spending. At the hard ceiling, an operator can explicitly
-extend it with `./ad resume RUN_ID --extra-minutes 10`. Runs without the versioned
-execution policy retain legacy behavior. Attempts remain bounded by their stage
-limits and the remaining run budget.
+ordinary resume retains spending. Compact runs use soft targets, including older
+compact snapshots resumed now. Historical pre-compact graphs retain explicit
+ceilings and `./ad resume RUN_ID --extra-minutes 10`. Shared render leases queue
+GPU work without serializing scripting/editing; resource waits are reported
+separately. Attempts retain configured process/stall limits.
 Strict review contracts reject a pass verdict with unresolved blocking or important
 defects. `harness.learning` provides product-scoped,
 source-linked feedback, reuse ordering, voice suggestions and hash-verified research

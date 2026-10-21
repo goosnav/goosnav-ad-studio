@@ -296,11 +296,18 @@ def check_picture(path, config, story_end, master=None, check_freeze=True, check
     picture differs from the edit master and carries dark type on a light ground."""
     tools = config['tools']; problems = []
     detect_hold = .5 if max_frozen_fraction is not None else MAX_FREEZE
+    # Whole-frame averages at -60 dB treated real mouth/head acting against a
+    # still set as a frozen movie and rewarded pointless camera drift instead.
+    # Compact dialogue scenes need sensitivity to local motion. Actual stills
+    # and accumulated slideshow holds are still rejected by the same fraction.
+    noise = -75 if max_frozen_fraction is not None else -60
     r = subprocess.run([tools['ffmpeg'], '-nostats', '-t', f'{story_end:.3f}', '-i', str(path), '-an', '-vf',
-                        f'freezedetect=n=-60dB:d={detect_hold},blackdetect=d={MAX_BLACK}:pix_th=0.1,'
+                        f'freezedetect=n={noise}dB:d={detect_hold},blackdetect=d={MAX_BLACK}:pix_th=0.1,'
                         'fps=4,signalstats,metadata=print:file=-', '-f', 'null', '-'],
                        capture_output=True, text=True, timeout=bounded_timeout(600))
     log = r.stdout + r.stderr
+    if r.returncode:
+        raise ContractError('Picture QA could not decode the video: ' + log[-1000:])
     starts = [float(v) for v in re.findall(r'freeze_start: ([\d.]+)', log)]
     lengths = [float(v) for v in re.findall(r'freeze_duration: ([\d.]+)', log)]
     # An unfinished freeze at the cut-off point still counts up to story_end.
