@@ -186,7 +186,8 @@ def _bed(path, frames):
     return pcm
 
 
-def assemble(direct_result_path, output_dir, *, fps=None, bed=None, bed_gain_db=-30, no_bed=False):
+def assemble(direct_result_path, output_dir, *, fps=None, bed=None, bed_gain_db=-30, no_bed=False,
+             events=None, bed_rationale=None):
     """Consume an accepted direct result; write a complete, portable audio artifact set.
 
     Only digital-zero edge samples can be trimmed, trailing first and only as
@@ -264,11 +265,14 @@ def assemble(direct_result_path, output_dir, *, fps=None, bed=None, bed_gain_db=
                    'limited_by': (['gain_cap'] if dialogue_gain_db < requested_gain_db else []) +
                                  (['peak_headroom'] if headroom < 1 else []),
                    'blockers': blockers}
-    rationale = ('No bed: explicit caller choice.' if no_bed else 'Caller-supplied WAV bed at quiet gain; never looped.')
+    rationale = ('No bed: explicit caller choice.' if no_bed else
+                 bed_rationale or 'Caller-supplied WAV bed at quiet gain; never looped.')
     if not selected:
         rationale += ' Intentional silent dialogue stem. ' + str(data['direction'].get('mix', ''))
     timeline = {'sample_rate': RATE, 'channels': 2, 'frames': frames, 'duration': frames / RATE, 'fps': fps,
-                'dialogue': timeline_lines, 'events': [], 'sound_rationale': rationale}
+                'dialogue': timeline_lines,
+                'events': [{'name': e['name'], 'sample': round(e['at'] * RATE)} for e in events or []],
+                'sound_rationale': rationale}
     audit = {'schema': 1, 'source_direct_sha256': sha256(direct),
              'source_manifest_sha256': sha256(manifest_path) if manifest_path else None,
              'mixer_sha256': sha256(Path(__file__)), 'lines': audit_lines, 'bed': bed_audit,

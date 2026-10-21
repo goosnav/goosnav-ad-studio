@@ -122,8 +122,10 @@ def load_config(path=None, overrides=None):
     for key in ('width', 'height', 'fps', 'target_seconds', 'min_seconds', 'max_seconds'):
         if type(o[key]) is not int or o[key] < (0 if key.endswith(('min_seconds', 'max_seconds')) else 1):
             raise ConfigError(f'output.{key} must be a positive integer')
-    o['min_seconds'] = o['min_seconds'] or max(1, round(o['target_seconds'] * .8))
-    o['max_seconds'] = o['max_seconds'] or round(o['target_seconds'] * 1.3)
+    # target_seconds is a guideline: the story's measured performance sets the length.
+    # The default window only stops runaway or empty films.
+    o['min_seconds'] = o['min_seconds'] or max(1, round(o['target_seconds'] * .5))
+    o['max_seconds'] = o['max_seconds'] or max(round(o['target_seconds'] * 2.5), o['target_seconds'] + 15)
     if not o['min_seconds'] <= o['target_seconds'] <= o['max_seconds']:
         raise ConfigError('output.target_seconds must lie between min_seconds and max_seconds')
     if any(o[k] % 2 or not 64 <= o[k] <= 4096 for k in ('width', 'height')):

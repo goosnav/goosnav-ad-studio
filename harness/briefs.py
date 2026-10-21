@@ -185,9 +185,9 @@ mouths independently for each speaker. It preserves actor placement and owns the
 tracks. Keep camera, set and static product staging from the boards. Save the report.
 For an optional hand gesture or requested walking cycle, use performance.play_clip with an
 actual available clip (see WORKER_GUIDE.md); never invent a missing clip. No custom finger/arm
-IK, book opening, page turning, floating limbs or interaction with a static prop. If the plan
-depends on an unsupported action, document it and simplify to dialogue with an intact product
-hero. Do not plow through with a fabricated capability or hide it behind a camera cut.
+IK, floating limbs or interaction with a static prop, except the verified Book Two helpers
+(blender/book2.py: retime, turn_page_by_hand, slam_by_hand). If the plan depends on another
+unsupported action, document it and simplify to dialogue with a legible product insert. Do not plow through with a fabricated capability or hide it behind a camera cut.
 
 Frame the speaker's face unobstructed, preferably three-quarter so the mouth reads past the
 snout. Keep mouths shut during the other speaker's lines. Use delivery fps/aspect, render a
@@ -481,6 +481,9 @@ def brief(task, config, inputs, sources, repair='', previous_runs='', modern=Fal
         project['cast_models'] = config['sources']['characters']
     if stage == 'research':
         project['source_index'] = sources
+    if stage in ('research', 'write', 'revise', 'select', 'direct', 'assets', 'animate'):
+        from .content import product_content
+        project['product_content'] = product_content(config, compact=True)
     if stage in ('assets', 'animate', 'audio', 'edit'):
         project['tool_guide'] = str(guide)
     if modern and stage == 'direct':

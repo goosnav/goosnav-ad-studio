@@ -18,9 +18,14 @@ No arbitrary runtime or minutes-per-ad production target is the creative success
 
 ## Implementation boundary
 
-This revision changes the authoring playbook, briefing and commercial-review artifacts. It preserves the October 21 `harness.creative.job` product-taste implementation, tests and source handoffs. It does not claim to add an automatically enforced paid-value field or dynamically story-led duration to the compact harness.
+The compact `./ad` path now carries the October 21 lessons in code (tests: `tests/harness/test_product_content.py`):
 
-For an unconstrained story, use the direct film/toolkit route demonstrated by `films/get_your_own/`, or deliberately configure a fresh run after duration is known. Compact `./ad` runtime validators and speed presets remain in code. Never falsify timings, mutate an active run behind the controller, or bypass resource safeguards. A future code-level paid-value handoff requires implementation and regression tests, not a documentation claim.
+- **Product content inventory.** `harness/product_content.json` lists real viewable content per product (covers, the current offer, Book Two drawing sheets, Goosklerf cards and rulebook lines), each with a locator and a `confirmed`/`unconfirmed` membership status. `harness/content.py` hands it to the script and animator stages as `PRODUCT_CONTENT` (compact form in modern briefs). Mark items `confirmed` there once the printed edition is checked; that is how ads may claim more.
+- **Script and animator prompts** (`harness/production.py`): product taste first, the comedy craft that worked (deadpan, withholding, escalation, reactions in tight close-ups, a button, a closing line that can double as the CTA), legible page/card inserts, the Book Two helpers, three-quarter camera angles for long noses, and `shots.face_camera`.
+- **Story-led duration.** `output.target_seconds` is a guideline. Unset bounds default to 0.5x-2.5x the target (at least target+15 s), and the audio step grows a plan's duration to fit its measured takes plus a reply beat, up to the maximum, instead of rejecting it.
+- **Ambience and foley.** A plan's `direction.sounds` (`ambience` plus events placed against lines) becomes a procedural bed (`harness/foley.py`) mixed under the dialogue within the existing mix gates.
+
+There is still no automatically enforced paid-value field. Never falsify timings, mutate an active run behind the controller, or bypass resource safeguards.
 
 ## Source and review integrity
 

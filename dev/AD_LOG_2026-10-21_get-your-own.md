@@ -35,6 +35,12 @@ and Self-Filling Coffee Mug. These are absurd, specific and visual, which is exa
 someone want to see the rest. So the ad opens the book at spread 8|9 and only ever shows
 2025 pages. No drawing was imitated or regenerated.
 
+**Correction (later the same day):** membership of these sheets in the printed Book Two is
+*not* verified. A drawing date and a texture inside the Book Two model are not edition proof,
+and several of the same inventions also appear as Goosklerf card art (footoil,
+shoemultipliers, gnomedeplacator, gnomearmorer, freak, spiglet). `harness/product_content.json`
+therefore lists them as `unconfirmed` until the owner confirms the printed pages.
+
 ## 2. Concept
 
 Rejected directions: the book on a pedestal as a sacred object (no joke); a character

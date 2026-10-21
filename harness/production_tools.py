@@ -15,7 +15,7 @@ import shutil
 import sys
 import tempfile
 
-from . import creative, editing, mix, voice
+from . import creative, editing, foley, mix, voice
 from .contracts import contained, digest, validate
 from .direction import check_direction, check_scratch_takes
 from .lipsync import mouth_curves
@@ -78,6 +78,11 @@ def _number(value, label):
     return value
 
 
+def _grown_story_end(last_sample, fps, reply_seconds=0.6):
+    """Story end that holds the last measured take plus a reply/reaction beat, on a frame."""
+    return math.ceil((last_sample / 48000 + reply_seconds) * fps) / fps
+
+
 def audio(plan_path, config_path, output, cache_dir=None):
     """Measure one take per line, align without truncation, and save portable audio."""
     plan, config = _read(plan_path), _read(config_path)
@@ -90,8 +95,11 @@ def audio(plan_path, config_path, output, cache_dir=None):
     if not isinstance(direction['mix'], str) or not direction['mix'].strip():
         raise ValueError('direction.mix must explain the sound design')
     story_end = _number(direction['duration'], 'duration')
-    if config['output']['cta']:
-        story_end -= _number(direction['end_card']['seconds'], 'end_card.seconds')
+    card_seconds = _number(direction['end_card']['seconds'], 'end_card.seconds') if config['output']['cta'] else 0
+    story_end -= card_seconds
+    # Duration is story-led: the planned length is a guideline that grows to fit the
+    # measured performance, up to the configured maximum delivery length.
+    story_limit = config['output']['max_seconds'] - card_seconds
     root = _safe(output)
     fingerprint = hashlib.sha256(json.dumps({'plan': plan, 'config': config},
                                  sort_keys=True, allow_nan=False).encode()).hexdigest()
@@ -158,10 +166,19 @@ def audio(plan_path, config_path, output, cache_dir=None):
             if start_sample < cursor:
                 raise ValueError('Explicit line start precedes measured cursor; move it later or shorten dialogue')
             end_sample = start_sample + take['polished']['frames']
-            if end_sample > round(story_end * 48000):
-                raise ValueError('Shorten dialogue: full measured WAVs and reply gaps do not fit before the story end; use a fresh output folder for the revised plan')
+            if end_sample > round(story_limit * 48000):
+                raise ValueError('Shorten dialogue: full measured WAVs and reply gaps exceed the maximum delivery length; use a fresh output folder for the revised plan')
             line.update(id=requested['id'], start=start_sample / 48000, end=end_sample / 48000)
             cursor = end_sample + 8640  # 0.18 seconds between full takes.
+    if request_lines and (cursor - 8640) / 48000 > story_end + 1e-9:
+        needed = _grown_story_end(cursor - 8640, config['output']['fps'])
+        if needed > story_end:
+            if direction.get('beats'):
+                direction['beats'][-1]['end'] = needed
+            direction['duration'] = round(needed + card_seconds, 6)
+            direction['duration_note'] = (f'Grew from the planned {story_end + card_seconds:g} s to fit '
+                                          'the measured takes and a reply beat')
+            story_end = needed
     if 'beats' not in direction:
         direction['beats'] = [{'start': 0, 'end': story_end, 'shot': 'Two-shot',
                                'picture': 'Cast faces visible in a shared two-shot.',
@@ -196,7 +213,19 @@ def audio(plan_path, config_path, output, cache_dir=None):
         while (root / f'mix-{index:04d}').exists():
             index += 1
         mixed_dir = root / f'mix-{index:04d}'
-        mix.assemble(direct, mixed_dir, fps=config['output']['fps'], no_bed=True)
+        sounds = direction.get('sounds')
+        if sounds:
+            # Ambience and foley placed against the measured lines; synthesized, so no rights issue.
+            bed, events = foley.render(direction['duration'], sounds, direction['lines'])
+            bed_path = root / f'foley-bed-{index:04d}.wav'
+            foley.write(bed_path, bed)
+            mix.assemble(direct, mixed_dir, fps=config['output']['fps'], bed=bed_path,
+                         bed_gain_db=foley.BED_GAIN_DB, events=events,
+                         bed_rationale=f"Procedural {sounds.get('ambience', 'room')} ambience and "
+                                       f"{len(events)} placed foley events (harness.foley). "
+                                       + direction['mix'])
+        else:
+            mix.assemble(direct, mixed_dir, fps=config['output']['fps'], no_bed=True)
     if _read(mixed_dir / 'audit.json')['source_direct_sha256'] != digest(direct):
         raise ValueError('Mix checkpoint belongs to a different direction receipt')
     staged = root / 'audio-result.json'

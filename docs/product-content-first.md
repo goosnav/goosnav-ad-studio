@@ -43,7 +43,7 @@ The log records measured audio, inspected frames and final QA. An agent reading 
 
 Story/performance determines screen length unless the owner or actual placement provides a real constraint. Production-time targets are information for optimization, not creative pass/fail gates. Existing safety, budget, process and stall controls are not waived.
 
-The compact harness's fixed target/range and worker contracts remain implemented in code. This update does not silently change them. Use the authored film/toolkit route for unconstrained production, or deliberately select a fresh run configuration after the story duration is known. Do not falsify timing, mutate saved jobs, bypass safety checks, or announce that default runtime selection has changed.
+Implemented for new compact runs: `output.target_seconds` is a guideline, unset bounds default to a wide 0.5x-2.5x window, and the audio step grows a plan to fit its measured takes (see AGENTS.md). Explicit owner bounds and saved runs keep their contracts. Do not falsify timing, mutate saved jobs or bypass safety checks.
 
 ## Efficiency improvements to pursue without weakening the film
 
