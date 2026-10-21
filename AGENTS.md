@@ -1,31 +1,33 @@
-# Goosnav Ad Studio — agent entrypoint
+# Goosnav Ad Studio: agent entrypoint
 
 ## Read before creating an ad
 
-1. Read [PLAYBOOK.md](PLAYBOOK.md): current creative and production direction.
-2. Read [product-content-first.md](docs/product-content-first.md): source grounding, quality review, and duration policy.
-3. Read only the relevant product sources and tool documentation. For the October 21 reference, use [GET YOUR OWN production log](dev/AD_LOG_2026-10-21_get-your-own.md) and its [film folder](films/get_your_own/README.md).
-4. Use [the reusable brief](prompts/product-taste-brief.md) to launch a product-grounded film. The method is not a mandatory scene template.
+1. Read [PLAYBOOK.md](PLAYBOOK.md) for current creative and production direction.
+2. Read [purchase value](docs/purchase-value.md) and the relevant row in [product-class routing](docs/product-class-routing.md). Do not load unrelated business strategy.
+3. Read [product-content-first.md](docs/product-content-first.md) for source grounding and technical handoffs. The modern harness already carries product-taste notes through existing worker fields; preserve that implementation.
+4. Read only relevant product sources and tool documentation. For the October 21 reference, use [GET YOUR OWN log](dev/AD_LOG_2026-10-21_get-your-own.md) and [film folder](films/get_your_own/README.md).
+5. Use [the reusable brief](prompts/product-taste-brief.md). Review with [commercial review](prompts/commercial-review.md) before expensive production and again on the finished film.
 
-## Owner direction — October 21, 2026
+## Current owner direction: product taste plus a reason to buy
 
-**Give viewers a taste of the actual product. Make an entertaining film, not a generic pitch wearing the product's logo.** Real contents, situations, card mechanics, or object behavior should motivate the scene, reactions and curiosity.
+Give viewers an authentic taste of the product. Make an entertaining film, not a generic pitch wearing its logo. Then establish why the intended viewer would value owning or paying for the real product, beyond enjoying this free sample. A book's pages, a game interaction or a demonstrated function should cause the interest and relevant action.
 
-An arbitrary runtime or a minutes-per-ad production target is not the success criterion. Develop the scene, measure actual performance and let the edit determine length. Reuse assets and successful work to reduce wasted production time; do not reduce quality to hit an invented deadline.
+These are planning questions, not a mandatory beat sequence: audience, current substitute, desired use/ownership situation, actual paid difference, evidence, destination. Do not turn the successful reference into a required library, cast count, joke count or punchline. Do not make every product a book commercial.
 
-This direction supersedes conflicting creative shortcuts in older documents. It does NOT disable process/stall watchdogs, spending limits, factual checks, licensing, asset safeguards or existing run contracts.
+No arbitrary runtime or minutes-per-ad production target is the creative success criterion. Develop and perform the scene, measure real takes, and let useful performance determine length. Reuse successful work instead of rushing dialogue or deleting the product experience. Budget, stall, asset, licensing and existing run-contract safeguards remain active.
 
-## Important implementation boundary
+## Implementation boundary
 
-This update changes agent-facing authoring/review instructions. It does **not** silently rewrite the compact harness's runtime validators, saved-run configurations or retry/watchdog logic. The compact `./ad` defaults still encode a chosen duration and speed-oriented presets. They are not the default creative brief for an unconstrained owner request.
+This revision changes the authoring playbook, briefing and commercial-review artifacts. It preserves the October 21 `harness.creative.job` product-taste implementation, tests and source handoffs. It does not claim to add an automatically enforced paid-value field or dynamically story-led duration to the compact harness.
 
-For a story that does not fit those settings, use the direct film/toolkit route demonstrated by `films/get_your_own/`, or deliberately configure a fresh run after the story duration is known. Do not truncate speech or misreport timings to pass a validator, mutate an active run behind the controller, or claim story-led duration is implemented end-to-end in the harness. An automated duration-planning change would need separate implementation and regression tests.
+For an unconstrained story, use the direct film/toolkit route demonstrated by `films/get_your_own/`, or deliberately configure a fresh run after duration is known. Compact `./ad` runtime validators and speed presets remain in code. Never falsify timings, mutate an active run behind the controller, or bypass resource safeguards. A future code-level paid-value handoff requires implementation and regression tests, not a documentation claim.
 
 ## Source and review integrity
 
-- Verify that each depicted/referenced page, card, rule, feature or benefit belongs to the exact advertised product/edition. Presence in a mixed asset library is not proof.
-- Original Goosnav art stays unchanged; animation may present it, not invent replacement canonical drawings.
-- Do not claim to have watched/listened to media when only its script, source code or production log was available. Label source-derived observations.
-- Owner preference, technical QA, audience response and attributable commerce are distinct evidence. No invented performance lift.
-- Keep public repository material limited to production guidance and non-sensitive product references. Do not copy private personal/financial strategy, customer data or credentials here.
-- Do not spend, publish ads, change live offers, or upload new assets beyond existing explicit authorization.
+- Verify each page/card/rule/feature against the exact advertised edition. Presence in a model or a drawing date is not proof.
+- Original Goosnav art remains unchanged. Do not generate replacement canonical drawings or imply an invented advertising scene appears in the book.
+- Do not invent unpublished pages, subscription benefits, card rarity, ease of play, benchmark results, customer quotes or conversion lift.
+- Distinguish source/log interpretation from personally viewing/listening to the final render. Prior QA recorded by another agent is not your own inspection.
+- Technical validity, owner creative approval, audience attention and incremental commerce are different results.
+- Keep this public repository free of private customer/account data, business finances and credentials. Private buyer research belongs in the company brain.
+- Do not publish ads, spend, change live offers or upload assets beyond explicit authorization.
