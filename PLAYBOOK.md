@@ -1,172 +1,83 @@
-# PLAYBOOK: how Goosnav films get made
+# PLAYBOOK: product-grounded films worth watching
 
-These lessons were paid for in render hours on the first films: THE DILEMMA, LIGHTS OUT, and the sessions that followed. Read this before building anything. For the business-wide learning rule, see [`../../business/README.md`](../../business/README.md). Keep reusable animation lessons here and one-off notes in the film's README.
+**Current owner direction: October 21, 2026.** Read this before choosing a generation route. Earlier production lessons remain preserved in [the historical playbook](docs/history/PLAYBOOK-before-product-taste.md); its old creative constraints are not the current brief. Tool-specific safety and technical contracts remain authoritative.
 
----
+## 1. The creative objective
 
-## 1. Creative method
+**Give people a taste of the actual product.** The film should be entertaining and make a viewer curious about a particular book, game or object—not just make them aware that something is for sale.
 
-1. **Script first, code second.** Write `SCRIPT.md` with scenes, timings, narration and sound before any Blender code. The owner's brief was "Think *Xavier: Renegade Angel*. Don't think about constraints, just make a good script." The films that worked had a real structure: set-up, escalation, detonation, reversal, product, prices, address.
-2. **The joke is total sincerity.** A narrator who is completely sure of himself (the cosmic prophet, the BBC documentarian, the war broadcaster) treating a comic book and a card game as the most important objects in the universe. Never wink.
-3. **Execute more seriously than the premise deserves.** Real light, real camera moves, motion blur, a real mix. Cheap-looking CG kills the joke.
-4. **Each film gets its own world.** The palette, narrator register and set pieces must not overlap with earlier films. Watch the existing films before writing.
-5. **Name the real drawings on screen.** When the narration names a drawing ("a machine for oiling feet"), a hero page with that drawing passes the lens during that sentence. Time it from `gaps.json` (sentence gaps in the dry VO), not by guessing.
-6. **The ending is fixed.** Hero shot with the product lines and prices (Helvetica Bold), then a white card with the addresses as old web links (Times, `#0000EE`, underlined, bottom left). Always write `www.goosnav.shop` and `www.patreon.com/goosnav` with the `www.`.
-7. **Length:** long-form films may run 60–90 s; short-form ads follow their brief (7–20 s for the current short-ad work). **Format: 4:5 portrait (1080×1350) is the default** (owner, 2026-09-28). Make alternates by re-rendering with `--format`, never by cropping.
+Start from a real drawing, comic premise, card interaction, rule, physical feature or product experience. Let that concrete material cause what happens. Avoid abstract praise, sacred-object pedestal shots without a story, or unrelated banter followed by a pasted-on product name.
 
-## 2. Owner decisions (binding)
+The owner preferred the new GET YOUR OWN ad to the usual studio output. That is a creative judgment, not demonstrated sales or audience performance. The reusable lesson is product-specific curiosity, not "all ads must be two people in a library."
 
-| Date | Decision |
-|---|---|
-| 2026-09-25 | Ads may break the brand bible's no-motion, no-colour rules ("don't be constrained by the business folder"). Real art stays real: never draw, redraw, extend or AI-generate Goosnav drawings. |
-| 2026-09-26 (superseded 2026-09-29) | ~~Products are generic; do not use product photographs as textures.~~ **Correction:** use verified, current product artwork in ads when it is legible and unaltered (including the supplied Book Two and Goosklerf textures). Keep comic drawings real and unchanged. If the correct product art is missing or unusable, use a clearly identified proxy for a draft and replace it before delivery. |
-| 2026-09-26 | On screen the book is "Goosnav Book 2". |
-| 2026-09-28 | All films in **4:5 portrait**; existing films re-rendered in 4:5. |
+## 2. Source first, then script, then production
 
-Facts that may be stated (check `https://www.goosnav.shop/products.json` before each film):
+1. Identify the exact product and verify current buyer-facing claims.
+2. Inspect the actual material. Record its file/asset, page/card locator, what it contains, and why it belongs to this edition. Never infer edition membership just from an asset name or year.
+3. Select the specific detail that is interesting on its own. Explain what the viewer will experience and what makes them want more.
+4. Write a scene that develops that detail through character wants, reactions, demonstrations, tension or a reveal. The form may be dialogue, a performed comic premise, a demonstration, narration, or another motivated structure.
+5. Preserve a causal connection between the experience and the purchase invitation. Use a natural ending; no mandatory joke count, shot count, number of product details, or universal narrative formula.
+6. Read/perform it, then measure real voice takes. Plan useful reaction gaps, inserts and sound. Let the edit determine the length.
+7. Preview the weak points cheaply before a full render. Repair actual defects while retaining successful work.
 
-- Book 2: $29.95 on the live shop as of 2026-10-08 (was $19.95), hardcover, signed, 2025 drawings. Always re-check products.json.
-- Goosklerf (live 2026-10-08): booster $14.95 (12 cards); kits $34.95 / $59.95 / $99.95; game/rule book $19.95. Dice-based combat, fortresses; win by capturing fortresses or eliminating enemies.
-- Patreon: $3/month entry price per the 2026-09-29 supplied script bank; verify the live offer before publishing. Do not promise particular benefits or posting frequency unless the current page states them.
-- Never state comic counts, sales or awards.
+Use [the source-grounded brief](prompts/product-taste-brief.md). If source material is unavailable, name the gap. Do not invent an interior gag and claim it is in the product.
 
-## 3. Blender / Eevee on the studio machine
+## 3. Reference: GET YOUR OWN
 
-**Engine.** The Ubuntu build of Blender 4.0 has no OpenImageDenoise, so Cycles can't be denoised. Use Eevee (legacy). On the Intel HD 530 a frame takes about 4–6 s at 20 TAA samples (1080×1350) and about 5–9 s at 1920×1080. A 90 s film is roughly 2.5–3.5 h.
+The [production log](dev/AD_LOG_2026-10-21_get-your-own.md) describes a reader sharing specific Book Two inventions with a friend who cannot see the pages. Reactions escalate toward wanting to see the book; the refusal, "Get your own," is both payoff and purchase invitation. Inserts let the audience see real material, and a final librarian reaction extends the scene rather than changing it into a generic sales pitch.
 
-**One render at a time.** Two Blender processes in parallel are *slower* in total than one (0.18 vs 0.19 frames/s). `python3 -m studio render` takes the machine-wide lock (`render_lock`). Previews skip the lock and are cheap (<1 s/frame at half size, 6 samples).
+The log records an important provenance trap: the openable Book Two model contains newer pages as well as material selected for the advertised edition. Do not assume every embedded texture belongs to Book Two.
 
-**Animate with object transforms only.** This is the biggest trap. Editing mesh vertices between renders (`foreach_set('co')`, swapping `ob.data` for a copy, even with `update_tag` and `frame_set`) makes Eevee render stale or invisible geometry in batch mode. The one-off test render looks fine, which makes it worse. Use object pools: `bstudio.Sheets` gives every sheet (page, card, comic) its own object sharing a few pre-curled meshes, moved by `matrix_world`. Hundreds of objects are fine.
+Reported implementation lessons include reusable page-turn/slam helpers, three-quarter views for long-nosed characters, page inserts, measured and distinct voice performances, purposeful foley, and low-resolution contact sheets. These are source/log-derived lessons. The final video must still be viewed/listened to before an independent audiovisual verdict; the source log's QA is not a substitute.
 
-**Scene pattern.** One file builds the scene and exposes `update(t) -> black`. Drive every object from `t` with closed-form motion: easing, exponential settle, ballistic hops, wrapped orbits. Then any frame can be rendered alone, in any order, and resumed.
+## 4. Runtime and production time
 
-**Motion blur.** `--mblur` registers `update` as a `frame_change_pre` handler (with `frame_subframe`), sets shutter 0.25 and steps 3. It costs nothing extra at the same sample count.
+**No arbitrary film length or production-time deadline is the default creative constraint.** A shorter film is not automatically better, nor is a longer one. Keep what earns attention; remove what does not. Do not hurry speech, remove the product's actual appeal, or pad a film to fit a preset.
 
-- Motion blur smears across hard cuts, so list the cut frames in the film's `CUT_FRAMES`; `run()` renders them without blur. The cut frames are `round(T_cut * fps)` for every discontinuity, including teleports of objects between shots.
-- A shutter of 0.4–0.5 double-images camera-locked text or pages. Keep it at 0.25.
+A real owner/platform placement requirement can constrain a particular delivery. Record that requirement explicitly and preserve a fuller master when appropriate. Duration must remain internally consistent across voice, action, edit, render and end card.
 
-**Portrait.** `sensor_fit AUTO` fits the 36 mm sensor to the *larger* dimension, so in 4:5 the horizontal field narrows. `aim_camera()` multiplies lenses by the format's `lens_scale` (0.8 for 4:5), which restores the 16:9 horizontal framing and adds headroom. Tighten individual shots with `PORTRAIT` (for example, THE DILEMMA's opener uses ×1.3 in portrait).
+Efficiency comes from reusable rigs, verified product art, sets, camera helpers, measured voice takes, checkpoints and targeted repairs. Track time and cost for improvement, not as a proxy for creative quality. No instruction here authorizes unlimited provider spending or disabling runaway-process protection.
 
-**Materials.**
+### Current harness limitation
 
-- Two-sided paper: mix the front and back images by `Backfacing`, with the back UVs mirrored. Add translucency 0.12–0.18 so backlit pages glow, plus a small emission (0.2) so ink-on-paper stays white under coloured light.
-- Cards with rounded corners: RGBA texture, transparent mix, `blend_method = shadow_method = 'CLIP'`.
-- Principled input names in 4.0: `'Specular IOR Level'`, `'Coat Weight'`, `'Emission Color'`, `'Emission Strength'`. `ShaderNodeMix` RGBA uses inputs 6 and 7 and output 2.
-- Colour management: AgX with "Medium High Contrast". A pastel sky plus AgX reads as a dream. Push saturation in the sky ramp, not in post.
+`./ad` and its compact harness still use configured runtime ranges and preset execution controls. This documentation does not make them dynamically story-led. For unconstrained product-taste work, prefer the direct film/toolkit route used in `films/get_your_own/`, or configure a fresh run to the selected story duration before generation. Do not silently change a running job's contract or describe unchanged defaults as fixed.
 
-**Lighting.**
+## 5. Preserve artwork, product truth and current formatting
 
-- A warm key sun with cascaded shadows: `shadow_cascade_max_distance` about 90, `cascade_size` 4096. Larger distances make blotchy ground shadows.
-- Coloured fill suns: set **`use_shadow = False`**. Their shadows only add blotches.
-- Flashes: a point light of about 6e5 W for a moment plus a short world-strength bump. At 4e6 W the frame whites out.
-- A light leaking from a book: at most 160 block emission plus a 9e3 W point light *behind* the cover plane. In front of it, the leak washes out the cover.
+- Real Goosnav drawings remain real: do not redraw, extend or generate substitute canonical art. Use authentic, legible source material.
+- Confirm editions, variants, contents, prices, availability, shipping, signed-copy/bonus promises and promotional terms before using them. Historical numbers in logs are not live facts.
+- Default delivery remains 4:5 portrait, 1080×1350, unless the owner requests another placement. Reframe deliberately rather than crop away the action.
+- The established early-3D/`retro_world` character world remains available. A distinct setting supports the story; a new set is not required for every ad.
+- Use the actual configured Frame policy for typography/URLs/end-card rendering. A previous film's exact end card is not a mandatory two-link or price template.
+- Character interaction is allowed when its capability is verified. Reuse `blender/book2.py`, `blender/shots.py` and existing rigs when suitable; do not fake a missing action. Simpler staging must retain the product-specific idea.
 
-**Terrain.** Displace a grid with an analytic height function you can also evaluate in Python, so objects can sit on the ground. Flatten plateaus where the action is, and keep them wide enough that orbiting cameras never go under a dune. That happened twice: check every camera path in preview.
+## 6. Production sequence and reuse
 
-**Previews.** `python3 -m studio preview FILM --format 4x5 --times 3,9,16,...` for key moments, then `--every 12` for the whole film. Open the contact sheet and actually look. Every serious bug was caught this way: invisible pages, camera inside a dune, washed-out cover, a die blocking the product, smeared cut frames.
+Use the existing working tools, not a new pipeline for each film:
 
-**Process hygiene.**
+`source selection → script/performance → measured timing → blocked scene/animatic → targeted corrections → render/edit/mix → Frame finish → review → delivery`
 
-- Never `pkill -f <pattern>` from a shell whose own command line contains the pattern. It kills the shell. Use PIDs.
-- Launch long renders with `setsid nohup ... &` so they outlive the agent's turn.
-- `--resume` skips existing frames. Validate them afterwards with `studio.qa frames`, because a killed process can leave a half-written PNG.
+Relevant implementation references:
 
-## 4. Sound
+- [GET YOUR OWN build](films/get_your_own/README.md): authored film and reusable helpers.
+- [Worker guide](dev/WORKER_GUIDE.md): existing contracts and tool calls.
+- [Operations](dev/OPERATIONS.md): runtime, retries and delivery.
+- [Worlds and staging](docs/worlds.md): set/rig capabilities and framing.
+- [Library](docs/library.md): asset IDs, provenance and publication.
+- [Historical playbook](docs/history/PLAYBOOK-before-product-taste.md): original film-specific Blender, audio and rendering lessons. Resolve old instructions against current tool contracts; do not reactivate retired creative rules.
 
-- **Narration** comes from Piper TTS (`python3 -m studio vo FILM --voice ...`). **Voice licences matter: ads are commercial use.** Each Piper voice inherits its training dataset's licence, and several popular ones are non-commercial. `studio.vo` refuses any voice not in `SAFE_VOICES`.
-  - Cleared: `en_US-norman-medium`, `en_US-bryce-medium` and `en_US-john-medium` (public-domain male); `en_US-joe-medium` (CC0 male); `en_US-kristin-medium`, `en_US-ljspeech-high` and `en_GB-cori-medium` (public-domain female); `en_GB-jenny_dioco-medium` (commercial use permitted).
-  - Not cleared: `en_US-ryan-high` (CC BY-NC-SA), `lessac` (research-only), `amy` and `hfc_*` (derived from lessac or NC), `en_GB-alan-medium` (all rights reserved).
-  - The first films used `ryan` and `alan` and were re-voiced on 2026-09-29.
-  - Fetch cleared voices with `tools/setup.sh --voice NAME`, after checking the MODEL_CARD.
-- `...` in a line becomes a real pause. Tape-slow 0.93 gives weight. Add reverb to taste.
-- Say URLs phonetically in `lines.txt` ("W W W dot goosnav dot shop").
-- **Everything else is synthesized** (`studio.audio`), which keeps it rights-clean: drone, wind, choir, bells, boom, slam, dice hits, paper flutter, whoosh, reverse swell. Hit points come from `events.json`, which the film writes with the exact times of every landing and slam.
-- **Mix:** duck under voice (`Mix.duck(0.68)`) and check `Mix.report_voice()`. Every line should sit at **≥ 8 dB** voice over effects. Master to about **−14 LUFS** (`studio.qa loudness`).
-- **True peak after AAC.** Sample-peak limiting isn't enough. `assemble` now limits at 4x oversampling after an 18 kHz lowpass (`alimiter` at 192 kHz), and `studio.audio` gives percussive hits a 2 ms attack. If `qa loudness` still shows Peak above −1 dBTP, find the moment (decode, upsample 4x, argmax) and lower that one sound. In THE DILEMMA it was a tanh-driven low boom whose squared-off top made the AAC decoder ring. Never let a loud sound end abruptly at full level either. One-pass `loudnorm` flattens the dynamics (LRA 7.9 to 4.9), so don't use it.
-- Nobody in an agent session can listen. Check a spectrogram (`studio.qa spectrum`) for broadband hiss walls; the first vortex mix was too noisy. Ask the owner for one listen before posting.
+Checkpoint accepted work. Do not re-synthesize unchanged accepted voice takes, rebuild a working prop, rerender a good shot, or run full-book research for every variant. Fix the actual weak line, unreadable page, bad contact, camera or mix. A successful export is not creative approval.
 
-## 5. Type, assembly, QA
+## 7. Final acceptance review
 
-- Overlays come from `studio.typeset`, sized from the frame (`min(W,H)/1080`), with the margin at 11.5% of the width in portrait. White Helvetica Bold product lines on the picture; black on the white end card.
-- `studio.assemble` layers the frames, a vignette, grain 3 (hides sky banding), overlays with fades, the fade out and the mix. It writes a master at CRF 16 and a web version at CRF 22 (about 35–45 MB for 90 s).
-- QA checklist before delivery:
-  1. `studio qa`: frame check, stills every 1.5 s, loudness.
-  2. Look at the sheet: cut frames clean, nothing cropped, prices right, every URL with `www.`.
-  3. Voice ratios ≥ 8 dB.
-  4. SRT captions for the narration.
+Ask, with evidence rather than a formula:
 
-## 6. Delivery
+- Is the sample real and correctly attributed to this product/edition?
+- Would the specific moment be worth watching without a sales caption?
+- Does the product cause the action/curiosity rather than appear as an interchangeable prop?
+- Can the audience understand the important line, reaction and product detail?
+- Does the ending lead honestly to the advertised product and a functioning destination?
+- Does the pacing serve the performance, without rushing or filler?
+- Were visuals and sound actually inspected? What remains unverified?
 
-- Existing Claude film projects can use `python3 -m studio deliver FILM --name TITLE` to deliver under `agent-exchange:deliverables/claude/`.
-- Other agents can upload a finished package with `rclone copy PACKAGE/ agent-exchange:deliverables/<agent>/<project>/`, then run `rclone check PACKAGE/ agent-exchange:deliverables/<agent>/<project>/ --one-way`. A local folder or sync queue alone is not proof of delivery.
-- The `agent-exchange` remote was verified on this host on 2026-09-29. If it fails, keep the local source, report the failure, and verify Drive before saying the item is shared. Large video files should use the remote copy path.
-- The shared rclone client ID is scheduled for retirement during 2026; migrate its configuration if the provider stops accepting it.
-
-## 7. Running unattended Claude sessions
-
-- `orchestration/launch.sh <lane> <film_id>` starts `claude -p` with the COMMON_BRIEF plus a lane prompt, in a session folder with `STATUS.md`. Sessions run with `--dangerously-skip-permissions`, because nobody is there to approve commands. The brief confines them to their film folder, the repo tools and the one Drive folder.
-- **Sequencing (owner rule):** start the next session only when the previous one is almost done. `orchestration/watch.sh <session_dir>` (or `watch_frames.sh <frames_dir> <total>` when a session has ended its turn and left a render running) blocks until the final render reaches 60%, assembly after a render, delivered or failed, or the process dies.
-  - Bug fixed on 2026-09-28: PROGRESS written as `72/2073` was read as 72%.
-- **Run ONE Claude session at a time.** Two resumed sessions in parallel (B finishing plus C redoing look-dev) exhausted the account's usage window in under an hour on 2026-09-28, killing both mid-task. Sessions share one usage budget, so the "next session when the previous is almost done" rule also protects the budget. Put a session's long render on the GPU, but keep only one agent thinking at a time.
-- **Account usage limits kill sessions mid-task** (LIGHTS OUT died at frame 2059/2073). Resume with the same context: `cd <session_dir>; claude -p --resume <session_id> "<what happened + what to do>" --dangerously-skip-permissions`. The session id is in `session.log`, in the final `"type":"result"` line.
-- Tell sessions to write status as integer percentages, to work efficiently, and never to edit the core `studio/` or `blender/` code or other films. They propose core changes in their README instead.
-
-### Orchestrator review
-
-Sessions tend to rush into the final render. THE LONGEST TURN started after 34 minutes with 6 preview stills, and its frames were underexposed with a static opening.
-
-- Always review a session's first 200 or so final frames with a contact sheet (`studio.qa sheet` on `frames/` with `[::12]`).
-- Stop a weak render by PID (the blender process and its `studio render` parent).
-- Resume the session with specific notes. The brief now has a hard preview gate and a `PREVIEW_NOTES.md` requirement.
-
-## 8. Mistakes log
-
-| Mistake | Fix |
-|---|---|
-| Book textured from a cropped, soft product photo | Generic Book 2 (owner rule) |
-| Photo-rectified card faces and packs looked soft and skewed | Generic card and pack from the flat logo file |
-| Pages invisible in batch renders | Transforms-only object pools |
-| Two render processes in parallel | One at a time, with the lock |
-| Camera inside a dune on orbit shots | Wider plateaus; preview every camera path |
-| Leak light in front of the cover washed it out | Put it behind the cover plane at a lower energy |
-| Die blocked the product in a push-in | Moved the rest position; check final-frame composition |
-| Motion-blur smear on hard cuts | `CUT_FRAMES` rendered without blur |
-| Explosion flash whited out the frame | Energy 6e5 W, short decay |
-| Vortex soundbed was a hiss wall | Lowpass the flutter; lower gains; check the spectrogram |
-| Watcher misread "72/2073" as 72% | The parser computes the fraction |
-| `pkill -f` killed the calling shell | Kill by PID |
-| Narration shipped in the non-commercial `ryan` and all-rights-reserved `alan` voices | Re-voiced with public-domain voices; `studio.vo` now refuses uncleared voices |
-| The back of a low-poly head read as a blank face | `lowpoly.Human` has a hair-back piece |
-
-## 9. Low-poly vignettes (GLPV-001): what worked
-
-- The house actor (`lowpoly.Human`) is a few hundred triangles of primitives parented at the joints, posed by setting joint rotations every frame. It reads as an early-2000s NPC, and transform-only animation renders reliably in Eevee. Give every head a hair-back piece, or a figure seen from behind reads as a blank face.
-- Jaw flap: `Lines` turns the dialogue WAVs into per-frame envelopes quantised to three openings. Blinks run every 3–7 s. Poses update on 2s (`on_twos`).
-- Each vignette renders in about 10 minutes (540×960, 16 samples, no motion blur, which is the game look). Iterate on stills with `--times` and fix composition, not texture detail.
-- Traps found:
-  - A low sun behind a tall hall throws the whole apron outside into shadow. Light exterior hero objects with their own floods.
-  - Background haze in the same colour as a white object hides it.
-  - Glow thresholds must use world position (`Geometry > Position`), not per-object coordinates.
-  - Cameras for insert shots land inside actors unless the actors are moved aside.
-  - Dense PA or radio voices (band-limited plus saturation) measure about 10 dB hot. Mix them at about 0.3 gain.
-- Every vignette ships with a README containing the brief grid (person, want, obstacle, turn, product), transcript, CTA text, and asset and licence manifest (bible §68).
-
-## 10. Goosnav characters in 3D (2026-10-08)
-
-The rigged characters (guy, gal, expert; HQ and PS1) and their scripts are in `business/studio/assets/3D/characters/`. Its README has the rig controls.
-
-- **Look:** white toon emission (Shader to RGB), one cel-shadow tone and an inverted-hull ink outline (Solidify, flipped, backface-culled black). Render with the **Standard** view transform: AgX turns emission white grey.
-- **Proportions that read as the comic:**
-  - The head is a tall dome, widest at the eyes, about 27% of the height.
-  - The snout comes out about two-thirds of the way up the head and is about 1.1× as long as the head is wide. The eyes sit on its root.
-  - Hands are big mittens, feet are long flat paddles (0.4 m on a 1.74 m figure), and the shirt is tucked inside the pants.
-- **Armature deformation renders reliably in batch Eevee** when every frame is keyed (bake, then `frame_set`). The section 3 trap is about editing vertices, not armatures.
-- **Walking:**
-  - **Stops:** time each stop with `Walk.stop_window()` so it lands with both feet planted, then use `Walk.settle()` for a closing step. A frozen mid-stride stop folds the back leg.
-  - **Toe roll:** roll about the toe or heel only while the foot is on the ground. In the air, the pivot lift makes the foot kick up behind.
-- **Props in hands:** animate the prop's transform in the character's armature space and drive the hands with `grip` (IK wrist position plus finger and palm directions). Don't parent the prop to a hand.
-- **Prop scale in wide shots:** life-size products vanish at PS1 resolution in a wide two-shot (a booster pack is 7 cm). Scale them up as Minecraft-style drops, or cut to a close-up.
-
-## 11. Session behaviour seen so far
-
-- A `claude -p` session may end its turn with a render still running in the background ("I'll pick up when it finishes") despite the brief. Its STATUS.md then stops updating. Watch the frames folder with `watch_frames.sh`, and when the render ends, resume the session with `claude -p --resume <id> "render finished: assemble, QA, deliver"`.
+Do not replace taste with a numeric score or pretend a schema can prove an ad is funny. Preserve separate records for technical checks, owner creative assessment, and later audience/commerce results. A few good product-grounded films are preferable to a queue of generic technically valid ones.
