@@ -1,0 +1,18 @@
+{
+  "provider": "kokoro",
+  "effort": "medium",
+  "device": "cpu",
+  "seed": 7,
+  "voice_profiles": {"READER": {"voice": "am_onyx"}, "PAL": {"voice": "am_puck"}},
+  "lines": [
+    {"id": "r1", "speaker": "READER", "text": "There's a machine that oils your feet.", "delivery": "quiet library voice, absorbed, mildly impressed", "auditions": [{"speed": 0.92}, {"speed": 1.0}]},
+    {"id": "p1", "speaker": "PAL", "text": "Why?", "delivery": "genuinely puzzled", "auditions": [{"speed": 0.95}, {"speed": 0.85}]},
+    {"id": "r2", "speaker": "READER", "text": "Doesn't say.", "delivery": "flat, not looking up", "auditions": [{"speed": 0.92}, {"speed": 1.0}]},
+    {"id": "r3", "speaker": "READER", "text": "This one's a truck made of toes.", "delivery": "matter-of-fact wonder", "auditions": [{"speed": 0.92}, {"speed": 1.0}]},
+    {"id": "p2", "speaker": "PAL", "text": "Made of what?", "delivery": "incredulous, leaning in", "auditions": [{"speed": 0.95}, {"speed": 1.05}]},
+    {"id": "r4", "speaker": "READER", "text": "Toes.", "delivery": "certain, final", "auditions": [{"speed": 0.9}, {"speed": 1.0}]},
+    {"id": "r5", "speaker": "READER", "text": "Self-filling coffee mug.", "delivery": "reverent", "auditions": [{"speed": 0.9}, {"speed": 1.0}]},
+    {"id": "p3", "speaker": "PAL", "text": "Let me see.", "delivery": "urgent, reaching", "auditions": [{"speed": 1.0}, {"speed": 1.1}]},
+    {"id": "r6", "speaker": "READER", "text": "Get your own.", "delivery": "dry, final", "auditions": [{"speed": 0.88}, {"speed": 0.96}]}
+  ]
+}

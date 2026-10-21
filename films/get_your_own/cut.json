@@ -1,0 +1,164 @@
+{
+  "title": "Get Your Own",
+  "fps": 24,
+  "duration": 24.5,
+  "end_card": {
+    "start": 21.5,
+    "seconds": 3.0,
+    "title": "Get your own signed copy"
+  },
+  "lines": [
+    {
+      "id": "r1",
+      "speaker": "READER",
+      "text": "There's a machine that oils your feet.",
+      "take": "voice:r1:0.92",
+      "start": 2.75
+    },
+    {
+      "id": "p1",
+      "speaker": "PAL",
+      "text": "Why?",
+      "take": "voice:p1:0.85",
+      "start": 5.55
+    },
+    {
+      "id": "r2",
+      "speaker": "READER",
+      "text": "Doesn't say.",
+      "take": "voice:r2:0.92",
+      "start": 6.62
+    },
+    {
+      "id": "r3",
+      "speaker": "READER",
+      "text": "This one's a truck made of toes.",
+      "take": "voice:r3:0.92",
+      "start": 8.85
+    },
+    {
+      "id": "p2",
+      "speaker": "PAL",
+      "text": "Made of what?",
+      "take": "voice:p2:0.95",
+      "start": 11.3
+    },
+    {
+      "id": "r4",
+      "speaker": "READER",
+      "text": "Toes. Lots of toes.",
+      "take": "toes:t1:0.9",
+      "start": 12.4
+    },
+    {
+      "id": "r5",
+      "speaker": "READER",
+      "text": "Self-filling coffee mug.",
+      "take": "voice:r5:0.9",
+      "start": 15.0
+    },
+    {
+      "id": "p3",
+      "speaker": "PAL",
+      "text": "Let me see.",
+      "take": "voice:p3:1.0",
+      "start": 17.2
+    },
+    {
+      "id": "r6",
+      "speaker": "READER",
+      "text": "Get your own.",
+      "take": "voice:r6:0.88",
+      "start": 18.62
+    }
+  ],
+  "events": [
+    {
+      "name": "page_turn",
+      "at": 7.95,
+      "leaf": 5
+    },
+    {
+      "name": "page_turn",
+      "at": 14.3,
+      "leaf": 6
+    },
+    {
+      "name": "slam",
+      "at": 18.22
+    },
+    {
+      "name": "shush",
+      "at": 20.35
+    }
+  ],
+  "shots": [
+    {
+      "camera": "CAM_wide",
+      "start": 0.0,
+      "end": 2.4
+    },
+    {
+      "camera": "CAM_two",
+      "start": 2.4,
+      "end": 5.3
+    },
+    {
+      "camera": "CAM_pal",
+      "start": 5.3,
+      "end": 6.4
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 6.4,
+      "end": 7.85
+    },
+    {
+      "camera": "CAM_insert_L",
+      "start": 7.85,
+      "end": 9.7,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 9.7,
+      "end": 11.1
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 11.1,
+      "end": 12.2
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 12.2,
+      "end": 14.15
+    },
+    {
+      "camera": "CAM_insert_R",
+      "start": 14.15,
+      "end": 15.95,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_two",
+      "start": 15.95,
+      "end": 17.1
+    },
+    {
+      "camera": "CAM_pal_lean",
+      "start": 17.1,
+      "end": 17.95
+    },
+    {
+      "camera": "CAM_two",
+      "start": 17.95,
+      "end": 19.85
+    },
+    {
+      "camera": "CAM_wide",
+      "start": 19.85,
+      "end": 21.5
+    }
+  ]
+}
