@@ -1,7 +1,7 @@
 """A plain local web page over the same store and CLI. It never runs workers itself.
 
 Starting/resuming spawns `python -m harness ...` detached, so the CLI's file lock
-still guarantees one controller. Pause/cancel write the same control flag the CLI
+still guarantees one controller per run. Pause/cancel write the same control flag the CLI
 writes. Files are served only from inside the harness home.
 """
 import html
@@ -13,22 +13,56 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from urllib.parse import parse_qs, quote, urlparse
 import urllib.request
 
 from .config import load_config
 from .store import Store
+from .delivery import _completed_ads
 
 REPO = Path(__file__).resolve().parents[1]
 LOCAL_CONFIG = REPO / 'harness.local.json'
 STYLE = '''body{font:15px/1.45 Helvetica,Arial,sans-serif;max-width:68rem;margin:2rem auto;padding:0 1rem}
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:.3rem;text-align:left;vertical-align:top}
 textarea{width:100%;font:13px monospace}video{max-width:22rem;display:block}pre{white-space:pre-wrap;font-size:12px}
-.failed,.needs_review,.waiting_provider{color:#b00}.succeeded,.complete{color:#070}.running{color:#06c}'''
+.failed,.needs_review,.waiting_provider{color:#b00}.succeeded,.complete{color:#070}.running{color:#06c}.awaiting_upload{color:#875500}'''
 
 
 def esc(value):
     return html.escape(str(value), quote=True)
+
+
+def display_status(state):
+    """Present delivery completion without changing generation's saved status."""
+    from .delivery_queue import _pending
+    if state['status'] == 'complete' and _pending(state):
+        return 'awaiting_upload'
+    return state['status']
+
+
+def delivery_summary(store, state):
+    """Keep retry deadlines in the queue; expose queued and orphaned transfers."""
+    from .delivery_queue import _pending, describe, worker_running
+    pending = _pending(state)
+    info = state.get('delivery')
+    info = info if isinstance(info, dict) else {}
+    if not info and not pending:
+        return ''
+    if pending and info.get('status') == 'uploaded':
+        # An old receipt can no longer match the packaged bytes or destination.
+        state = {**state, 'delivery': {**info, 'status': 'queued', 'verified': {}}}
+    text = describe(store, state)
+    if pending and info.get('status') != 'retrying':
+        action = store.control_value(state['id'])
+        if action != 'run':
+            text += ' | automatic retries ' + ('paused' if action == 'pause' else 'cancelled')
+        else:
+            if info.get('status') != 'uploading':
+                text += ' | queued for automatic delivery'
+            text += ' | ' + ('worker running' if worker_running(store)
+                             else 'WARNING: retry worker not running')
+    return text
 
 
 def page(title, body, refresh=False):
@@ -40,16 +74,18 @@ def page(title, body, refresh=False):
 
 def spawn(home, *args):
     """Detached controller process; its output goes to a per-run log in the home."""
-    logs = Path(home) / 'gui-logs'; logs.mkdir(exist_ok=True)
-    out = (logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}.log').open('w')
-    subprocess.Popen([sys.executable, '-m', 'harness', '--home', str(home), *args], cwd=REPO,
-                     stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    logs = Path(home) / 'gui-logs'; logs.mkdir(parents=True, exist_ok=True)
+    log = logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}-{uuid.uuid4().hex}.log'
+    with log.open('x') as out:
+        subprocess.Popen([sys.executable, '-m', 'harness', '--home', str(home), *args], cwd=REPO,
+                         stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
 
 
 def videos(state):
     found = []
     for task in state['tasks']:
-        if task['status'] == 'succeeded' and task['stage'] in ('animate', 'edit', 'frame'):
+        if (task['status'] == 'succeeded' and task['stage'] in ('animate', 'edit', 'frame')
+                and task['result'].get('delivery_mode') != 'product_only'):
             for f in task['result'].get('files', []):
                 if f['path'].endswith('.mp4'):
                     found.append((task['id'], f['path']))
@@ -150,10 +186,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def index(self):
         rows = ''.join(
-            f'<tr><td><a href="/run/{quote(r["id"])}">{esc(r["id"])}</a></td><td class="{esc(r["status"])}">{esc(r["status"])}</td>'
+            f'<tr><td><a href="/run/{quote(r["id"])}">{esc(r["id"])}</a></td><td class="{esc(status)}">{esc(status)}</td>'
             f'<td>{esc(r["config"]["concept"] or "(open brief)")}</td><td>{r["config"]["count"]}</td>'
-            f'<td>{sum(t["stage"] == "package" and t["status"] == "succeeded" for t in r["tasks"])}</td></tr>'
-            for r in self.store.list())
+            f'<td>{len(_completed_ads(r))}</td>'
+            f'<td>{esc(delivery_summary(self.store, r)) or "—"}</td></tr>'
+            for r in self.store.list() for status in (display_status(r),))
         target = load_config(self.config_path())['output']['target_seconds']
         return page('Ad Studio', '''<form method="post" action="/make">
 <p><label>Concept (optional)<br><input name="concept" size="70" placeholder="Leave empty for an open brief"></label></p>
@@ -161,7 +198,7 @@ class Handler(BaseHTTPRequestHandler):
 <label>Target seconds <input name="seconds" type="number" min="1" max="300" value="''' + str(target) + '''"></label>
 <label>Website override <input name="website" placeholder="from config"></label></p>
 <p><button>Make ads</button> Research, writing contest and production run unattended.</p></form>
-<h2>Runs</h2><table><tr><th>Run</th><th>Status</th><th>Concept</th><th>Ads</th><th>Delivered</th></tr>''' + rows + '</table>',
+<h2>Runs</h2><table><tr><th>Run</th><th>Status</th><th>Concept</th><th>Ads</th><th>Packaged</th><th>Drive delivery</th></tr>''' + rows + '</table>',
                     refresh=True)
 
     def run_page(self, run_id):
@@ -189,8 +226,16 @@ class Handler(BaseHTTPRequestHandler):
         choice = f'<h2>Selected scripts</h2><pre>{esc(json.dumps(selected, indent=2))}</pre>' if selected else ''
         events = ''.join(f'<li>{time.strftime("%H:%M:%S", time.localtime(e["at"]))} {esc(e["kind"])} {esc(json.dumps(e["data"])[:200])}</li>'
                          for e in self.store.events(run_id)[-25:])
-        return page(f'Run {run_id}', f'<p>Status: <b class="{esc(s["status"])}">{esc(s["status"])}</b> {esc(s.get("error", ""))}</p>'
-                    f'<p>{controls}</p><p>Files: <code>{esc(self.store.root / "runs" / run_id)}</code></p>{media}{choice}'
+        description = delivery_summary(self.store, s)
+        delivery = f'<h2>Drive delivery</h2><pre>{esc(description)}</pre>' if description else ''
+        fallback = ''.join(f'<p>Ad {int(ad)+1:02}: ' +
+                           ('previous end-card-only output replaced with the full story.'
+                            if int(ad) in _completed_ads(s) else
+                            'previous end-card-only output rejected; original story required before delivery.') + '</p>'
+                           for ad in s.get('fallbacks', {}))
+        status = display_status(s)
+        return page(f'Run {run_id}', f'<p>Status: <b class="{esc(status)}">{esc(status)}</b> {esc(s.get("error", ""))}</p>'
+                    f'<p>{controls}</p>{delivery}{fallback}<p>Files: <code>{esc(self.store.root / "runs" / run_id)}</code></p>{media}{choice}'
                     f'<h2>Tasks</h2><table><tr><th>Task</th><th>Status</th><th>Attempts</th><th>Worker</th><th>Result / feedback</th></tr>{rows}</table>'
                     f'<h2>Recent events</h2><ul>{events}</ul>', refresh=True)
 
@@ -241,6 +286,8 @@ def lan_addresses():
 
 
 def serve(home, host='0.0.0.0', port=8788, browser=True):
+    from .delivery_queue import recover_worker
+    recover_worker(Store(home))
     server, url = start(home, host, port)
     print(f'Ad Studio GUI: {url}' + ('  (already running)' if not server else
           '  (Ctrl+C to stop; runs continue in the background)'), file=sys.stderr, flush=True)

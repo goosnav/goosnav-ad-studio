@@ -1,6 +1,12 @@
-"""Drive upload must be opt-in, non-destructive and retryable."""
+"""Drive delivery is video-only, flat, non-destructive and retryable."""
 from pathlib import Path
+from hashlib import md5, sha256
+import json
+import re
+import subprocess
 from types import SimpleNamespace
+
+import pytest
 
 from harness.config import load_config
 from harness.delivery import upload_run
@@ -8,39 +14,110 @@ from harness.store import Store
 from harness.workflow import build_tasks
 
 
-def fixture(tmp_path):
+NETWORK_FLAGS = ['--retries', '1', '--low-level-retries', '5', '--contimeout', '10s', '--timeout', '30s',
+                 '--tpslimit', '1', '--tpslimit-burst', '1', '--transfers', '1', '--checkers', '1']
+
+
+def fixture(tmp_path, count=1):
     store = Store(tmp_path / 'state')
     output = tmp_path / 'output'
-    config = load_config(None, {'output': {'folder': str(output)},
+    config = load_config(None, {'count': count, 'output': {'folder': str(output)},
                                 'delivery': {'drive': 'agent-exchange:deliverables/ad-studio'}})
     state = store.create(config)
-    state['tasks'] = build_tasks(1)
-    package = next(t for t in state['tasks'] if t['stage'] == 'package')
-    package['status'] = 'succeeded'
+    state['created'] = 0  # UTC epoch, independent of wall clock and local timezone.
+    state['tasks'] = build_tasks(count)
+    for task in state['tasks']:
+        if task['stage'] == 'write':
+            task.update(status='succeeded', result={'scripts': [
+                {'id': f'script-{i}', 'title': 'Chosen Title'} for i in range(count)]})
+        elif task['stage'] == 'select':
+            task.update(status='succeeded', result={'selected': [f'script-{i}' for i in range(count)]})
+        elif task['stage'] == 'package':
+            task['status'] = 'succeeded'
     target = output / state['id']
     target.mkdir(parents=True)
-    (target / 'ad-01.mp4').write_bytes(b'video')
-    (target / 'ad-01.zip').write_bytes(b'archive')
+    for i in range(count):
+        (target / f'ad-{i+1:02}.mp4').write_bytes(b'video')
+        (target / f'ad-{i+1:02}.zip').write_bytes(b'archive')
     return store, state, target
 
 
-def test_upload_copies_and_verifies_then_saves_status(tmp_path):
+class Drive:
+    """Replace only the external process; local files and receipts are real."""
+    def __init__(self):
+        self.calls = []
+        self.files = {'old-upload.zip', 'unrelated.mp4'}
+        self.fail_copy = None
+        self.objects = {}
+        self.duplicates = set()
+
+    def __call__(self, cmd, **kwargs):
+        self.calls.append(cmd)
+        assert kwargs['check'] and kwargs['capture_output'] and kwargs['text']
+        assert kwargs['timeout'] <= (120 if 'copyto' in cmd else 60)
+        assert all(flag in cmd for flag in NETWORK_FLAGS)
+        if 'copyto' in cmd:
+            index = cmd.index('copyto')
+            source, destination = cmd[index+1:index+3]
+            assert Path(source).is_file()
+            if self.fail_copy == len([c for c in self.calls if 'copyto' in c]):
+                raise subprocess.CalledProcessError(1, cmd, stderr='temporary Drive failure')
+            name = destination.rsplit('/', 1)[-1].rsplit(':', 1)[-1]
+            self.files.add(name)
+            self.objects[name] = self.item(name, Path(source).read_bytes())
+            return SimpleNamespace(stdout='')
+        if 'lsjson' in cmd:
+            if '--stat' in cmd:
+                name = cmd[cmd.index('lsjson') + 1].rsplit('/', 1)[-1].rsplit(':', 1)[-1]
+            else:
+                name = cmd[cmd.index('--include') + 1].lstrip('/')
+            if name not in self.files:
+                if '--stat' in cmd:
+                    raise subprocess.CalledProcessError(4, cmd, stderr='object not found')
+                return SimpleNamespace(stdout='[]', stderr='')
+            item = self.objects.get(name, self.item(name, b'video'))
+            items = [item]
+            if name in self.duplicates:
+                items.append(dict(item, ID='duplicate-id'))
+            return SimpleNamespace(stdout=json.dumps(item if '--stat' in cmd else items), stderr='')
+        assert 'lsf' in cmd, f'Unexpected remote mutation: {cmd}'
+        return SimpleNamespace(stdout='\n'.join(sorted(self.files)) + '\n')
+
+    @staticmethod
+    def item(name, data):
+        return {'Name': name, 'Path': name, 'ID': 'id-' + name, 'Size': len(data),
+                'IsDir': False, 'Hashes': {'MD5': md5(data).hexdigest(), 'SHA-256': sha256(data).hexdigest()}}
+
+
+def deliver(store, state, drive):
+    return upload_run(store, state, run=drive, which=lambda _: '/usr/bin/rclone')
+
+
+def test_upload_only_video_to_flat_folder_and_persist_names(tmp_path):
     store, state, folder = fixture(tmp_path)
-    calls = []
+    drive = Drive()
+    result = deliver(store, state, drive)
+    receipt = store.get(state['id'])['delivery']
+    assert result['delivery']['status'] == 'uploaded'
+    name = receipt['names']['ad-01.mp4']
+    assert re.fullmatch(r'chosen-title-19700101T000000Z-[a-z0-9]+-ad-01\.mp4', name)
+    assert receipt['files'] == [name]
+    assert receipt['remote'] == 'agent-exchange:deliverables/ad-studio'
+    assert drive.calls == [
+        ['rclone', *NETWORK_FLAGS, '--ignore-times', 'copyto', str(folder / 'ad-01.mp4'), receipt['remote'] + '/' + name],
+        ['rclone', *NETWORK_FLAGS, 'lsjson', receipt['remote'] + '/' + name, '--stat', '--hash'],
+        ['rclone', *NETWORK_FLAGS, 'lsjson', receipt['remote'], '--files-only', '--max-depth', '1', '--include', '/' + name],
+    ]
+    assert drive.files == {'old-upload.zip', 'unrelated.mp4', name}
+    assert (folder / 'ad-01.mp4').read_bytes() == b'video'
+    assert (folder / 'ad-01.zip').read_bytes() == b'archive'
 
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        if cmd[1] == 'lsf':
-            return SimpleNamespace(stdout='ad-01.mp4\nad-01.zip\n')
-        return SimpleNamespace(stdout='')
 
-    output = upload_run(store, state, run=fake_run, which=lambda _: '/usr/bin/rclone')
-    remote = 'agent-exchange:deliverables/ad-studio/' + state['id']
-    assert calls[0][:4] == ['rclone', 'copy', str(folder), remote]
-    assert '--include' in calls[0]
-    assert calls[1][:3] == ['rclone', 'lsf', remote]
-    assert output['delivery']['status'] == 'uploaded'
-    assert store.get(state['id'])['delivery']['files'] == ['ad-01.mp4', 'ad-01.zip']
+def test_missing_zip_is_ok_for_existing_config_snapshot(tmp_path):
+    store, state, folder = fixture(tmp_path)
+    state['config']['delivery'] = {'drive': 'agent-exchange:deliverables/ad-studio'}
+    (folder / 'ad-01.zip').unlink()
+    assert deliver(store, state, Drive())['delivery']['status'] == 'uploaded'
 
 
 def test_missing_rclone_does_not_change_render_status(tmp_path):
@@ -52,37 +129,639 @@ def test_missing_rclone_does_not_change_render_status(tmp_path):
     assert 'rclone' in result['delivery']['error']
 
 
-def test_missing_local_output_does_not_invoke_rclone(tmp_path):
-    store, state, folder = fixture(tmp_path)
-    (folder / 'ad-01.zip').unlink()
-
-    def never_run(*args, **kwargs):
-        raise AssertionError('should not upload incomplete deliverables')
-
-    result = upload_run(store, state, run=never_run, which=lambda _: '/usr/bin/rclone')
+def test_missing_mp4_does_not_block_other_finished_ads(tmp_path):
+    store, state, folder = fixture(tmp_path, 2)
+    (folder / 'ad-02.mp4').unlink()
+    drive = Drive()
+    state['status'] = 'complete'
+    result = deliver(store, state, drive)
+    assert result['status'] == 'complete'
     assert result['delivery']['status'] == 'failed'
-    assert 'ad-01.zip' in result['delivery']['error']
+    assert 'ad-02.mp4' in result['delivery']['error']
+    assert len([c for c in drive.calls if 'copyto' in c]) == 1
+    assert set(result['delivery']['verified']) == {'ad-01.mp4'}
 
 
-def test_server_listing_must_contain_every_file_and_retry_succeeds(tmp_path):
+def test_remote_listing_must_verify_every_named_video_then_retry_succeeds(tmp_path):
     store, state, _ = fixture(tmp_path)
-    listed = ['ad-01.mp4\n', 'ad-01.mp4\nad-01.zip\n']
+    drive = Drive()
 
-    def fake_run(cmd, **kwargs):
-        if cmd[1] == 'lsf':
-            return SimpleNamespace(stdout=listed.pop(0))
-        return SimpleNamespace(stdout='')
+    def missing_listing(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'lsjson' in cmd:
+            return SimpleNamespace(stdout='{}')
+        return result
 
-    first = upload_run(store, state, run=fake_run, which=lambda _: '/usr/bin/rclone')
-    assert first['delivery']['status'] == 'failed'
-    assert 'ad-01.zip' in first['delivery']['error']
-    second = upload_run(store, first, run=fake_run, which=lambda _: '/usr/bin/rclone')
-    assert second['delivery']['status'] == 'uploaded'
+    result = upload_run(store, state, run=missing_listing, which=lambda _: '/usr/bin/rclone')
+    assert result['delivery']['status'] == 'failed'
+    assert 'remote identity' in result['delivery']['error']
+    names = dict(result['delivery']['names'])
+    assert deliver(store, store.get(state['id']), drive)['delivery']['names'] == names
+    assert store.get(state['id'])['delivery']['status'] == 'uploaded'
 
 
-def test_rclone_destination_must_be_a_remote(tmp_path):
+@pytest.mark.parametrize('destination', ['/tmp/other-directory', 'https://evil.test/drive/folders/id',
+                                         'https://drive.google.com/file/d/id', '--flag:path'])
+def test_unsafe_destination_never_invokes_rclone(tmp_path, destination):
     store, state, _ = fixture(tmp_path)
-    state['config']['delivery']['drive'] = '/tmp/other-directory'
-    result = upload_run(store, state, which=lambda _: '/usr/bin/rclone')
+    state['config']['delivery']['drive'] = destination
+    drive = Drive()
+    result = deliver(store, state, drive)
     assert result['delivery']['status'] == 'failed'
     assert 'rclone destination' in result['delivery']['error']
+    assert drive.calls == []
+
+
+def test_partial_run_uploads_only_succeeded_packages(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    state['status'] = 'partial'
+    next(t for t in state['tasks'] if t['stage'] == 'package' and t['ad'] == 1)['status'] = 'failed'
+    drive = Drive()
+    result = deliver(store, state, drive)
+    assert result['status'] == 'partial'
+    assert result['delivery']['status'] == 'uploaded'
+    assert set(result['delivery']['names']) == {'ad-01.mp4'}
+    assert len([c for c in drive.calls if 'copyto' in c]) == 1
+
+
+def test_selection_order_and_latest_succeeded_revision_determine_titles(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    select = next(t for t in state['tasks'] if t['stage'] == 'select')
+    select['result']['selected'] = ['script-1', 'script-0']
+    state['tasks'].extend([
+        {'stage': 'revise', 'status': 'succeeded', 'result': {'scripts': [
+            {'id': 'script-0', 'title': 'Revised First'},
+            {'id': 'script-1', 'title': 'Revised Second'}]}},
+        {'stage': 'revise', 'status': 'failed', 'result': {'scripts': [
+            {'id': 'script-1', 'title': 'Rejected Title'}]}},
+        {'stage': 'select', 'status': 'failed', 'result': {'selected': ['script-0', 'script-1']}},
+    ])
+    receipt = deliver(store, state, Drive())['delivery']
+    assert receipt['status'] == 'uploaded'
+    assert receipt['names']['ad-01.mp4'].startswith('revised-second-')
+    assert receipt['names']['ad-02.mp4'].startswith('revised-first-')
+
+
+def test_compact_campaign_titles_follow_ad_index_and_keep_saved_names(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    state['tasks'] = [t for t in state['tasks'] if t['stage'] == 'package'] + [
+        {'id': 'campaign-script', 'stage': 'script', 'status': 'succeeded',
+         'result': {'scripts': [{'title': 'First Film'}, {'title': 'Second Film'}]}},
+        {'id': 'campaign-script', 'stage': 'script', 'status': 'failed',
+         'result': {'scripts': [{'title': 'Rejected'}]}}]
+    drive = Drive()
+    receipt = deliver(store, state, drive)['delivery']
+    assert receipt['names']['ad-01.mp4'].startswith('first-film-')
+    assert receipt['names']['ad-02.mp4'].startswith('second-film-')
+    names = dict(receipt['names'])
+    state['tasks'][-2]['result']['scripts'][0]['title'] = 'Changed title'
+    assert deliver(store, state, drive)['delivery']['names'] == names
+
+
+@pytest.mark.parametrize('title', ['../../evil\\name\n--flag : x', '🔥 / ..', 'A' * 1000,
+                                  'Café — Déjà Vu', '', None, {'title': 'bad'}])
+def test_unsafe_or_missing_titles_make_safe_bounded_unique_names(tmp_path, title):
+    store, state, _ = fixture(tmp_path, 2)
+    for script in next(t for t in state['tasks'] if t['stage'] == 'write')['result']['scripts']:
+        script['title'] = title
+    receipt = deliver(store, state, Drive())['delivery']
+    assert receipt['status'] == 'uploaded'
+    assert len(set(receipt['files'])) == 2
+    for name in receipt['files']:
+        assert re.fullmatch(r'[a-z0-9-]+-19700101T000000Z-[a-z0-9]+-ad-0[12]\.mp4', name)
+        assert len(name.encode()) <= 180
+
+
+@pytest.mark.parametrize('legacy', ['missing-select', 'failed-select', 'missing-writer', 'missing-id'])
+def test_legacy_missing_script_metadata_uses_descriptive_fallback(tmp_path, legacy):
+    store, state, _ = fixture(tmp_path)
+    if legacy == 'missing-select':
+        state['tasks'] = [t for t in state['tasks'] if t['stage'] != 'select']
+    elif legacy == 'failed-select':
+        next(t for t in state['tasks'] if t['stage'] == 'select')['status'] = 'failed'
+    elif legacy == 'missing-writer':
+        next(t for t in state['tasks'] if t['stage'] == 'write')['result'] = None
+    else:
+        next(t for t in state['tasks'] if t['stage'] == 'select')['result']['selected'] = ['unknown']
+    receipt = deliver(store, state, Drive())['delivery']
+    assert receipt['status'] == 'uploaded'
+    assert receipt['names']['ad-01.mp4'].startswith('ad-video-19700101T000000Z-')
+
+
+def test_same_title_and_creation_time_across_runs_do_not_collide(tmp_path):
+    store, state, _ = fixture(tmp_path / 'first')
+    first = deliver(store, state, Drive())['delivery']['files']
+    store, state, _ = fixture(tmp_path / 'second')
+    second = deliver(store, state, Drive())['delivery']['files']
+    assert set(first).isdisjoint(second)
+
+
+def test_failed_copy_persists_plan_before_upload_and_retry_keeps_names(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    state['status'] = 'complete'
+    drive = Drive()
+    drive.fail_copy = 2
+
+    def checked_process(cmd, **kwargs):
+        if 'copyto' in cmd:
+            persisted = store.get(state['id'])['delivery']
+            assert len(persisted['names']) == 2
+            assert persisted['status'] != 'uploaded'
+        return drive(cmd, **kwargs)
+
+    first = upload_run(store, state, run=checked_process, which=lambda _: '/usr/bin/rclone')
+    assert first['delivery']['status'] == 'failed'
+    assert 'temporary Drive failure' in first['delivery']['error']
+    assert first['status'] == 'complete'
+    names = dict(first['delivery']['names'])
+    state = store.get(state['id'])
+    state['created'] = 99999999
+    next(t for t in state['tasks'] if t['stage'] == 'write')['result']['scripts'][0]['title'] = 'Changed'
+    second = deliver(store, state, drive)
+    assert second['delivery']['status'] == 'uploaded'
+    assert second['delivery']['names'] == names
+    copies = [c for c in drive.calls if 'copyto' in c]
+    assert len(copies) == 3
+    assert copies[1] == copies[2]
+    assert set(second['delivery']['verified']) == {'ad-01.mp4', 'ad-02.mp4'}
+
+
+@pytest.mark.parametrize(('destination', 'remote', 'flags'), [
+    ('https://drive.google.com/drive/folders/folder123?usp=sharing', 'agent-exchange:',
+     ['--drive-root-folder-id', 'folder123']),
+    ('agent-exchange:deliverables/ad-studio/', 'agent-exchange:deliverables/ad-studio', []),
+    ('drive:', 'drive:', []),
+])
+def test_destinations_use_configured_folder_without_run_subfolder(tmp_path, destination, remote, flags):
+    store, state, folder = fixture(tmp_path)
+    state['config']['delivery']['drive'] = destination
+    drive = Drive()
+    receipt = deliver(store, state, drive)['delivery']
+    assert receipt['status'] == 'uploaded'
+    assert receipt['remote'] == remote
+    joiner = '' if remote.endswith(':') else '/'
+    assert drive.calls == [
+        ['rclone', *flags, *NETWORK_FLAGS, '--ignore-times', 'copyto', str(folder / 'ad-01.mp4'), remote + joiner + receipt['files'][0]],
+        ['rclone', *flags, *NETWORK_FLAGS, 'lsjson', remote + joiner + receipt['files'][0], '--stat', '--hash'],
+        ['rclone', *flags, *NETWORK_FLAGS, 'lsjson', remote, '--files-only', '--max-depth', '1', '--include', '/' + receipt['files'][0]],
+    ]
+
+
+def test_unsafe_saved_name_never_invokes_rclone(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    state['delivery'] = {'names': {'ad-01.mp4': '../someone-elses.mp4'}}
+    drive = Drive()
+    assert deliver(store, state, drive)['delivery']['status'] == 'failed'
+    assert drive.calls == []
+
+
+def test_no_succeeded_packages_never_uploads_stale_files(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    next(t for t in state['tasks'] if t['stage'] == 'package')['status'] = 'failed'
+    drive = Drive()
+    assert deliver(store, state, drive)['delivery']['status'] == 'failed'
+    assert drive.calls == []
+
+
+def test_retry_preflight_failure_does_not_erase_previously_planned_names(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+    drive.fail_copy = 1
+    first = deliver(store, state, drive)
+    names = dict(first['delivery']['names'])
+    second = upload_run(store, store.get(state['id']), which=lambda _: None)
+    assert second['delivery']['status'] == 'failed'
+    state = store.get(state['id'])
+    next(t for t in state['tasks'] if t['stage'] == 'write')['result']['scripts'][0]['title'] = 'Changed Title'
+    assert deliver(store, state, drive)['delivery']['names'] == names
+
+
+def test_old_uploaded_zip_receipt_does_not_reenable_zip_delivery(tmp_path):
+    store, state, folder = fixture(tmp_path)
+    state['delivery'] = {'status': 'uploaded', 'remote': 'agent-exchange:old-run',
+                         'files': ['ad-01.mp4', 'ad-01.zip']}
+    (folder / 'ad-01.zip').unlink()
+    drive = Drive()
+    result = deliver(store, state, drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert all(name.endswith('.mp4') for name in result['delivery']['files'])
+    assert 'old-upload.zip' in drive.files
+
+
+def test_copy_acknowledgement_is_durable_before_next_remote_call(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    drive = Drive()
+
+    def checked_process(cmd, **kwargs):
+        persisted = store.get(state['id'])['delivery']
+        assert set(persisted['hashes']) == {'ad-01.mp4', 'ad-02.mp4'}
+        if drive.calls:
+            ack = persisted['acknowledged']['ad-01.mp4']
+            assert ack['name'] == persisted['names']['ad-01.mp4']
+            assert len(ack['sha256']) == 64
+        return drive(cmd, **kwargs)
+
+    result = upload_run(store, state, run=checked_process, which=lambda _: 'rclone')
+    assert result['delivery']['status'] == 'uploaded'
+    assert set(store.get(state['id'])['delivery']['verified']) == {'ad-01.mp4', 'ad-02.mp4'}
+
+
+def test_listing_failure_retries_acknowledgements_without_copying_again(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def fail_listing(cmd, **kwargs):
+        if 'lsjson' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 60)
+        return drive(cmd, **kwargs)
+
+    first = upload_run(store, state, run=fail_listing, which=lambda _: 'rclone')
+    assert first['delivery']['status'] == 'failed'
+    assert set(store.get(state['id'])['delivery']['acknowledged']) == {'ad-01.mp4'}
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert len([c for c in drive.calls if 'copyto' in c]) == 1
+
+
+def test_failed_first_ad_does_not_block_delivery_of_second(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    drive = Drive()
+    drive.fail_copy = 1
+    result = deliver(store, state, drive)
+    assert result['delivery']['status'] == 'failed'
+    assert set(result['delivery']['verified']) == {'ad-02.mp4'}
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    sources = [Path(c[c.index('copyto') + 1]).name for c in drive.calls if 'copyto' in c]
+    assert sources == ['ad-01.mp4', 'ad-02.mp4', 'ad-01.mp4']
+
+
+def test_legacy_verified_names_are_migrated_by_listing_without_recopy(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    state['delivery'] = {
+        'status': 'uploaded', 'remote': state['config']['delivery']['drive'],
+        'names': {'ad-01.mp4': 'legacy-title.mp4'}, 'files': ['legacy-title.mp4'],
+    }
+    store.save(state, 'legacy_receipt')
+    drive = Drive()
+    drive.files.add('legacy-title.mp4')
+    result = deliver(store, state, drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert set(result['delivery']['verified']) == {'ad-01.mp4'}
+    assert all('copyto' not in c for c in drive.calls)
+
+
+def test_changed_video_reuploads_with_stable_name(tmp_path):
+    store, state, folder = fixture(tmp_path)
+    drive = Drive()
+    first = deliver(store, state, drive)
+    names = dict(first['delivery']['names'])
+    (folder / 'ad-01.mp4').write_bytes(b'revised video')
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert result['delivery']['names'] == names
+    assert len([c for c in drive.calls if 'copyto' in c]) == 2
+
+
+def test_changed_drive_folder_id_invalidates_verification(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    state['config']['delivery']['drive'] = 'https://drive.google.com/drive/folders/first'
+    drive = Drive()
+    deliver(store, state, drive)
+    state = store.get(state['id'])
+    state['config']['delivery']['drive'] = 'https://drive.google.com/drive/folders/second'
+    assert deliver(store, state, drive)['delivery']['status'] == 'uploaded'
+    assert len([c for c in drive.calls if 'copyto' in c]) == 2
+
+
+def test_revised_bytes_are_sent_even_when_rclone_metadata_could_skip_them(tmp_path):
+    store, state, folder = fixture(tmp_path)
+    drive = Drive()
+    remote_bytes = {}
+
+    def metadata_sensitive_copy(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            source, destination = cmd[cmd.index('copyto') + 1:cmd.index('copyto') + 3]
+            data = Path(source).read_bytes()
+            if destination not in remote_bytes or '--ignore-times' in cmd:
+                remote_bytes[destination] = data
+        return result
+
+    upload_run(store, state, run=metadata_sensitive_copy, which=lambda _: 'rclone')
+    (folder / 'ad-01.mp4').write_bytes(b'other')  # Same size as the original video.
+    result = upload_run(store, store.get(state['id']), run=metadata_sensitive_copy, which=lambda _: 'rclone')
+    assert result['delivery']['status'] == 'uploaded'
+    assert list(remote_bytes.values()) == [b'other']
+
+
+def test_missing_acknowledged_remote_video_is_recopied_on_retry(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def fail_listing(cmd, **kwargs):
+        if 'lsjson' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 60)
+        return drive(cmd, **kwargs)
+
+    upload_run(store, state, run=fail_listing, which=lambda _: 'rclone')
+    drive.files = set()
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert len([c for c in drive.calls if 'copyto' in c]) == 2
+
+
+def test_legacy_uploaded_receipt_missing_on_remote_is_copied(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    state['delivery'] = {
+        'status': 'uploaded', 'remote': state['config']['delivery']['drive'],
+        'names': {'ad-01.mp4': 'legacy-title.mp4'}, 'files': ['legacy-title.mp4'],
+    }
+    drive = Drive()
+    result = deliver(store, state, drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert result['delivery']['names'] == {'ad-01.mp4': 'legacy-title.mp4'}
+    assert 'legacy-title.mp4' in drive.files
+
+
+def test_lost_ack_is_reconciled_after_restart_without_another_copy(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def lost_ack(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 120)
+        return result
+
+    first = upload_run(store, state, run=lost_ack, which=lambda _: 'rclone')
+    assert first['delivery']['status'] == 'failed'
+    saved = Store(store.root).get(state['id'])
+    assert saved['delivery'].get('uncertain', {}).get('ad-01.mp4') == {
+        'name': saved['delivery']['names']['ad-01.mp4'], 'sha256': sha256(b'video').hexdigest()}
+    result = deliver(Store(store.root), saved, drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert sum('copyto' in c for c in drive.calls) == 1
+    assert result['delivery']['uncertain'] == {}
+    assert result['delivery']['remote_proofs']['ad-01.mp4']['id']
+
+
+def test_uncertain_marker_is_durable_before_transport_can_crash(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def crash(cmd, **kwargs):
+        if 'copyto' in cmd:
+            saved = store.get(state['id'])['delivery']
+            assert saved.get('uncertain', {}).get('ad-01.mp4') == {
+                'name': saved['names']['ad-01.mp4'], 'sha256': sha256(b'video').hexdigest()}
+            drive(cmd, **kwargs)
+            raise KeyboardInterrupt()
+        return drive(cmd, **kwargs)
+
+    with pytest.raises(KeyboardInterrupt):
+        upload_run(store, state, run=crash, which=lambda _: 'rclone')
+    assert deliver(store, store.get(state['id']), drive)['delivery']['status'] == 'uploaded'
+    assert sum('copyto' in c for c in drive.calls) == 1
+
+
+@pytest.mark.parametrize('fault', ['bytes', 'size', 'no-hash', 'no-id', 'duplicates'])
+def test_remote_proof_rejects_wrong_bytes_missing_identity_and_duplicates(tmp_path, fault):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def bad_remote(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            name = cmd[-1].rsplit('/', 1)[-1]
+            if fault == 'bytes':
+                drive.objects[name] = drive.item(name, b'other')
+            elif fault == 'size':
+                drive.objects[name]['Size'] += 1
+            elif fault == 'no-hash':
+                drive.objects[name]['Hashes'] = {}
+            elif fault == 'no-id':
+                drive.objects[name].pop('ID')
+            else:
+                drive.duplicates.add(name)
+        return result
+
+    result = upload_run(store, state, run=bad_remote, which=lambda _: 'rclone')
+    assert result['delivery']['status'] == 'failed'
+    assert result['delivery']['verified'] == {}
+
+
+def test_new_completion_precedes_reconciling_lost_ack(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    package = next(t for t in state['tasks'] if t['stage'] == 'package' and t['ad'] == 1)
+    package['status'] = 'pending'
+    drive = Drive()
+
+    def lost_ack(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 120)
+        return result
+
+    upload_run(store, state, run=lost_ack, which=lambda _: 'rclone')
+    saved = store.get(state['id'])
+    next(t for t in saved['tasks'] if t['stage'] == 'package' and t['ad'] == 1)['status'] = 'succeeded'
+    drive.calls.clear()
+    assert deliver(store, saved, drive)['delivery']['status'] == 'uploaded'
+    assert 'copyto' in drive.calls[0]
+    assert drive.calls[0][drive.calls[0].index('copyto') + 1].endswith('ad-02.mp4')
+    assert sum('copyto' in c for c in drive.calls) == 1
+
+
+def test_transport_error_preserves_first_heading_and_quota_project_brief():
+    from harness.delivery import _error, _rate_limited
+    detail = 'Failed to copy: destination check failed\n' + 'diagnostic padding\n' * 100
+    detail += 'rateLimitExceeded: project projects/123456 quota exhausted\n' + 'trailing noise\n' * 100
+    error = _error(subprocess.CalledProcessError(1, ['rclone'], stderr=detail))
+    assert error.startswith('Failed to copy: destination check failed')
+    assert _rate_limited(error)
+    assert 'projects/123456' in error
+    assert len(error) <= 700
+
+
+def test_recovery_listing_failure_or_duplicates_never_authorizes_recopy(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def lost_ack(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 120)
+        return result
+
+    upload_run(store, state, run=lost_ack, which=lambda _: 'rclone')
+
+    def listing_unavailable(cmd, **kwargs):
+        assert 'copyto' not in cmd, 'Uncertain outcomes must be checked before another copy'
+        raise subprocess.TimeoutExpired(cmd, 60)
+
+    result = upload_run(store, store.get(state['id']), run=listing_unavailable, which=lambda _: 'rclone')
+    assert result['delivery']['status'] == 'failed'
+    assert result['delivery']['uncertain']['ad-01.mp4']
+    drive.duplicates.update(drive.objects)
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'failed'
+    assert 'duplicate' in result['delivery']['error']
+    assert sum('copyto' in c for c in drive.calls) == 1
+
+
+def test_recovery_rechecks_missing_or_changed_bytes_before_recopy(tmp_path):
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def lost_ack(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 120)
+        return result
+
+    upload_run(store, state, run=lost_ack, which=lambda _: 'rclone')
+    name = state['delivery']['names']['ad-01.mp4']
+    drive.objects[name] = drive.item(name, b'other')  # Same size, different checksum.
+    drive.calls.clear()
+    result = deliver(store, store.get(state['id']), drive)
+    assert result['delivery']['status'] == 'uploaded'
+    assert 'lsjson' in drive.calls[0] and '--stat' in drive.calls[0]
+    assert sum('copyto' in c for c in drive.calls) == 1
+    assert all('--no-check-dest' not in c and '--ignore-existing' not in c for c in drive.calls)
+
+
+def test_remote_md5_proof_keeps_receipt_compatible_and_skips_verified_copy(tmp_path):
+    from harness.delivery import _already_verified
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+
+    def md5_only(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'lsjson' in cmd and '--stat' in cmd:
+            item = json.loads(result.stdout)
+            item['Hashes'].pop('SHA-256')
+            result.stdout = json.dumps(item)
+        return result
+
+    result = upload_run(store, state, run=md5_only, which=lambda _: 'rclone')
+    info = result['delivery']
+    assert info['status'] == 'uploaded'
+    assert info['verified']['ad-01.mp4'] == {'name': info['names']['ad-01.mp4'],
+                                            'sha256': sha256(b'video').hexdigest()}
+    assert info['remote_proofs']['ad-01.mp4']['checksum'] == {
+        'algorithm': 'md5', 'value': md5(b'video').hexdigest()}
+    assert _already_verified(result)
+    calls = len(drive.calls)
+    assert deliver(store, store.get(state['id']), drive)['delivery']['status'] == 'uploaded'
+    assert len(drive.calls) == calls
+    result['delivery']['remote_proofs'].clear()
+    assert not _already_verified(result)
+
+
+def test_failed_reconciliation_still_delivers_other_ready_video(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    drive = Drive()
+
+    def first_bad_json(cmd, **kwargs):
+        if 'lsjson' in cmd and '--stat' in cmd and cmd[cmd.index('lsjson') + 1].endswith('ad-01.mp4'):
+            return SimpleNamespace(stdout='not-json', stderr='')
+        return drive(cmd, **kwargs)
+
+    result = upload_run(store, state, run=first_bad_json, which=lambda _: 'rclone')
+    assert result['delivery']['status'] == 'failed'
+    assert set(result['delivery']['verified']) == {'ad-02.mp4'}
+
+
+def test_legacy_uploaded_receipt_without_remote_proof_does_not_requeue(tmp_path, monkeypatch):
+    from harness import delivery
+    from harness.delivery_queue import pump
+    store, state, _ = fixture(tmp_path)
+    drive = Drive()
+    deliver(store, state, drive)
+    state['status'] = 'complete'
+    state['delivery'].pop('verification_version', None)
+    state['delivery'].pop('remote_proofs')
+    store.save(state, 'historical_uploaded_receipt')
+    drive.calls.clear()
+    monkeypatch.setattr(delivery, '_bounded_run', drive)
+    monkeypatch.setattr(delivery.shutil, 'which', lambda _: 'rclone')
+    assert delivery._already_verified(state)
+    assert pump(store) == 0
+    assert drive.calls == []
+
+
+@pytest.mark.parametrize('change', ['bytes', 'target', 'ads'])
+def test_legacy_receipt_trust_expires_when_delivery_inputs_change(tmp_path, change):
+    from harness.delivery import _already_verified
+    store, state, folder = fixture(tmp_path, 2)
+    second = next(t for t in state['tasks'] if t['stage'] == 'package' and t['ad'] == 1)
+    second['status'] = 'pending'
+    deliver(store, state, Drive())
+    state['delivery'].pop('verification_version', None)
+    state['delivery'].pop('remote_proofs')
+    if change == 'bytes':
+        (folder / 'ad-01.mp4').write_bytes(b'other')
+    elif change == 'target':
+        state['config']['delivery']['drive'] = 'drive:new-target'
+    else:
+        second['status'] = 'succeeded'
+    assert not _already_verified(state)
+
+
+@pytest.mark.parametrize('action', ['pause', 'cancel'])
+@pytest.mark.parametrize('lost_ack', [False, True])
+def test_control_change_during_copy_stops_batch_and_preserves_receipts(tmp_path, action, lost_ack):
+    from harness.delivery_queue import pump
+    store, state, _ = fixture(tmp_path, 2)
+    drive = Drive()
+
+    def stop_after_first_copy(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        if 'copyto' in cmd:
+            store.control(state['id'], action)
+            if lost_ack:
+                raise subprocess.TimeoutExpired(cmd, 120)
+        return result
+
+    result = upload_run(store, state, run=stop_after_first_copy, which=lambda _: 'rclone')
+    copied = [Path(c[c.index('copyto') + 1]).name for c in drive.calls if 'copyto' in c]
+    assert copied == ['ad-01.mp4']
+    assert not any('lsjson' in c for c in drive.calls)
+    assert result['delivery']['status'] != 'uploaded'
+    saved = store.get(state['id'])
+    retained = saved['delivery']['uncertain' if lost_ack else 'acknowledged']
+    assert retained['ad-01.mp4'] == {
+        'name': saved['delivery']['names']['ad-01.mp4'], 'sha256': sha256(b'video').hexdigest()}
+    assert pump(store) == 0  # Paused/cancelled delivery remains excluded by the queue.
+
+    store.control(state['id'], 'run')
+    assert deliver(store, store.get(state['id']), drive)['delivery']['status'] == 'uploaded'
+    copied = [Path(c[c.index('copyto') + 1]).name for c in drive.calls if 'copyto' in c]
+    assert copied == ['ad-01.mp4', 'ad-02.mp4']
+
+
+def test_control_change_during_stat_stops_remaining_verification_and_preserves_acks(tmp_path):
+    store, state, _ = fixture(tmp_path, 2)
+    drive = Drive()
+
+    def defer_verification(cmd, **kwargs):
+        if 'lsjson' in cmd:
+            raise subprocess.TimeoutExpired(cmd, 60)
+        return drive(cmd, **kwargs)
+
+    upload_run(store, state, run=defer_verification, which=lambda _: 'rclone')
+    before = store.get(state['id'])['delivery']['acknowledged']
+    assert set(before) == {'ad-01.mp4', 'ad-02.mp4'}
+    drive.calls.clear()
+
+    def cancel_after_stat(cmd, **kwargs):
+        result = drive(cmd, **kwargs)
+        store.control(state['id'], 'cancel')
+        return result
+
+    result = upload_run(store, store.get(state['id']), run=cancel_after_stat, which=lambda _: 'rclone')
+    assert len(drive.calls) == 1
+    assert 'lsjson' in drive.calls[0] and '--stat' in drive.calls[0]
+    assert result['delivery']['status'] != 'uploaded'
+    assert store.get(state['id'])['delivery']['acknowledged'] == before

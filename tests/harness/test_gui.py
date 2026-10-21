@@ -12,6 +12,25 @@ from harness.store import Store
 from harness.workflow import build_tasks
 
 
+def test_same_second_spawns_preserve_independent_logs(tmp_path, monkeypatch):
+    from pathlib import Path
+    monkeypatch.setattr(gui.time, 'strftime', lambda *_: '20261020-154021')
+    logs = []
+    handles = []
+    def launch(command, **kwargs):
+        handles.append(kwargs['stdout'])
+        logs.append(Path(handles[-1].name))
+        handles[-1].write(f'controller {len(logs)}\n')
+        assert kwargs['start_new_session'] is True
+    monkeypatch.setattr(gui.subprocess, 'Popen', launch)
+    gui.spawn(tmp_path, 'make')
+    gui.spawn(tmp_path, 'make')
+    assert logs[0] != logs[1]
+    assert logs[0].read_text() == 'controller 1\n'
+    assert logs[1].read_text() == 'controller 2\n'
+    assert all(handle.closed for handle in handles)
+
+
 @pytest.fixture
 def server(tmp_path, monkeypatch):
     monkeypatch.setattr(gui, 'LOCAL_CONFIG', tmp_path / 'harness.local.json')
@@ -86,3 +105,17 @@ def test_start_reuses_running_studio_or_moves_off_busy_port(tmp_path, monkeypatc
         moved.shutdown(); moved.server_close()
     finally:
         blocker.close()
+
+
+def test_run_page_shows_pending_delivery_instead_of_silent_render_success(server):
+    import time
+    base, run, _ = server
+    saved = gui.Handler.store.get(run['id'])
+    saved['delivery'] = {'status': 'retrying', 'attempts': 2, 'next_retry_at': time.time() + 120,
+                         'error': 'rateLimitExceeded', 'verified': {}}
+    gui.Handler.store.save(saved, 'fixture')
+    body = get(base + f'/run/{run["id"]}')[1]
+    assert 'Drive delivery' in body
+    assert 'automatic retry' in body.lower()
+    assert 'rateLimitExceeded' in body
+    assert 'automatic retry' in get(base + '/')[1].lower()

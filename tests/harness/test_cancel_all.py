@@ -104,3 +104,15 @@ def test_cancel_all_scoped_to_store_home(tmp_path):
     assert one.cancel_all() == [a['id']]
     assert one.control_value(a['id']) == 'cancel'
     assert two.control_value(b['id']) == 'run'
+
+
+def test_cancel_all_stops_queued_uploads_without_discarding_render_success(tmp_path):
+    store = Store(tmp_path)
+    run = store.create(load_config())
+    run.update(status='complete', delivery={'status': 'retrying', 'next_retry_at': 9999999999})
+    store.save(run, 'queued_delivery')
+    assert store.cancel_all() == [run['id']]
+    assert store.control_value(run['id']) == 'cancel'
+    assert store.get(run['id'])['status'] == 'complete'
+    assert store.get(run['id'])['delivery']['status'] == 'retrying'
+    assert store.cancel_all() == []

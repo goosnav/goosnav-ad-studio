@@ -8,24 +8,30 @@
     ./ad cancel all                  cancel every unfinished job on this render machine
     ./ad cancel -a                   same as cancel all
 """
-import argparse
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+import uuid
+
+from harness.arguments import HelpfulParser, add_model_options
 
 REPO = Path(__file__).resolve().parent
 HOME = Path(os.environ.get('STUDIO_HARNESS_HOME', Path.home() / '.local/share/goosnav-ad-studio'))
-COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'cooldown', 'gui', 'doctor')
-DONE = ('complete', 'partial', 'failed', 'needs_review', 'waiting_provider', 'cancelled', 'interrupted', 'paused')
+COMMANDS = ('watch', 'status', 'list', 'pause', 'resume', 'cancel', 'upload', 'publish', 'cooldown', 'gui', 'doctor', 'models', 'feedback', 'metrics')
+DONE = ('complete', 'partial', 'failed', 'needs_review', 'waiting_provider', 'cancelled', 'interrupted', 'paused', 'budget_exhausted')
 
 
 def harness(*args, capture=True):
     r = subprocess.run([sys.executable, '-m', 'harness', '--home', str(HOME), *args], cwd=REPO,
                        capture_output=capture, text=True)
-    return json.loads(r.stdout) if capture and r.stdout.strip().startswith(('{', '[')) else r
+    if capture and r.stdout.strip().startswith(('{', '[')):
+        return json.loads(r.stdout)
+    if capture and r.returncode:
+        sys.exit(r.stderr.strip() or r.stdout.strip() or 'Command failed; see ./ad --help')
+    return r
 
 
 def latest():
@@ -36,11 +42,25 @@ def latest():
 
 
 def summary(run_id):
+    from harness.delivery import _completed_ads
+    from harness.delivery_queue import _pending
+    from harness.gui import delivery_summary, display_status
+    from harness.store import Store
     s = harness('status', run_id)
-    done = sum(t['stage'] == 'package' and t['status'] == 'succeeded' for t in s['tasks'])
+    store = Store(HOME)
+    pending = _pending(s)
+    done = len(_completed_ads(s))
     current = next((t for t in s['tasks'] if t['status'] in ('running', 'waiting_provider', 'failed', 'needs_review')), None)
     where = f" | {current['id']} {current['status']}" if current else ''
-    print(f"{time.strftime('%H:%M')}  {run_id}  {s['status']}  {done}/{s['config']['count']} ads{where}", flush=True)
+    print(f"{time.strftime('%H:%M')}  {run_id}  {display_status(s)}  {done}/{s['config']['count']} ads{where}", flush=True)
+    if s.get('execution'):
+        b = s['execution']
+        soft = b.get('version', 1) >= 2
+        limit = 'target, not a cutoff' if soft else f"ceiling {b['hard_seconds']/60:g}"
+        print(f"  {'Time' if soft else 'Budget'}: {b['active_seconds']/60:.1f}/{b['target_seconds']/60:g} min active "
+              f"({limit}) | {b['mode']} | waiting {b['waiting_seconds']/60:.1f} min")
+        if s['status'] == 'budget_exhausted':
+            print(f"  {s.get('error', '')}")
     if current and current['status'] == 'running' and current['attempts']:
         attempt = current['attempts'][-1]
         seconds = max(0, int(time.time() - attempt['started']))
@@ -49,12 +69,27 @@ def summary(run_id):
                     if log.is_file() else 'CLI has not written a log yet')
         print(f'  Worker: {attempt["provider"]}/{attempt["model"]} | '
               f'elapsed {seconds//60}m {seconds%60}s | {activity}')
-    if s.get('delivery'):
-        d = s['delivery']
-        if d['status'] == 'uploaded':
-            print(f'Drive: {d["remote"]}')
-        elif d['status'] == 'failed':
-            print(f'Drive delivery failed: {d.get("error", "unknown error")[:240]}\nRetry: ./ad upload {run_id}')
+        if current.get('waiting_for_resource'):
+            print('  Waiting for the shared render resource; generation is still active.')
+    if s.get('delivery') or pending:
+        d = s.get('delivery')
+        d = d if isinstance(d, dict) else {}
+        if d.get('status') == 'uploaded' and not pending:
+            uploaded = len(d.get('verified', {})) or sum(name.endswith('.mp4') for name in d.get('files', []))
+            print(f'Drive: {uploaded}/{s["config"]["count"]} videos uploaded | {d["remote"]}')
+        else:
+            print('Drive: ' + delivery_summary(store, s))
+    for publication in s.get('asset_publications', {}).values():
+        print(f"  Assets: {publication['status']} | {publication.get('error') or publication.get('commit', '')}")
+        for key in ('adoption_error', 'parent_error'):
+            if publication.get(key):
+                print(f'  {publication[key]}')
+        if publication['status'] == 'pending' or publication.get('adoption_status') == 'pending' or publication.get('parent_status') == 'pending':
+            print(f'  Retry publication: ./ad publish {run_id}')
+    for ad, fallback in s.get('fallbacks', {}).items():
+        message = ('previous end-card-only output replaced with the full story' if int(ad) in _completed_ads(s)
+                   else 'previous end-card-only output rejected; original story required')
+        print(f"  Ad {int(ad)+1:02}: {message}.")
     if current and current['status'] == 'waiting_provider':
         print(f'  Provider blockers: {current.get("feedback", "No provider accepted this task")[:1200]}')
         print(f'  After fixing providers: ./ad resume {run_id}')
@@ -65,6 +100,11 @@ def summary(run_id):
         if s['status'] in ('failed', 'needs_review') and current:
             print(f"Why: {(current['feedback'] or '')[:600]}\nThen: ./ad resume {run_id}   (or retry: "
                   f"python3 -m harness retry {run_id} --task {current['id']})")
+        elif s['status'] in ('failed', 'needs_review') and s.get('error'):
+            print(f"Why: {s['error'][:600]}\nThen: fix the source/configuration issue and ./ad resume {run_id}")
+    if (s['status'] in DONE and s['status'] not in ('paused', 'cancelled') and pending
+            and store.control_value(run_id) == 'run'):
+        return 'waiting_delivery'
     return s['status']
 
 
@@ -73,13 +113,36 @@ def main():
         command, rest = sys.argv[1], sys.argv[2:]
         if command == 'gui':
             os.execv(str(REPO / 'Start Ad Studio.sh'), [str(REPO / 'Start Ad Studio.sh'), *rest])
-        if command == 'doctor':
-            return harness('doctor', capture=False).returncode
+        if command in ('doctor', 'models'):
+            parser = HelpfulParser(prog=f'./ad {command}')
+            parser.add_argument('--config')
+            if command == 'models':
+                add_model_options(parser)
+            parser.parse_args(rest)
+            return harness(command, *rest, capture=False).returncode
+        parser = HelpfulParser(prog=f'./ad {command}')
+        if command == 'cooldown':
+            parser.add_argument('action', nargs='?', choices=('status', 'clear'), default='status')
+            parser.add_argument('provider', nargs='?', choices=('codex', 'claude', 'all'), default='all')
+        elif command != 'list':
+            parser.add_argument('run_id', nargs='?', help='run ID (defaults to latest)')
+            if command == 'cancel':
+                parser.add_argument('-a', '--all', action='store_true', help='cancel all unfinished runs')
+            if command == 'resume':
+                parser.add_argument('--extra-minutes', type=int, default=0, help='explicit added active-time allowance')
+            if command == 'feedback':
+                parser.add_argument('--rating', choices=('good', 'okay', 'bad'), required=True)
+                parser.add_argument('--note', default='')
+        options = parser.parse_args(rest)
+        if command == 'cancel' and options.all and options.run_id is not None:
+            parser.error('Use cancel --all OR cancel RUN_ID, not both')
         if command == 'list':
-            for r in harness('list')[:15]:
-                print(time.strftime('%m-%d %H:%M', time.localtime(r['created'])), r['id'], r['status'])
+            from harness.gui import display_status
+            from harness.store import Store
+            for r in Store(HOME).list()[:15]:
+                print(time.strftime('%m-%d %H:%M', time.localtime(r['created'])), r['id'], display_status(r))
             return 0
-        if command == 'cancel' and rest in (['all'], ['-a'], ['--all']):
+        if command == 'cancel' and (options.all or options.run_id == 'all'):
             result = harness('cancel', '--all')
             if not isinstance(result, dict) or result.get('requested') != 'cancel_all':
                 print('Failed to request cancellation; inspect: python3 -m harness cancel --all',
@@ -89,9 +152,15 @@ def main():
             for run_id in result['runs']:
                 print('  ' + run_id)
             return 0
-        run_id = rest[0] if rest else latest()
+        run_id = None if command == 'cooldown' else options.run_id or latest()
         if command == 'status':
             summary(run_id); return 0
+        if command == 'metrics':
+            return harness('metrics', run_id, capture=False).returncode
+        if command == 'publish':
+            return harness('publish', run_id, capture=False).returncode
+        if command == 'feedback':
+            return harness('feedback', run_id, '--rating', options.rating, '--note', options.note, capture=False).returncode
         if command == 'upload':
             result = harness('upload', run_id)
             if not isinstance(result, dict):
@@ -99,12 +168,17 @@ def main():
                 return 1
             d = result.get('delivery', {})
             if d.get('status') != 'uploaded':
-                print(f'Drive upload failed: {d.get("error", "unknown error")}', file=sys.stderr)
+                if d.get('status') == 'retrying':
+                    print('Drive upload queued for automatic retry; no re-render needed.\n'
+                          f'Last error: {d.get("error", "unknown error")}\n'
+                          f'Follow: ./ad watch {run_id}', file=sys.stderr)
+                else:
+                    print(f'Drive upload failed: {d.get("error", "unknown error")}', file=sys.stderr)
                 return 1
             print(f'Uploaded to Drive: {d["remote"]}')
             return 0
         if command == 'cooldown':
-            result = harness('cooldown', *(rest or ['status']))
+            result = harness('cooldown', options.action, options.provider)
             if isinstance(result, dict):
                 if 'cleared' in result:
                     print(f"Cleared {result['cleared']} provider cooldown(s).")
@@ -119,13 +193,19 @@ def main():
                 time.sleep(60)
             return 0
         if command == 'resume':
-            start('resume', run_id); return 0
+            start('resume', run_id, '--extra-minutes', str(options.extra_minutes)); return 0
         harness(command, run_id); print(f'{command} requested for {run_id}'); return 0
-    p = argparse.ArgumentParser(prog='./ad', description='Make animated ads. See CLI.txt.')
+    p = HelpfulParser(prog='./ad', description='Make animated ads. See CLI.txt.',
+                      epilog='Controls: ' + ', '.join(COMMANDS) + '. Use ./ad COMMAND --help for command options.')
     p.add_argument('concept', nargs='*', help='what the ad should be (quotes optional)')
     p.add_argument('-n', '--count', type=int, help='number of ads (default 1)')
     p.add_argument('-s', '--seconds', type=int, help='length of each ad (default 10)')
-    a = p.parse_args()
+    add_model_options(p)
+    p.add_argument('--config', help='project JSON configuration (default harness.local.json)')
+    p.add_argument('--plan', action='store_true', help='save a run plan without starting workers')
+    if sys.argv[1:] == ['help']:
+        p.print_help(); return 0
+    a = p.parse_intermixed_args()
     args = ['make']
     if a.concept:
         args += ['--concept', ' '.join(a.concept)]
@@ -133,6 +213,13 @@ def main():
         args += ['--count', str(a.count)]
     if a.seconds is not None:
         args += ['--seconds', str(a.seconds)]
+    for key in ('effort', 'provider', 'config'):
+        if getattr(a, key) is not None:
+            args += ['--' + key, getattr(a, key)]
+    if a.plan:
+        return harness(*args, *(['--fast'] if a.fast else []), '--plan', capture=False).returncode
+    if a.fast:
+        args.append('--fast')
     start(*args)
     return 0
 
@@ -140,8 +227,8 @@ def main():
 def start(*args):
     """Detached controller: it keeps going after this terminal closes."""
     logs = HOME / 'gui-logs'; logs.mkdir(parents=True, exist_ok=True)
-    log = logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}.log'
-    with log.open('w') as out:
+    log = logs / f'{time.strftime("%Y%m%d-%H%M%S")}-{args[0]}-{uuid.uuid4().hex}.log'
+    with log.open('x') as out:
         subprocess.Popen([sys.executable, '-m', 'harness', '--home', str(HOME), *args], cwd=REPO, stdout=out,
                          stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     for _ in range(60):
@@ -157,11 +244,16 @@ def start(*args):
     time.sleep(1.5)
     if '"error"' in log.read_text():
         sys.exit(log.read_text().strip())
-    queued = 'queued' in log.read_text()
+    waiting = next((line for line in reversed(log.read_text().splitlines())
+                    if 'queued' in line.lower()), '')
+    queued = bool(waiting)
     print(f'{"Queued" if queued else "Started"} {run_id} in the background (log: {log}).\n'
-          f'  ./ad watch      follow it        ./ad status     one line now\n'
-          f'  ./ad pause      stop after the current step\n'
+          f'  ./ad watch {run_id}      follow it\n'
+          f'  ./ad status {run_id}     one line now\n'
+          f'  ./ad pause {run_id}      stop after the current step\n'
           f'  or open the GUI: ./ad gui')
+    if waiting:
+        print(f'  {waiting}')
 
 
 if __name__ == '__main__':

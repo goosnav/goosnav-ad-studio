@@ -5,13 +5,15 @@ Full guide: README.md and dev/OPERATIONS.md
 
 ONE-TIME SETUP (ON THE RENDER COMPUTER)
   git submodule update --init --recursive
-  git -C assets/goosnav-3D-assets lfs pull   # requires Git LFS
+  git -C /absolute/configured/asset-repo lfs pull   # replace path; requires Git LFS
   cp harness.example.json harness.local.json  # if not already configured
   # Edit harness.local.json: brand sources, products, 3D paths under
   # sources.assets / sources.characters, audio.python, tools.frame_*,
   # and output.folder (ABSOLUTE local directory for finished files).
+  # Asset sources may be an external repository, not this repo's submodule.
+  # Use their configured Git top-level; do not assume a particular asset layout.
   # OPTIONAL: set delivery.drive to "agent-exchange:deliverables/ad-studio"
-  # for automatic Drive upload after a completed or partially completed run.
+  # for automatic Drive upload as each ad finishes (no wait for the whole batch).
   # Leave delivery.drive empty for local-only operation (the default).
   # Install/configure rclone once: rclone config && rclone lsd agent-exchange:
   ./ad doctor
@@ -25,12 +27,126 @@ MAKE AN AD (DETACHED - SURVIVES TERMINAL CLOSURE)
   ./ad "..." -n 3             make 3 ads
   ./ad "..." -s 15            target 15 seconds (default 10)
   ./ad "..." -n 3 -s 15      both
+  ./ad "An astronaut reads Book Two" -s 9 -e high
+  ./ad "..." -s 9 -e medium -p anthropic
+  ./ad "..." -s 9 -e low -p openai
   ./ad                        open brief: agents choose the concept
-  # Starting another job queues it behind the active job.
+  # Separate launches generate concurrently; each prints its own run ID.
+
+DEFAULT WORKFLOW (EVERY NEW CLI RUN)
+  campaign-script -> ad-NN-animate -> edit -> frame -> qa -> package
+  # Concise campaign scripting/planning comes first. The animator owns scene,
+  # audio, build and render; most production effort belongs there. The editor
+  # checks/edits the film, then deterministic finishing and technical QA package
+  # it. Each finished ad uploads its MP4 when Drive delivery is configured.
+  # No human production approval gates; no end-card-only substitute for a story.
+  # Existing saved runs retain their graph and accepted work when resumed.
+  # The render helper checks speaking rigs/faces before full rendering. The
+  # editor judges brief held reactions; controller QA still rejects mostly
+  # frozen films, broken speech, black/unreadable footage and missing story.
+  # The writer keeps the chosen model but uses low reasoning. A single 9-second
+  # writer invocation has a 60-second watchdog; larger batches allow up to 120.
+  # Repair gets a real invocation allowance, not a tiny leftover time slice.
+  # Spoken-word counts are planning targets, NOT campaign rejection limits.
+  # One script over its target does not discard/rewrite the other guides.
+  # Each guide carries timing_guidance to its animator. Before scene building,
+  # actual full voice takes plus reply gaps must fit the story window. Only an
+  # exchange that really does not fit needs shortening; no clipping or rushing.
+  # The animator keeps the selected effort. Performance targets never terminate
+  # a compact run; configured process/stall watchdogs still catch runaway jobs.
+  # Compact context retains the three recent results and character voice memory.
+
+PARALLEL RUNS (USE THE PRINTED IDS)
+  ./ad "Two people discuss Goosnav Book Two"    # detached; prints first ID
+  ./ad "Two friends talk about playing Goosklerf" # starts independently
+  ./ad list
+  RUN_A=REPLACE_WITH_FIRST_RUN_ID
+  RUN_B=REPLACE_WITH_SECOND_RUN_ID
+  ./ad status "$RUN_A"
+  ./ad watch "$RUN_B"              # Ctrl-C stops watching, not generation
+  ./ad pause "$RUN_A"
+  ./ad resume "$RUN_A"
+  # Omitting an ID selects the latest run: use IDs with concurrent jobs.
+  # Writing, audio preparation, scene setup and editing can overlap. Expensive
+  # renders share one per-user GPU lease; a queued render waits, not fails.
+  # Render wait is reported separately from active work. Different worker
+  # TMPDIRs do not create different GPU locks. STUDIO_RENDER_LOCK can override
+  # the shared lock location; all workers must use the same override.
+  # Per-output/cache leases also prevent overlapping retries corrupting frames.
+  # Only one controller can own a given run. Different runs share hardware and
+  # provider quotas; concurrency is not a completion-time guarantee.
+  # Drive transfers remain globally serialized, with durable automatic retries.
+  # Legacy controllers already running before this update retain a workspace-wide
+  # lock. New launches queue until that old process finishes and releases it;
+  # then new controllers can generate independently. The queued message includes
+  # the actual contention reason. No cancellation/restart is needed just to wait.
+
+MODEL INTENSITY / PROVIDER (NEW RUNS)
+  -e, --effort, -effort       low | medium | high (default: medium)
+  -p, --provider, -provider   auto | openai | anthropic (default: auto)
+  # Effort is a whole-ad model/role preset, not just a token budget.
+  # auto uses OpenAI first for high/low and Anthropic first for medium.
+  # -p openai / -p anthropic changes the PREFERRED provider for all roles;
+  # the other provider remains the backup. Quota/capacity/timeouts still
+  # switch dynamically, continuing the existing stage workspace.
+  # OpenAI uses your Codex subscription; Anthropic uses Claude Code.
+
+  PRESET    PRIMARY    CREATIVE WORKERS                    SUPPORT ROUTES
+  high      OpenAI     current Astra, high effort          current Sol, medium
+  medium    Anthropic  latest Opus, medium effort          latest Sonnet, medium
+  low       OpenAI     current Luna, low effort            current Luna, low
+
+  PROVIDER OVERRIDES
+  -e high   -p anthropic  latest Opus at MAX effort; QA Sonnet at medium
+  -e medium -p openai     current Sol at medium; QA Luna at low
+  -e low    -p anthropic  latest Sonnet at low; QA latest Haiku
+  # Producer/editor: Sol for OpenAI high/medium, Luna for OpenAI low;
+  # Sonnet for Anthropic (medium thinking at high/medium, low at low).
+  # Legacy graphs also use research, critique, selection and creative review
+  # routes. New compact runs finish with deterministic technical QA.
+  # Haiku gets no unsupported explicit reasoning-effort parameter.
+
+  # Release numbers are NOT pinned in the presets:
+  # - OpenAI reads the installed Codex CLI's live model/list catalog and
+  #   selects the newest visible current Astra/Sol/Luna release. Hidden,
+  #   retired, deprecated and superseded entries are excluded. Classification
+  #   can also use catalog descriptions if family names change.
+  # - Anthropic uses Claude Code's opus/sonnet/haiku moving aliases.
+  # - Actual models are recorded on every attempt. Automatic selectors and
+  #   moving aliases refresh for unfinished work on resume/provider waits;
+  #   completed stages are not repeated. Explicit model version pins in
+  #   custom worker JSON remain pinned.
+  # - Supported reasoning levels come from the OpenAI catalog. If a requested
+  #   level is unavailable, the closest supported lower level is used (or the
+  #   lowest supported level); the adjustment is recorded in model diagnostics.
+  # - If discovery fails, the existing CLI-default recovery remains available
+  #   and is explicitly reported in the model resolution diagnostics.
+  # Model catalog visibility is not a guarantee of account access; real
+  # provider failures still use the existing failover/cooldown machinery.
+
+  ./ad models -e high                   preview actual current model routing
+  ./ad models -e medium -p openai       preview a provider override; no ad starts
+  ./ad "..." -s 9 -e high --plan       save a plan, start NO workers
+  ./ad --help                          show flags and allowed choices
+  ./ad models --help                   command-specific help
+  ./ad status --help                   controls also have help
+  # Invalid values print the valid choices and exit before launching a job.
+  # Mistyped options (e.g. --efort) show help and a closest-option suggestion.
+  # Single-dash long forms (-effort, -provider) are supported too.
+
+  # The full CLI accepts the same model flags on make/new/models:
+  python3 -m harness make --seconds 9 -e high -p openai --plan
+  python3 -m harness models --effort medium --provider anthropic
+  # Defaults can also be saved in harness.local.json:
+  # "generation": {"effort": "medium", "provider": "auto"}
+  # Explicit per-role "workers" entries in JSON are preserved without flags.
+  # Passing -e or -p replaces those custom routes with the chosen preset for
+  # that run only. It does NOT rewrite the JSON file. --config FILE selects
+  # another project's config; existing duration/count/concept flags still work.
 
 STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
-  ./ad status [RUN_ID]         quick status and failure reason
-  ./ad watch [RUN_ID]          watch until stopped/finished
+  ./ad status [RUN_ID]         generation/delivery status, failure reason and worker health
+  ./ad watch [RUN_ID]          follow rendering and pending Drive delivery until stopped/verified
   ./ad list                    recent runs / IDs
   ./ad pause [RUN_ID]          pause after current stage
   ./ad resume [RUN_ID]         continue
@@ -40,9 +156,9 @@ STATUS / CONTROLS (RUN_ID IS OPTIONAL FOR ./ad COMMANDS)
   python3 -m harness cancel --all  equivalent full CLI command
   # All means runs in this Ad Studio's STUDIO_HARNESS_HOME only.
   # Stops running agents via their existing cancellation checks, within seconds.
-  # Queued jobs exit promptly instead of waiting a 30-second queue interval.
+  # Cancellation also applies to controllers waiting for the same run's lock.
   # No unrelated processes are killed; no finished MP4s or state are deleted.
-  ./ad upload [RUN_ID]         retry Drive upload of packaged MP4s/ZIPs; no re-render
+  ./ad upload [RUN_ID]         attempt/queue Drive upload of packaged MP4s only; no re-render
   ./ad cooldown status         show cached quota cooldowns
   ./ad cooldown clear          clear all cached cooldowns and let the next run retry providers
   ./ad cooldown clear codex    clear only that provider (also accepts claude)
@@ -78,47 +194,180 @@ WHERE THE OUTPUT GOES
 
 GOOGLE DRIVE DELIVERY (OPTIONAL; AUTOMATIC AFTER RENDER)
   # 1. Install rclone and authorize a Google Drive remote on the render PC:
+  #    Linux/WSL also needs GNU coreutils' timeout (normally already installed).
   rclone config
   rclone lsd agent-exchange:             # replace with your actual remote name
   # 2. In harness.local.json, set delivery.drive to an rclone path or a
   #    Google Drive folder URL. Folder URLs use the configured agent-exchange remote.
   #    "delivery": {"drive": "https://drive.google.com/drive/folders/FOLDER_ID"}
-  # 3. Run ./ad "..." normally. It renders locally first and then uploads
-  #    finished ad-NN.mp4 + ad-NN.zip to <drive>/<RUN_ID>/ automatically.
-  # 4. Check ./ad status to see the upload outcome. If it fails:
-  ./ad upload [RUN_ID]                  # upload again, no re-render
+  # 3. Run ./ad "..." normally. EACH packaged ad becomes eligible immediately;
+  #    delivery waits for quota and the transfer slot, not for the whole batch.
+  #    A controller checks earlier packages during the next animator's work. It uploads
+  #    finished videos ONLY into the configured Drive folder automatically.
+  #    Names use the selected script title, a UTC date/time stamp, run suffix
+  #    and ad index. Retry keeps the same name. MP4/ZIP source packages stay local.
+  # 4. Upload outages recover automatically; no manual resume/approval is needed.
+  ./ad status [RUN_ID]                  # verified count, last error, retry time, worker health
+  ./ad watch [RUN_ID]                   # keep watching through queued uploads, not just rendering
+  # No manual upload, resume or retry reset is needed for queued deliveries.
+  # ./ad upload RUN_ID remains an optional diagnostic request, honoring cooldowns.
+  # A generation-complete run with pending Drive delivery displays awaiting_upload
+  # in status/list and the GUI; its saved generation status remains complete.
+  # Status shows verified count, last error, effective max(own/shared) retry
+  # deadline and worker health, including queued entries without a first receipt.
+  # Failures enter a durable queue. Persisted exponential backoff starts at 2-3
+  # seconds and reaches 64-65 seconds including jitter. There is NO attempt limit.
+  # Legacy long waits (including old 18-minute entries) and obsolete shared
+  # delivery cooldowns are normalized to no more than 64 seconds ahead.
+  # Current-policy deadlines survive restarts. These intervals are NOT a delivery
+  # SLA: quota, transfer/verification time and contention can delay success.
+  # Queued videos keep retrying until
+  # verified uploaded, or until you explicitly pause/cancel the run or disable
+  # that run's saved Drive destination.
+  # The fair queue gives least-recently-attempted runs a turn, skipping busy,
+  # deferred or malformed entries instead of starving other eligible deliveries.
+  # A detached singleton worker survives controller/terminal exit. If that worker
+  # process dies without a service manager, reopening make/run/resume/upload/status
+  # or the GUI is required to recover it; saved receipts/deadlines remain durable.
+  # OPTIONAL explicit Linux setup for automatic worker restart:
+  python3 -m harness.delivery_service
+  # Or select the same harness home used by generation:
+  # python3 -m harness.delivery_service --home /absolute/path/to/harness-home
+  # Installs/enables a user unit named goosnav-ad-delivery-<home-hash>.service
+  # with Restart=always. Enabled and active on this render host (2026-10-21).
+  # Normal CLI recovery asks an installed service to start rather than racing
+  # its restart delay with another detached worker. No user manager: detached fallback.
+  # User units normally start at login after logout/reboot; lingering is not enabled
+  # by this installer. A powered-off computer cannot upload. The service installer
+  # does not create an OAuth client, authorize Drive, or copy credentials into the unit.
+  # The worker log is delivery-worker.log under the harness home (the same
+  # STUDIO_HARNESS_HOME used by generation); the queue/receipts live in state.sqlite3.
+  # Copies are serialized across ALL runs, including inline/manual uploads,
+  # with rclone TPS limiting set to one and burst size one per command.
+  # A quota response stops the batch and sets a shared
+  # cooldown for other runs, instead of immediately trying every remaining ad.
+  # New receipts require a unique remote object ID, matching byte size and checksum;
+  # a filename-only listing is not sufficient. Missing hashes/duplicate identities
+  # remain pending with a diagnostic. Copies are marked uncertain BEFORE transport.
+  # After a lost acknowledgement/restart, matching remote content is reconciled
+  # without another copy; a proved absence/mismatch permits copying again.
+  # Matching verified receipts are reused. Historical uploaded receipts are not
+  # API-reprobed simply because delivery code was upgraded. All attempts use
+  # affected run's lock, so stale delivery state cannot overwrite its rendering.
+  # A separate global transfer lock excludes overlapping uploads. A busy run
+  # does not block another run's generation or eligible queued delivery.
+  # Drive I/O has bounded timeouts and is excluded from the generation budget.
+  # Controller upload time is also excluded from native worker total/stall
+  # watchdogs, so retrying an earlier ad cannot time out the next animator.
+  # An independent timeout watchdog kills a stalled uploader even if its
+  # controller dies; the uploader retains its run and transfer locks until exit
+  # so recovery cannot overlap the copy. Other runs can keep generating.
+  # Fresh private Python cache prefixes prevent stale bytecode on launch/reload;
+  # shared caches are neither trusted nor deleted by the delivery worker.
+  # A living worker fingerprints delivery_queue.py, delivery.py, streaming.py and
+  # store.py. Changes trigger self-exec BETWEEN attempts, retaining its singleton
+  # lease. This adopts delivery code, not new unit/interpreter/environment settings;
+  # those still require a service restart to apply to a running service.
   # The rclone copy never deletes files on Drive. If Drive is down, the
-  # local MP4/ZIP remain intact and the render is still marked successful.
+  # local MP4/ZIP remain intact and the render is still marked successful,
+  # but pending delivery is not reported as successful: top-level awaiting_upload,
+  # with the separate delivery receipt showing retrying/uploading/queued state.
+  # Authentication/configuration/storage errors remain visible and queued too;
+  # retries cannot repair revoked credentials or a permanently full Drive.
+  # Shared rclone client-project rate limits can materially delay uploads.
+  # Official rclone docs say the shared client is retiring during 2026: use your
+  # own OAuth client. The restarting worker cannot create or repair that client.
+  # https://rclone.org/drive/#making-your-own-client-id
   # Partial runs with some packaged ads upload the successfully packaged ads.
-  # To disable upload, leave delivery.drive blank or remove the delivery key.
-  # You can also upload a prior local-only run by setting the delivery.drive
-  # of that run using the saved run config, or by running rclone copy manually.
+  # To disable upload for NEW runs, leave delivery.drive blank or remove the
+  # delivery key. To stop a saved pending queue entry, ./ad pause RUN_ID or
+  # ./ad cancel RUN_ID (cancel all also stops pending deliveries).
+  # To deliver a prior local-only run, explicitly configure that saved run's
+  # delivery.drive. Normal pending delivery does not require manual rclone copies.
+
+FLOATING PRODUCT END CARDS
+  # Reuse existing Minecraft-style item-drop videos; Frame trims them to the
+  # end-card window, keeps typography steady, and retains the ad's original audio.
+  # The card is an early-web-2002 computer screen: white ground, black bold title,
+  # blue (#0000ee) UNDERLINED Times New Roman URL, steady aliased pixel type and
+  # ordered Bayer dithering on the product picture. No random jitter, blinking
+  # cursor, RGB splitting, scanlines, drop shadows or typewriter animation.
+  # Actual Times New Roman is preferred when installed; the bundled Times-compatible
+  # TeX Gyre Termes is the portable fallback, never Helvetica/sans for the URL.
+  # This treatment applies to end cards for every effort/look; the story and its
+  # audio remain untouched. PROJECT.frame_policy gives reviewers the same contract.
+  # frame: full keeps the same blue Times link and steady pixel type, but does
+  # not dither the story picture. Product-image dithering is closing-card-only.
+  # Configure output.end_card_library (relative to the config file, or absolute)
+  # when these clips live in a different library from your scene/character assets.
+  # Empty uses the normal configured asset library. No asset folder is built into code.
+  # Map product names to active catalog IDs in output.end_card_clips, for example:
+  # "end_card_clips": [
+  #   {"product":"Goosnav Book 2","asset_id":"end-card-book2-item","start":0},
+  #   {"product":"Goosklerf","asset_id":"end-card-goosklerf-pack-item","start":0}
+  # ]
+  # See harness.example.json. The bundled asset submodule contains both clips.
+  # end_card.product may specify the exact configured name; otherwise the script's
+  # product field selects the mapping. A short clip loops to fill the window.
+  # Catalog hashes resolve moved clips; archived/retired assets are never used.
+  # A missing, undecodable or ambiguous clip falls back to the rendered hero and
+  # records why in the frame result. Make new item animations when no suitable
+  # existing video applies, preserving the real product art.
+  # New runs capture these settings; existing run snapshots retain their config.
 
 PROVIDER FAILOVER / WAITING_PROVIDER
-  # Claude's subscription can be exhausted while Codex is available.
+  # The intensity chooses the primary provider by default; -p changes the
+  # preference. Presets ALWAYS include the other provider as the backup.
+  # A worker cut off mid-task (usage, capacity, context, timeout) hands its
+  # partial workspace to the backup, which continues instead of restarting.
   # The harness now keeps Codex eligible if app-server model discovery fails:
   # Codex CLI selects its own default model rather than being skipped.
-  # Resuming refreshes stale unavailable Codex routes from existing run state.
+  # Resuming refreshes moving model selectors/aliases for unfinished work,
+  # including stale unavailable Codex routes from existing run state.
   # A retired Codex model triggers one automatic retry using the CLI default.
   # The scheduler still honors real per-provider quota cooldowns.
   ./ad status                  shows specific provider skip/failure reasons
   ./ad doctor                  checks local CLI tools and login diagnostics
   python3 -m harness models    check model routing in current configuration
   ./ad resume RUN_ID           retry a previously blocked run after git pull
-  # Existing tasks/artifacts are preserved; successful stages are not repeated.
+  # Resume reopens a FAILED stage with a fresh bounded attempt budget, keeping
+  # its work, feedback and attempt history; successful stages are not repeated.
+  # Modern runs automatically repair review findings and migrate older
+  # needs_review checkpoints on resume. No operator approval is required.
+  # Normal board repairs honor limits.board_repairs (default 4); other review
+  # repairs use limits.review_repairs (default 2). Fast mode uses one per round.
+  # If those repairs fail, one bounded autonomous replan adapts the affected ad
+  # to verified asset capabilities while preserving completed ads. Review and
+  # technical gates still apply. Historical multi-stage graphs retain their
+  # explicit ceilings; compact script/animate/edit runs use soft time targets.
+  # Exhausted automatic recovery records a failed ad and continues other ads;
+  # it does not request manual review. Automatic waits never reset budgets.
+  # A repair that fixes evidence but forgets to resubmit result.json can reuse
+  # that revision's prior manifest ONLY if every contract/media check now passes.
+  # Compact campaign scripting supplies one script per requested ad. Saved
+  # legacy runs keep their candidate-writing/selection workflow and checkpoints.
   # Note: manual workers profiles with ONLY Claude cannot fall back to Codex.
 
 AGENT STALLS / TIMEOUTS
-  # Defaults for NEW runs: lightweight research/write/critique/select 10 min,
-  # direction/reviews 15 min, idle with no log/checkpoint changes 5 min.
-  # Asset building, audio, animation and final editing retain 4 hours per attempt.
+  # Attempts have process/stall watchdogs, not shrinking performance allowances.
+  # Compact runs concentrate production work in animation, with brief scripting
+  # and an editor pass before deterministic finishing. No speed is guaranteed.
   # On a timeout/stall the next provider/cheaper route is tried immediately.
+  # Quiet scene/audio/frame-journal changes count as progress. On Linux with
+  # pidfds, inherited attempt markers identify detached children for cleanup;
+  # unrelated parallel runs are not killed. This is not a security sandbox:
+  # a detached process that removes its marker cannot be tracked this way.
+  # Cleanup ownership is saved before launch so interrupted controllers can
+  # recover detached workers too. If cleanup cannot be confirmed, the error is
+  # visible and that workspace stays blocked; fallback must not race an old
+  # writer. Resume/retry rechecks the saved token before allowing more work.
   # A COMPLETE, contract-valid result.json is kept even if its worker timed out.
   # These can be tuned in harness.local.json under limits:
   # "limits": {"quick_timeout_seconds": 600, "review_timeout_seconds": 900,
   #            "idle_timeout_seconds": 300}
-  # Limits apply to NEW attempts. Existing run configs retain their saved
-  # worker routes; start a new run to gain the new economy/balanced backups.
+  # Limits apply to NEW attempts. Existing run configs keep their selected
+  # intensity/provider preference; their automatic model releases refresh on
+  # resume. Start a new run to choose a different -e/-p preset.
   # If an already-running OLD controller is stuck, from another shell:
   ./ad cancel RUN_ID
   # Pull the new code, then:
@@ -132,3 +381,166 @@ NOTES
   - harness.local.json and studio.local.json are separate configs.
   - A completed pipeline does not guarantee an aesthetically good ad;
     review the MP4 before publishing.
+PRODUCTION TARGETS, WORLDS AND REUSE
+----------------------------------
+  ./ad "A character comedy in a strange outpost" -s 9 -e high
+  ./ad "A quick Goosklerf exchange" -s 9 -e low --fast
+
+Effort selects production scope/model intensity. Performance targets per 9-second ad:
+  EFFORT     NORMAL       --fast
+  low        10 minutes   5 minutes
+  medium     20 minutes   10 minutes
+  high       40 minutes   20 minutes
+These are targets, NOT termination deadlines, measured speeds or promises.
+--fast halves the target while keeping the model tier/provider. Targets scale
+with duration/count. Crossing one records finish_existing: preserve meaningful
+dialogue, voices, scene and frame cache; drop optional construction/polish.
+It does not kill the animator, downgrade the chosen model or starve editing/QA.
+Each invocation still has configured process/stall limits for hung workers;
+limits.production_timeout_seconds is the safety watchdog, not a time to fill.
+Use ./ad metrics RUN_ID for actual work, and ./ad status RUN_ID for target state.
+
+The animator handles measured audio, scene construction and rendering together.
+The editor checks the resulting film and makes needed edits before deterministic
+Frame finishing, technical QA and packaging. Recovery preserves accepted work
+and checkpoints; it must not replace a real story with a full-length product card.
+Only finished, packaged ads are eligible for per-ad MP4 delivery. Failed or
+unfinished ads remain visible rather than being reported as successful uploads.
+An animator may also declare an optional candidate_manifest for reusable asset
+publication after its ad packages successfully; this is separate from MP4 upload.
+
+Existing saved runs retain their graph, accepted artifacts and delivery receipts.
+Resume preserves spending. Existing compact runs automatically adopt soft targets.
+Only historical pre-compact graphs retain the old hard budget; for those an
+explicit extension remains available:
+  ./ad resume RUN_ID --extra-minutes 10
+
+Low favors tested sets/performances; higher effort permits more ambitious framing
+and atmosphere. No extra planning stages are added. New script guides include
+explicit cast/reason, exact dialogue and viewer_takeaway. Default casting is
+ordinary characters: astronaut/skeleton/exotic roles need relevant story context.
+The spoken exchange must make sense even if physical animation is rough. Props,
+tiny gestures and hidden game rules must not carry the meaning. Timing edits
+must preserve complete thoughts; the editor judges the actual spoken version.
+Backgrounds remain evocative early-3D worlds; clarity does not require photorealism.
+Reusable talk/listen, gesture, look-at and in-place walk recipes live in the
+3D asset library's scripts/conversation_motion.py; see docs/conversation-motion.md
+there and this repository's docs/worlds.md. The harness reads literal recipe
+data, never executes asset-library Python. Measured speech owns the mouth;
+authored poses/animations remain protected. Optional new reusable assets still
+go through validated publication after a finished ad, not direct worker pushes.
+Active catalog roots may move: configure
+sources.assets / sources.characters and resolve stable catalog IDs rather than
+copying old paths.
+output.look: retro_world (new default), ps1, or clean. retro_world uses original
+early-3D-world detail, shadows, texture and atmosphere; it does not force extreme
+pixelation or photorealism. Existing saved jobs retain their prior graph and look.
+The local project configuration can explicitly override the look.
+
+  ./ad feedback RUN_ID --rating good --note "Great reaction timing; reuse this set"
+  ./ad feedback RUN_ID --rating bad --note "The answer came too late"
+  ./ad metrics RUN_ID
+Ratings are good / okay / bad. Feedback is product-scoped, traced to its run, and
+provided to future writing/direction. Technical success alone is not a quality
+rating. Metrics report stage time, attempts, models and usage when CLI logs provide
+it. Dollar cost is unavailable for subscription CLIs; no fabricated cost estimate.
+
+ASSET PATHS AND PUBLICATION
+library.root may name the asset repository, or be empty to discover it from
+sources.assets. library.catalog defaults to asset-catalog.json RELATIVE to that
+root. No fixed asset directory hierarchy is required. Entries have stable IDs,
+content hashes and relative paths. Moves resolve only to unambiguous matching
+content; retired/archive entries and path escapes are excluded.
+First-catalog publication preserves committed active .blend inventory using LFS
+content OIDs even before hydration. Pointer text is never usable geometry: hydrate
+the required active paths in the configured repository, excluding archives, before
+catalog reads/use. Existing catalogs remain authoritative; bootstrap does not repair
+an already incomplete catalog. See docs/library.md.
+
+New jobs record the source configuration location. Resume reloads its asset roots
+and approved character paths, while preserving the run's model/output policy.
+Only the configured active characters may be cast. A different model with the
+same filename cannot silently replace a recorded identity.
+
+Reusable asset candidates remain in the job workspace until validation. With
+library.publish:true, validated candidates can be committed in an isolated asset
+worktree and pushed; the artist's checkout is not overwritten. Publication errors
+are retained for retry independently of the finished video. See docs/library.md
+for manifests, retirement and the submodule push/pin protocol.
+  ./ad publish RUN_ID
+This retries publication without rendering. The asset commit/LFS objects are
+pushed before the matching parent gitlink. Dirty asset or parent checkouts stay
+untouched and show adoption/pin pending; retry after your other edits are settled.
+
+Local production helpers (use the configured audio interpreter for voice):
+  /path/to/audio-python -m harness.voice REQUEST.json TAKES_DIRECTORY --summary
+  python3 -m harness.creative submit-direction plan.json takes/manifest.json --workspace workspace --output direct-result.json --direction-md direction.md
+  python3 -m harness.submission asset-plan.json --workspace workspace --output result.json
+  python3 -m harness.mix DIRECT_RESULT.json workspace/audio --no-bed --stage-result workspace/result.json
+  python3 -m harness.mix DIRECT_RESULT.json workspace/audio-with-bed --bed BED.wav --bed-gain-db -30
+  python3 -m harness.mix --request workspace/audio/request.json workspace/replayed-audio
+  python3 -m harness.render --scene scene.blend --audio mix.wav --output preview.mp4 --seconds 9 --effort low --fast
+Replace placeholders; run from this repository so harness modules are importable.
+DIRECT_RESULT is accepted direction with its declared scratch-take manifest.
+submit-direction reads an authored plan (summary and direction) and verified local
+WAVs, then writes a new result with declared dependencies. Its input/output paths
+are workspace-relative; omit --direction-md if no authored notes file exists.
+It does not rewrite timings, generate speech or approve the plan: controller
+validation is still mandatory. Every planned line slot MUST fit the full selected
+polished WAV, including pauses/tails, plus planned reply/reaction gaps. Active
+speech bounds are not a substitute. Shorten/re-record or revise timing if it cannot
+fit; never falsify measurements or rely on the mixer's silence trim to pass direction.
+Scene submission takes an authored asset-plan.json with summary, assets, boards,
+used_asset_ids, scene (.blend), source (rebuild script), manifest (provenance file),
+and optional files:[{path,kind}] for additional required dependencies. Artifact
+paths are workspace-relative. It declares only those existing local artifacts,
+rejects traversal/symlinks/overwrites, and writes a new result.json. No source
+discovery, image/Blender inspection, invented rights or creative approval occurs.
+The controller still checks the boards, active asset identities and quality.
+Submit complete scene work before optional polish; a checkpoint is not approval.
+Mix output must be new/empty; --stage-result writes a NEW sibling result file
+with artifact paths prefixed for the worker workspace. It refuses overwrites.
+Choose --no-bed or a supplied PCM16 WAV bed; no synthesized/looped bed is invented.
+Replay uses saved options and verified inputs, with no overrides or voice synthesis.
+Mix writes mix.wav, dialogue.wav, timeline.json, audit.json, request.json and
+result.json. It trims only exact digital-zero edges when needed, never active
+speech or time-stretching. A line that cannot fit requires revised direction.
+Quiet dialogue receives one measured uniform gain (target -21 dBFS, at most
++18 dB), with peak protection. Timing and source takes are unchanged. audit.json
+records the gain and final measurements; unsafe/unreachable speech levels block
+assembly instead of clipping or quietly weakening the controller's checks.
+Helpers do not replace the controller's contract, speech and creative checks.
+Render and asset-publication checks ignore Blender's provenance-only append-origin
+references, not actual dependencies. Fully appended/packed assets can survive moving
+their original files; linked libraries, unpacked inputs and same-path external shader
+dependencies still fail validation. Existing render caches are checked on every use.
+In worker results, files lists NEW workspace outputs only. Reviews normally use
+files: []; cite accepted input boards/media in findings.target, not files.
+
+The voice batch measures takes and verifies cached audio before reuse. Delivery
+notes do not magically give Kokoro emotional control. Audition/listen where tools
+allow, preserve chosen takes, and time shots against real speech. Chatterbox is
+optional and never silently substituted or installed; it is absent from the
+current validation setup. Normal audition caps are 1/2/3 for low/medium/high;
+fast caps all tiers at one, plus at most one explicitly configured defect retry.
+Selection is initially provisional; neither voice nor mix runs ASR or certifies
+emotional quality. See README.md and dev/WORKER_GUIDE.md for request/selection usage.
+
+Inside Blender Python, blender.staging exposes import_actor, world_bounds and
+frame_subjects. Use explicit catalog-resolved paths; multi-rig actors require
+rig_name. Framing checks the current pose's projected bounds, not face visibility,
+occlusion or an entire animation. Render/review boards. See docs/worlds.md.
+The render helper packs no assets itself: provide a self-contained scene. It
+revalidates dependencies even on cache hits, reuses only hash-verified completed
+frames after interruptions, and encodes picture/audio with FFmpeg. It rejects
+external/unsupported media and simulation caches; it is not a creative QA pass.
+
+For actual six-preset benchmarks (uses model quota, separate job state):
+  python3 tools/benchmark_production.py --config harness.local.json --home .local/benchmarks/my-run
+Benchmark publication and Drive upload are disabled. Inspect results.json and
+finished videos; blocked/failed runs are not successful timing measurements.
+
+VALIDATION
+Production budgets are targets, not guaranteed completion times or creative quality.
+Current test evidence, live-run outcomes and limitations are maintained in
+docs/production-upgrade-progress.md.

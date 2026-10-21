@@ -6,7 +6,7 @@ request: {"fps": 24, "rigs": {"GUY": "guy"}, "lines": [{"speaker", "text", "star
 For every frame of every line it evaluates the active camera (markers included):
 - mouth: the speaker's mouth (open/round/wide morphs on v10 rigs, else the jaw bone) is open on
   a share of the line's frames, and shut between lines;
-- face: the head is inside the frame, big enough to read, and the camera ray to it hits the
+- face: the head faces the camera, is inside the frame, big enough to read, and the camera ray to it hits the
   character itself (its skinned meshes or parts parented to its head/jaw/neck), not a prop.
 """
 import json
@@ -53,6 +53,17 @@ def face_state(scene, arm, parts, depsgraph):
     inside = p.z > cam.data.clip_start and 0.02 < p.x < 0.98 and 0.02 < p.y < 0.98
     size = math.hypot(pa.x - pb.x, (pa.y - pb.y) * scene.render.resolution_y / scene.render.resolution_x)
     origin = cam.matrix_world.translation
+    # The head-center ray also hits the BACK of a skull. Derive forward from
+    # the rest jaw's hinge-to-chin direction, then follow the posed head, not
+    # the jaw's speech rotation. No model filename or fixed world axis.
+    rest_head, rest_jaw = arm.data.bones['head'], arm.data.bones['jaw']
+    up = (rest_head.tail_local - rest_head.head_local).normalized()
+    forward = rest_jaw.tail_local - rest_jaw.head_local
+    forward -= up * forward.dot(up)
+    facing = True
+    if forward.length > 1e-6:
+        posed = (arm.matrix_world @ head.matrix @ rest_head.matrix_local.inverted()).to_3x3() @ forward
+        facing = posed.normalized().dot((origin - point).normalized()) >= -0.05
     ray = point - origin
     hit, loc, _, _, obj, _ = scene.ray_cast(depsgraph, origin, ray.normalized(), distance=ray.length + 0.5)
     # Objects hidden from the render neither block a face nor count as one.
@@ -61,7 +72,7 @@ def face_state(scene, arm, parts, depsgraph):
         hit, loc, _, _, obj, _ = scene.ray_cast(depsgraph, origin, ray.normalized(), distance=(point - origin).length + 0.5)
     clear = (not hit) or obj.name in parts or (obj.original and obj.original.name in parts)
     shown = not all(bpy.data.objects[n].hide_render for n in parts if bpy.data.objects[n].type == 'MESH')
-    return inside and shown, size, clear
+    return inside and shown and facing, size, clear
 
 
 def main():
@@ -111,7 +122,8 @@ def main():
                                       f'{entry["mouth_open"]:.0%} of the line; key mouths.json with blender/lipsync.py')
         if not line.get('offscreen') and entry['face_visible'] < 0.3:
             report['problems'].append(f'"{line["text"]}": {line["speaker"]}\'s face is visible, unblocked and '
-                                      f'readable on only {entry["face_visible"]:.0%} of the line (size {entry["face_size"]})')
+                                      f'readable on only {entry["face_visible"]:.0%} of the line (size {entry["face_size"]}); '
+                                      'check face direction, camera angle, framing and occluding props before rendering')
     for speaker, arm in rigs.items():
         if arm is None:
             continue

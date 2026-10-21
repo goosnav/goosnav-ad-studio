@@ -120,3 +120,11 @@ def test_cast_must_come_from_the_character_library(tmp_path):
     with pytest.raises(ContractError, match='library character'):
         check_direction(p, c)
     assert check_direction(plan(**{'cast.0.model': str(guy), 'cast.1.model': str(guy)}), c)
+
+
+def test_archived_cast_is_rejected_even_when_a_stale_config_lists_it(tmp_path):
+    retired = tmp_path / 'archive' / 'retired.blend'
+    retired.parent.mkdir(); retired.write_bytes(b'BLENDER')
+    config = load_config(None, {'sources': {'characters': [str(retired)]}})
+    with pytest.raises(ContractError, match='archived'):
+        check_direction(plan(**{'cast.0.model': str(retired), 'cast.1.model': str(retired)}), config)

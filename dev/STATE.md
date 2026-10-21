@@ -1,8 +1,305 @@
 # Development state
 
-Updated: 2026-10-16 (fourth session)
+Updated: 2026-10-21
 
-## Current position
+## Current script timing correction
+
+Observed: run `20261021-072511-7cecb788` requested ten seven-second low-effort ads
+and failed in `campaign-script` after 176.99s of writer invocations, before any
+animation or upload. The configured 2.5s closing clip leaves a 4.5s story. A rough
+two-words/second estimate became a hard nine-word rejection gate for the entire
+campaign. Attempts failed at 13, 10 and 12 words respectively. The second draft
+had nine guides at/below the target and one at ten words, but none were accepted;
+the next repair rewrote good guides and introduced more over-target exchanges.
+The preceding run `20261021-072245-f26973fd` completed and uploaded its MP4.
+
+Contract correction: word counts guide concise writing, but do not establish
+actual speech duration or authorize rejecting a campaign. Each guide now carries
+controller-derived `timing_guidance` into its own animator without changing the
+dialogue or discarding sibling guides. Full measured WAVs and reply gaps must
+still fit before scene construction; speed, audio, story and media gates remain
+unchanged. Product/cast identity and complete script schemas are still required.
+This does not isolate arbitrary malformed script schemas within a campaign.
+
+Regression: a ten-guide batch with one ten-word exchange reproduced the failed
+campaign on the old code. The repaired boundary accepts all guides in one worker
+attempt, preserves their words/order and forwards timing guidance to the matching
+animator.
+Real Kokoro checks at default speed rejected both overflowing saved exchanges
+before scene construction. The original borrow exchange measured 2.1s + 0.18s
+reply gap + 2.8s = 5.08s, exceeding the 4.5s story. A local meaning-preserving
+shortening, "Can I borrow it? / I'm still reading.", produced a complete verified
+audio receipt ending at 4.005s. No duration extension, voice speed-up or clipping
+was used. This timing demonstration is not a claim about artistic voice quality.
+Independent review caught a long-feedback truncation that could remove the
+obsolete-limit clarification on resume. Its new regression failed before the
+repair and passed afterwards; the notice now has reserved space within 2,200
+characters. Fresh compact checks: 14 passed. Earlier focused production/audio
+checks: 47 passed. Full controller suite during this repair: **899 passed, 2 skipped
+in 429.17s**; final compact rerun after the feedback correction: **14 passed**.
+The existing batch was resumed with `./ad resume 20261021-072511-7cecb788`.
+Its writer accepted all ten guides in one 24.6s attempt, including five above the
+advisory target, and moved into the first animator. That worker detected actual
+speech overflow locally instead of restarting campaign writing. Rendering and
+delivery of the resumed batch are not yet claimed complete. No manually edited
+run state or manually uploaded substitute is used. Both managed submodules were
+fetched and checked: their HEADs already match origin/main; no asset changes.
+
+## Current delivery correction
+
+Contract: a normal ad command delivers each completed MP4 automatically to the
+configured Drive destination, with honest pending status and unattended recovery.
+Baseline 946c76f was clean. The latest run 20261021-054836-2aaeeb2d completed its
+generation at 06:02:06 PDT but had five Drive project rate-limit failures. The
+fifth failure at 06:19:58 scheduled 1,075.95 seconds of waiting, until 06:37:54.
+The old worker was alive and retrying on schedule. Read-only folder/file API
+checks succeeded at 06:24, while the saved cooldown still blocked transport.
+The problem was excessive recovery latency, not a missing MP4 or dead worker.
+
+| Issue | Reproduced consequence | Repair / acceptance |
+| --- | --- | --- |
+| D1: minute-scale quota produces half-hour backoff | Drive available while a finished ad waits ~18 minutes | Persistent 2–3s exponential retries capped at 64–65s; migrate legacy deadlines/shared delivery cooldown only |
+| D2: run lease held throughout next animator | Previous finished ad cannot retry until stage boundary | Controller-owned snapshot retries through its monitor callback, with upload time excluded from both budget and native worker watchdog |
+| D3: stale/dead detached worker | Updated code never loads; worker death needs another CLI action | Idle-boundary source reload retains singleton lease; restarting user service enabled on this render host; CLI respects managed restart |
+| D4: oldest failure renews shared cooldown | Newer healthy deliveries starve | Least-recently-attempted fairness; busy/deferred/broken entries do not monopolize ticks |
+| D5: lost copy acknowledgement | Redundant upload before remote reconciliation | Persist uncertainty before copy; reconcile exact destination identity/content before repeating it |
+| D6: filename presence called verification | Wrong bytes / ambiguous duplicate names can pass | New version-2 remote ID, size and checksum proof, with uniqueness check |
+| D7: render complete hides delivery state | No receipt or orphaned uploading looks successful | CLI/list/GUI show awaiting_upload and worker health; watch follows delivery |
+| D8: malformed retry metadata / transfer lease errors | Repeated non-attempts or an animator failure | Normalize numeric fields, isolate queue entries, and contain delivery lease exceptions |
+
+Live recovery: the new supervised worker automatically migrated the pending job
+at 06:36:13. Attempt 6 started 06:37:19, acknowledged the copy 06:37:34, and verified
+delivery 06:37:38. No manual upload, resume, cooldown clearing or receipt reset was
+used. The only uploaded file was the existing title/timestamp MP4:
+`nothing-to-read-20261021T124836Z-636f95d55688-ad-01.mp4`.
+Remote object `1pcD03fpglN3axrqSBlR1rAKvl8R3zN_n` has size 2,826,334 and SHA-256
+`a08706b793f3487213b0f86d9c8ff7d828b056225ab9232489409b5aef42d28f`, matching
+the local video. After delivery, a controlled kill of the idle service worker
+was recovered automatically in 5.62s (PID 2728528 -> 2731813), without any CLI
+recovery trigger. The receipt/file identity remained unchanged.
+
+Installed user unit: goosnav-ad-delivery-fc1ca689a298.service; enabled, Restart=always,
+five-second restart delay. Unit generation is checked with systemd's real parser.
+Credentials remain in the existing rclone configuration, not the unit or repository.
+This host still uses rclone's shared OAuth project; project quota can delay a
+successful request, and the published 2026 retirement requires eventual own-client
+configuration. No delivery-time SLA is claimed. User units start at login unless
+lingering is separately configured; this installer does not enable lingering.
+Other hosts without a user service manager retain detached-worker fallback and
+need a CLI/GUI recovery trigger after that process dies.
+
+Historical uploaded receipts are preserved without a mass API re-probe. New
+verification is stronger; it does not retroactively strengthen historical proof.
+The audit collector passed its three available checks; 12 checks were skipped
+for unavailable tools/opt-in coverage. No comprehensive security-scanner claim.
+Additional checks: source reload/launch tests preseed timestamp-valid stale
+bytecode and replace source with equal-size/equal-timestamp bytes. Private unused
+cache prefixes force current source without deleting shared caches. Callback
+upload time is excluded from both total and idle native watchdogs; elapsed wall
+time remains recorded separately. Pause/cancel stops subsequent batch I/O while
+retaining prior acknowledgements and uncertain outcomes.
+
+Independent final checks accepted the repaired scheduling/watchdog/error paths
+(28 focused tests), queue reload/lease/fairness paths (35 tests), and transport
+proof/control paths (63 tests); counts overlap. A previous complete sweep found
+only two old filename-only transport doubles; those were updated to reflect the
+new metadata interface and passed their focused reruns. Final combined suite on
+the frozen code: **898 passed, 2 skipped in 404.78s**, using
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q`. Independent review accepted
+the corrected callback/watchdog and retry failure paths. No runtime blocker remains
+in this delivery repair; external quota/authentication availability is still required.
+
+Operational boundaries retained deliberately: changed service-unit settings
+(interpreter, repository location, environment) require a service restart; code
+reload alone does not adopt unit settings. Processing heartbeats update between
+queue attempts, so an active bounded batch can age the heartbeat until it returns.
+The enabled service was explicitly restarted after its final settings update.
+
+## Prior dialogue/parallel correction
+
+2026-10-20 dialogue/parallel reliability correction verified.
+The owner's latest quality report supersedes the earlier "passed" creative verdicts:
+the 20:24 batch ran concurrently, but two films failed. Animator repairs were killed
+by shrinking wall-time allowances (one received only 40s then 11s). Two previews
+also failed whole-frame freeze detection despite local acting. The completed film
+reduced "Dead end / Try this / Still dead" to "Dead / This / Dead"; technical success
+and its editor pass did not establish comprehensible advertising.
+
+Repairs: compact execution v2 uses soft performance targets and finite independent
+process/stall watchdogs; old compact resumes migrate without resetting spending.
+Over-target work finishes the existing scene rather than rebuilding or replacing
+the story. Shared render/output/cache leases coordinate actual graphics work,
+including across different worker TMPDIRs; wait is visible and accounted separately.
+Provider cooldown updates preserve the longest reset deadline atomically. Linux
+attempt markers/pidfds clean up inherited detached descendants before retries;
+ownership is persisted before launch for controller-crash recovery too. An
+unconfirmed cleanup blocks that workspace with explicit feedback, rather than
+starting a second writer. Scrubbed/unreadable markers remain an explicit limitation,
+not a sandbox guarantee.
+
+Scripts require explicit cast reasons, exact dialogue and viewer_takeaway. The
+initial pre-animation word limit was too strict and is superseded by the advisory
+timing correction above. Writer/animator/editor instructions prioritize ordinary characters,
+plain dialogue and readable faces over prop mechanics. The editor must evaluate
+actual words and must not demand the end card before Frame adds it. Local-motion
+freeze calibration retains still/slideshow rejection without rewarding camera drift.
+
+Homunculus inspected at e52576f: useful reference is rest-relative behavior, not its
+sealed-face mesh or approximate speech. The active asset library now owns literal
+conversation-motion/v1 recipes; the harness samples existing actor clips and measured
+speech for talk/listen, gaze, gesture and in-place walk. Authored poses remain protected.
+The artist's separate asset checkout is untouched; main and nested brain pins were
+checked against upstream and already current before this addition.
+
+Initial writer-only probes took 7.7–15.6s; they caught overlong dialogue and default
+exotic casting before animation. Those probe jobs were cancelled after inspection,
+not delivered. Full concurrent verification IDs: 20261020-215344-16b557a8 (low/open
+brief), 20261020-215345-30d1631e (low/Goosklerf), 20261020-215347-e76f6a9d (medium/book).
+All three completed autonomously, with one successful invocation at each creative
+stage. No manual verdict, workspace repair or time extension was used. Writers
+took 13.3/12.1/16.9s and all cast ordinary characters. Measured takes preserved
+the complete scripted lines. All three full nine-second films include 6.5 seconds
+of story and a 2.5-second rotating-product card; all three MP4s are verified in
+Drive under distinct script-derived names (no source ZIP/folder uploads).
+
+| Run suffix / film | Script | Animate (wall) | Edit | Active total | Resource wait | Upload attempt |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16b557a8 / The Quiet Seat (low) | 13.33s | 574.56s | 31.99s | 696.59s | 0 | 2 |
+| 30d1631e / One Quiet Round (low) | 12.09s | 249.73s | 20.22s | 358.80s | 0 | 1 |
+| e76f6a9d / Not Lending It (medium) | 16.87s | 745.81s | 40.64s | 723.31s | 148.62s | 2 |
+
+The low open-brief film crossed its 10-minute target and finished instead of being
+killed. The medium animator waited for the shared GPU; this did not consume its
+active target. One Quiet Round uploaded while the other two were still generating.
+Drive rate-limited the other uploads; the existing durable queue retried and
+verified them without intervention.
+
+Actual frame/dialogue inspection: ordinary conversations now carry the meaning
+without a required handoff, card reveal or physical gag. The medium film has a
+warm observatory setting and readable actor exchange. Low framing remains basic:
+The Quiet Seat looks down on heads and One Quiet Round gives the corridor too much
+space. Their words are coherent, not evidence of great acting. The latter also has
+about 1.16s between measured active speech and its ASR suggests a possible Goosklerf
+pronunciation issue; no firsthand listening claim is made. Follow-up instructions
+and a reusable two-shot recipe explicitly favor nearby actors and eye-level,
+upper-body framing. Those final instruction refinements are regression-tested,
+not claimed to have been demonstrated by these already-rendered films.
+
+Assets commit 77d422e (conversation motion bank) is pushed to main and pinned here.
+Final combined suite: **832 passed, 2 skipped in 389.23s**, using
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q` on the completed code tree.
+The asset bank's standalone checks passed 3/3. Independent final review passed
+102 focused regressions with no remaining blockers; counts overlap and are not
+additive. Earlier 825/808-test runs predate the final recovery additions.
+
+Crash tests cover detached writers/leases, independent-worker survival, durable
+ownership before launch, denied cleanup blocking fallback, ordinary single-route
+resume without an explicit retry, atomic recovery eligibility, and preservation
+of earlier genuine failure allowances. No historical failed ad was relabeled as
+successful. Current evidence supports reliability and dialogue improvements, not
+a guarantee of advertising effectiveness or polished acting.
+
+## Prior compact-workflow evidence (superseded where noted above)
+
+2026-10-20 production simplification: the user contract is a short
+script guide -> animator-owned scene/audio/render -> editor -> deterministic
+finish/technical checks -> immediate per-ad MP4 upload. Independent CLI launches
+must run concurrently with separate run locks and a throttled delivery queue.
+Existing stage graphs stay resumable. Baseline is 4a23af2; the latest medium run
+20261020-143234-5a7e7a9f took 1439 seconds and 22 model attempts, with 811 seconds
+in assets/board review, then failed despite a rendered cut. The animation helper
+also reproducibly replaced the staged head/neck pose. Acceptance requires real
+fresh CLI runs, timed script/animation/edit phases, preserved scene poses,
+concurrent generation, correct full-story exports, and verified MP4 delivery.
+Unit scheduling fixtures alone do not satisfy that acceptance contract.
+
+Implemented: new CLI jobs use script -> animate -> edit -> frame -> qa -> package.
+The writer emits one guide at low reasoning using the selected model; animation
+keeps the chosen intensity. Measured audio/render/edit helpers preserve portable
+checkpoints and existing poses. Independent CLI launches use per-run leases;
+same-second launcher logs are unique and controls print explicit IDs. Drive has a
+separate serialized transfer lease and shared cooldown. Optional reusable assets
+from the animator still enter the validated publication path after packaging.
+
+Live verification: medium 20261020-154021-1b7cc5e1 ran alongside low
+20261020-154022-5a11c602. The medium film completed autonomously in 631.9 active
+seconds (script 13.6, animation 453.9, edit 82.9, Frame 38.6, QA 31.9, package 1.9).
+The 9.002-second H.264/AAC export contains the full gate/card-game story and a
+2.5-second rotating-product end card; sampled frames were independently viewed.
+Drive first rate-limited it, then verified the MP4 on attempt 2 while another
+run was generating. The old background uploader was restarted once to load the
+per-run lock update. No manual verdict or budget extension was used.
+
+The first low trial failed at 12.3 minutes: a speech-model/character-path collision
+prompted bad cached-line reuse, then an overly strict two-second freeze rejection
+spent a full rerender before the editor rejected the missing product/story.
+It was NOT uploaded or counted as success. Fixes separate those model namespaces,
+keep explicit reused-take constraints, measure short holds cumulatively (reject
+mostly static films), and check speaking scenes before full render. Low guides
+now limit construction to a small existing setup; high remains unrestricted by
+that low-scope rule. The second low trial, 20261020-155220-99a6096f, failed at
+10.0 minutes and was withheld from upload: an oversized hand-imported product
+was repaired, but the film remained frozen. Disabled library NLA clips were
+incorrectly protecting every channel from generated idle/reaction motion. A
+failing real-Blender regression reproduced this; procedural performance now
+ignores muted demo tracks/strips while preserving active authored animation.
+An independent face-direction regression also found that a head-center ray
+accepted the back of a skull; preflight now follows the posed anatomical forward
+direction. Production prompts recommend the tested product import helper and
+a small preview before full rendering. A diagnostic rerender restored subtle
+motion but remained too static; that was not counted as a passed ad.
+
+Fresh low 20261020-160947-f81d18f3 completed autonomously in 377.2 active seconds
+(6.3 minutes), with a 7.7-second writer invocation and 28.7-second editor invocation.
+The animator's first submission needed an asset-ID correction; automatic Sonnet
+fallback reused the existing film in 39.5 seconds, without another render. The
+submission helper now checks exact catalog IDs before the worker finishes, so
+future mistakes can be repaired in-session. The final 9.002-second 1080x1350
+H.264/AAC film contains the full conversation and approach, followed by the 2.5-second
+rotating product card with blue underlined serif URL. Final frames were independently
+viewed; no manual approval, verdict edit or time extension was applied. The first
+Drive attempt received the shared-project quota error; durable retry is pending.
+Minor limitations remain: basic movement, small opening product, no ambient bed;
+voice acting was not independently listened to. These are observed runs, not a
+guarantee that every generated story will pass. Writer memory now explicitly
+discourages repeating recent premises unless the user requests a variation.
+
+Verification checkpoint: full suite 766 passed, 2 skipped in 391.6 seconds; latest
+changed-module regressions 61 passed. Independent review findings (script resume budget, strict
+editor verdicts, versioned edit reuse, selected-take controls, full-frame CTA
+contract, freeze accumulation) have targeted reproductions and fixes. Fresh
+independent concurrency/delivery and motion/face-check reviews found no evidenced
+blockers. The nested
+brain pin was advanced from ae51c66 to upstream 1831fdd after a clean-tree check;
+asset layout/archive-isolation checks pass. The pointer-only asset commit 6b268b0
+was pushed and its remote tip verified. No retired assets were revived.
+
+## Earlier implementation history (superseded where noted above)
+
+2026-10-20 correction: the product-only deadline fallback shipped in eb96475 was
+wrong. Run 20261020-115141-80834b37 never reached animation/editing; the controller
+uploaded a full-length end card instead. Technical motion/encoding checks did not
+prove story completion. That path is removed. Recovery must finish the same story
+in one bounded fast-production pass, preserving script/voices/scene/checkpoints.
+Approved films are packaged unchanged. Story-prefix comparisons run before
+packaging; delivery rejects the old product_only type. Old substituted runs reopen
+their skipped stages on resume, without deleting files or historical receipts.
+No end-card-only output may be counted as a completed ad.
+Verification recovery: 20261020-115141-80834b37 now has its original 12-second film
+(9.5-second character story plus 2.5-second card), accepted technical QA and a
+separate actual-media creative review. Vocal acting was not listened to by that
+reviewer and remains unverified. The already-spent old run needed explicit
+operator finishing allowances; future low/medium runs enter recovery earlier,
+and identity editing avoids another model/rerender for a complete animatic.
+The corrected local export replaces the old read-only convenience copy atomically;
+the original accepted card-only artifact remains available in history. At this
+verification checkpoint Drive is quota-throttled; durable upload retries continue.
+
+2026-10-20 end-card policy update: the owner's early-web-2002 direction supersedes
+the historical clean black Helvetica URL notes below. New cards use a blue,
+underlined Times New Roman URL (bundled Times-compatible fallback), steady aliased
+type and ordered Bayer dithering on the floating product image. Story picture/audio
+remain untouched; no scanlines, RGB splitting, jitter, cursor or typewriter animation.
 
 **The harness is implemented and usable.** CLI, GUI, state machine, worker
 supervision with provider fallback, contracts, media checks, Frame CTA and
@@ -74,7 +371,7 @@ Changes:
   RETURN SLOT mix is a regression test and is rejected.
 - `finish_frame` makes a native Frame stacked end card from the last
   `end_card_seconds` of the master. It uses Frame's fonts and sizes, a balanced
-  two-line title, white ground and the blue link, and saves `end_card.png`.
+  two-line title, white ground and a black Helvetica URL without underline, and saves `end_card.png`.
   `output.frame: full` frames the whole ad.
 - `restart` on review results rewinds only from the named stage.
 - No default voice. Briefs for every stage carry the end-card budget, phone

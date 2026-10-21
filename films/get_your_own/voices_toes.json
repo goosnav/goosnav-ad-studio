@@ -1,0 +1,6 @@
+{"provider":"kokoro","effort":"high","device":"cpu","seed":7,"voice_profiles":{"READER":{"voice":"am_onyx"}},
+ "lines":[
+  {"id":"t1","speaker":"READER","text":"Toes. Lots of toes.","auditions":[{"speed":0.9},{"speed":1.0},{"seed":11,"speed":0.95}]},
+  {"id":"t2","speaker":"READER","text":"Toes!","auditions":[{"speed":0.9},{"seed":3,"speed":0.85}]},
+  {"id":"t3","speaker":"READER","text":"Toes. Just toes.","auditions":[{"speed":0.9},{"speed":1.0}]}
+ ]}

@@ -1,6 +1,7 @@
 """Discover current account-visible Codex models through the CLI's own protocol."""
 import copy
 import json
+import re
 import selectors
 import shutil
 import subprocess
@@ -14,6 +15,9 @@ class ModelError(RuntimeError):
 
 
 def choose_model(models, tier):
+    family = {'quality': 'astra', 'balanced': 'sol', 'economy': 'luna'}.get(tier)
+    if family is None:
+        raise ModelError(f'Unknown model tier: {tier}')
     matches = []
     for index, m in enumerate(models):
         d = m.get('description', '').lower()
@@ -31,11 +35,16 @@ def choose_model(models, tier):
             score = max(score, 80 if m.get('isDefault') else 0)
         else:
             raise ModelError(f'Unknown model tier: {tier}')
+        release = re.match(r'gpt-(\d+(?:\.\d+)*)-(astra|sol|luna)(?:$|-)', m.get('model', '').lower())
+        version = ()
+        if release and release[2] == family:
+            score = 200  # Prefer the requested family, independent of marketing wording.
+            version = tuple(int(n) for n in release[1].split('.'))
         if score:
-            matches.append((score, -index, m))
+            matches.append((score, version, -index, m))
     if not matches:
         raise ModelError(f'No confidently classified current {tier} model. Inspect `models` or configure an explicit model.')
-    return max(matches, key=lambda v: v[:2])[2]
+    return max(matches, key=lambda v: v[:3])[3]
 
 
 def codex_catalog(timeout=30):
@@ -107,10 +116,19 @@ def resolve_workers(workers):
                     p['model'] = chosen['model']
                     efforts = [e['reasoningEffort'] for e in chosen.get('supportedReasoningEfforts', [])]
                     wanted = p.get('effort', 'high' if tier == 'quality' else 'medium' if tier == 'balanced' else 'low')
+                    note = ''
                     if efforts and wanted not in efforts:
-                        raise ModelError(f'{chosen["model"]} does not support effort {wanted}')
+                        levels = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+                        supported = [e for e in levels if e in efforts]
+                        if not supported or wanted not in levels:
+                            raise ModelError(f'{chosen["model"]} does not support effort {wanted}')
+                        lower = [e for e in supported if levels.index(e) <= levels.index(wanted)]
+                        actual = lower[-1] if lower else supported[0]
+                        note = f'; effort {wanted} adjusted to supported {actual}'
+                        p['requested_effort'] = wanted
+                        wanted = actual
                     p['effort'] = wanted
-                    p['resolution'] = chosen.get('description', '')
+                    p['resolution'] = chosen.get('description', '') + note
                 except ModelError as e:
                     p['model'] = CODEX_CLI_DEFAULT
                     p['resolution'] = 'Codex CLI default (model tier unresolved: ' + str(e) + ')'

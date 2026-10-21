@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 
 from .contracts import ContractError
+from .execution import bounded_timeout
 
 LINE_RECALL = 0.5      # each line: at least half its words recognised
 TOTAL_RECALL = 0.8     # the whole ad: four words in five
@@ -42,10 +43,10 @@ def transcribe(media, windows, config):
     with tempfile.TemporaryDirectory() as tmp:
         wav, request, result = Path(tmp) / 'speech.wav', Path(tmp) / 'request.json', Path(tmp) / 'result.json'
         subprocess.run([config['tools']['ffmpeg'], '-v', 'error', '-y', '-i', str(media), '-ac', '1', '-ar', '16000',
-                        str(wav)], check=True, timeout=300)
+                        str(wav)], check=True, timeout=bounded_timeout(300))
         request.write_text(json.dumps({'wav': str(wav), 'windows': windows, 'model': config['audio']['asr_model']}))
         r = subprocess.run([python, str(Path(__file__).with_name('asr.py')), str(request), str(result)],
-                           capture_output=True, text=True, timeout=1800)
+                           capture_output=True, text=True, timeout=bounded_timeout(1800))
         if r.returncode or not result.is_file():
             raise ContractError(f'Speech recogniser failed: {r.stderr[-800:]}')
         return json.loads(result.read_text())['texts']
@@ -76,7 +77,7 @@ PRESENCE_DB = -13.0    # share of a line's energy in 2-5 kHz (consonants), about
 
 def _mean_db(media, start, end, band):
     r = subprocess.run(['ffmpeg', '-nostats', '-ss', str(max(0, start)), '-t', str(end - start), '-i', str(media),
-                        '-af', f'{band},volumedetect', '-f', 'null', '-'], capture_output=True, text=True, timeout=120)
+                        '-af', f'{band},volumedetect', '-f', 'null', '-'], capture_output=True, text=True, timeout=bounded_timeout(120))
     m = re.search(r'mean_volume: (-?[\d.]+|-inf) dB', r.stderr)
     return float(m[1]) if m and m[1] != '-inf' else -120.0
 
@@ -102,7 +103,7 @@ def check_presence(stem, timeline):
 
 def loudness(media):
     r = subprocess.run(['ffmpeg', '-nostats', '-i', str(media), '-af', 'ebur128=peak=true', '-f', 'null', '-'],
-                       capture_output=True, text=True, timeout=600)
+                       capture_output=True, text=True, timeout=bounded_timeout(600))
     summary = r.stderr[r.stderr.rfind('Summary:'):]
     i = re.search(r'I:\s+(-?[\d.]+) LUFS', summary); p = re.search(r'Peak:\s+(-?[\d.]+|-inf) dBFS', summary)
     if not i or not p:
@@ -126,7 +127,7 @@ def normalize_loudness(media, config, passes=3):
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(media), '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
                         '-af', f'volume={gain:.2f}dB,alimiter=limit={ceiling:.4f}:attack=1:release=50:level=0,'
                         'aresample=48000', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart',
-                        str(out)], check=True, timeout=600)
+                        str(out)], check=True, timeout=bounded_timeout(600))
         out.replace(media)
         level = loudness(media)
     return level

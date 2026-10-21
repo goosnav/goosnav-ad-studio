@@ -17,6 +17,11 @@ def test_explicit_models_and_no_shell(tmp_path):
     assert '--dangerously-skip-permissions' in b and '--permission-mode' not in b
 
 
+def test_claude_effort_is_forwarded_to_native_cli(tmp_path):
+    argv = command({'provider': 'claude', 'model': 'opus', 'effort': 'max'}, tmp_path)
+    assert argv[argv.index('--effort') + 1] == 'max'
+
+
 def test_subscription_environment():
     env = worker_env({'OPENAI_API_KEY': 'secret', 'ANTHROPIC_API_KEY': 'secret',
         'ANTHROPIC_BASE_URL': 'https://gateway', 'PATH': '/bin', 'CLAUDECODE': '1'})
@@ -115,3 +120,18 @@ def test_cli_default_codex_preserves_chatgpt_auth_without_pinning_model(tmp_path
     assert '--json' in argv
     assert '-m' not in argv
     assert 'model_reasoning_effort' not in str(argv)
+
+
+def test_model_capacity_is_transient_provider_capacity_not_a_crash():
+    event = '{"type":"turn.failed","error":{"message":"Selected model is at capacity. Please try a different model."}}'
+    assert classify(1, event) == 'capacity'
+    assert classify(1, 'API Error: 529 Overloaded') == 'capacity'
+def test_worker_temporary_files_stay_in_its_workspace(tmp_path):
+    import sys
+    from harness.workers import supervise
+    log = tmp_path / 'worker.log'
+    result = supervise([sys.executable, '-c',
+                        'import tempfile; print(tempfile.mkdtemp())'],
+                       cwd=tmp_path, prompt='', log=log, timeout=5, cancelled=lambda: False)
+    assert result['kind'] == 'ok'
+    assert log.read_text().strip().startswith(str(tmp_path / '.tmp') + '/')

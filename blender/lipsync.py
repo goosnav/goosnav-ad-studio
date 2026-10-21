@@ -15,6 +15,7 @@ import json
 import math
 
 import bpy
+from mathutils import Euler
 
 MAX_DEG = 28.0   # jaw rigs: 17 (the library default) barely reads past the snout on screen
 MOUTH_KEYS = ('open', 'round', 'wide')
@@ -44,7 +45,27 @@ def apply(mouths_path, rigs, max_deg=MAX_DEG, bone='jaw'):
     for speaker, curve in mouths['speakers'].items():
         arm = bpy.data.objects[rigs[speaker]]
         meshes = mouth_meshes(arm)
-        for i, openness in enumerate(curve):
+        if meshes:
+            for mesh in meshes:
+                if mesh.data.users > 1:
+                    mesh.data = mesh.data.copy()
+            paths = {f'key_blocks["{name}"].value' for name in MOUTH_KEYS}
+        else:
+            pb = arm.pose.bones[bone]
+            rotation = ('rotation_quaternion' if pb.rotation_mode == 'QUATERNION' else
+                        'rotation_axis_angle' if pb.rotation_mode == 'AXIS_ANGLE' else 'rotation_euler')
+            paths = {pb.path_from_id(rotation)}
+        datablocks = [m.data.shape_keys for m in meshes] if meshes else [arm]
+        for block in datablocks:
+            data = block.animation_data_create()
+            if data.action and data.action.users > 1:
+                data.action = data.action.copy()
+            if data.action:
+                for fc in list(data.action.fcurves):
+                    if fc.data_path in paths:
+                        data.action.fcurves.remove(fc)
+        # Explicit closure also removes stale speech when a replacement is shorter.
+        for i, openness in enumerate(list(curve) + [0.0]):
             frame = scene.frame_start + i
             if meshes:
                 weights = {'open': openness if openness > 0.5 else 0.0,
@@ -56,13 +77,16 @@ def apply(mouths_path, rigs, max_deg=MAX_DEG, bone='jaw'):
                             key.value = value
                             key.keyframe_insert('value', frame=frame)
             else:
-                pb = arm.pose.bones[bone]
-                pb.rotation_mode = 'XYZ'
-                pb.rotation_euler = (math.radians(-openness * max_deg), 0.0, 0.0)
-                pb.keyframe_insert('rotation_euler', frame=frame)
-        datablocks = [m.data.shape_keys for m in meshes] if meshes else [arm]
+                value = Euler((math.radians(-openness * max_deg), 0.0, 0.0))
+                if rotation == 'rotation_quaternion':
+                    value = value.to_quaternion()
+                elif rotation == 'rotation_axis_angle':
+                    axis, angle = value.to_quaternion().to_axis_angle()
+                    value = (angle, *axis)
+                setattr(pb, rotation, value)
+                pb.keyframe_insert(rotation, frame=frame)
         for block in datablocks:
             for fc in block.animation_data.action.fcurves:
                 for k in fc.keyframe_points:
-                    if fc.data_path.startswith(('key_blocks', f'pose.bones["{bone}"]')):
+                    if fc.data_path in paths:
                         k.interpolation = 'CONSTANT'

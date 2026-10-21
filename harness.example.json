@@ -2,7 +2,14 @@
   "website": "",
   "products": [],
   "concept": "",
-  "output": {"target_seconds": 10, "folder": "", "look": "clean"},
+  "generation": {"effort": "medium", "provider": "auto", "fast": false},
+  "library": {"root": "", "catalog": "asset-catalog.json", "publish": true},
+  "output": {"target_seconds": 10, "folder": "", "look": "retro_world",
+    "end_card_library": "assets/goosnav-3D-assets",
+    "end_card_clips": [
+      {"product": "Goosnav Book 2", "asset_id": "end-card-book2-item", "start": 0},
+      {"product": "Goosklerf", "asset_id": "end-card-goosklerf-pack-item", "start": 0}
+    ]},
   "delivery": {"drive": ""},
   "brand": {"name": "", "direction": "", "documents": []},
   "sources": {"assets": [], "scripts": [], "inspiration": [], "characters": []},

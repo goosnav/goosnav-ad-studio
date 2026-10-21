@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import tempfile
 
 
 class ContractError(ValueError):
@@ -11,35 +12,42 @@ class ContractError(ValueError):
 
 # Where a review may send an ad back to. The reviewer picks the earliest stage that is
 # actually wrong, so a bad cut does not re-render the animation and a bad mix does not re-cast.
-RESTARTS = {'board_review': ('direct', 'assets'),
+RESTARTS = {'board_review': ('direct', 'assets', 'audio'),
             'review': ('direct', 'assets', 'audio', 'animate'),
             'edit_review': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit'),
-            'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit')}
+            'creative_qa': ('direct', 'assets', 'audio', 'animate', 'edit_plan', 'edit', 'frame')}
 
 
-def digest(path):
+def digest(path, checkpoint=None):
     h = hashlib.sha256()
     with Path(path).open('rb') as f:
         for block in iter(lambda: f.read(1024 * 1024), b''):
+            if checkpoint:
+                checkpoint()
             h.update(block)
     return h.hexdigest()
 
 
-def contained(workspace, value):
+def contained(workspace, value, *, allow_empty=False):
     if not isinstance(value, str) or not value or Path(value).is_absolute():
         raise ContractError('Artifact paths must be nonempty relative paths')
     root = Path(workspace).resolve()
     p = root / value
     if '..' in Path(value).parts or any(q.is_symlink() for q in [p, *p.parents] if q != root.parent):
         raise ContractError(f'Unsafe artifact path: {value}')
-    if not p.resolve().is_relative_to(root) or not p.is_file() or p.stat().st_size == 0:
+    if not p.resolve().is_relative_to(root) or not p.is_file() or (not allow_empty and p.stat().st_size == 0):
         raise ContractError(f'Missing/empty artifact: {value}')
     return p
 
 
+SEVERITY_SYNONYMS = {'critical': 'blocking', 'blocker': 'blocking', 'major': 'important',
+                     'moderate': 'important', 'medium': 'important', 'low': 'minor', 'nit': 'minor'}
+
+
 def text(d, key):
     if not isinstance(d.get(key), str) or not d[key].strip():
-        raise ContractError(f'Missing text field: {key}')
+        raise ContractError(f'{key} must be a nonempty plain-text string, not an object or list. '
+                            f'Use "{key}": "your text", not "{key}": {{"text": "..."}}.')
 
 
 def validate(stage, data, workspace, context):
@@ -55,7 +63,18 @@ def validate(stage, data, workspace, context):
         text(f, 'kind'); text(f, 'path')
         if f['path'] in paths:
             raise ContractError('Duplicate artifact path')
-        paths.add(f['path']); contained(workspace, f['path'])
+        paths.add(f['path'])
+        # Silence from a diagnostic command (e.g. FFmpeg black/freeze detection)
+        # can mean no defects. Only notes logs may be empty, never production media.
+        try:
+            contained(workspace, f['path'], allow_empty=f['kind'] == 'notes' and Path(f['path']).suffix.lower() == '.log')
+        except ContractError as exc:
+            if stage in ('select', 'critique', 'critique_final', 'script_sense', 'board_review',
+                         'review', 'edit_review', 'creative_qa'):
+                raise ContractError(f'{exc}. For a review, use files: [] unless you wrote new local '
+                                    'review artifacts. Cite accepted input images in findings.target, '
+                                    'not files; do not invent relative paths or copy input media.') from exc
+            raise
     if stage == 'research':
         for key in ('brand_brief', 'creative_directions'):
             text(data, key)
@@ -64,14 +83,65 @@ def validate(stage, data, workspace, context):
         for r in data['references']:
             for key in ('url', 'observation', 'application'):
                 text(r, key)
-    elif stage in ('write', 'revise'):
+    elif stage == 'script':
         scripts = data.get('scripts')
-        if not isinstance(scripts, list) or len(scripts) < context.get('count', 1) * 2:
-            raise ContractError('Need two distinct candidate scripts per requested ad')
-        ids = []
+        count = context.get('count', 1)
+        if not isinstance(scripts, list) or len(scripts) != count:
+            raise ContractError(f'Return exactly {count} script guides, one per ad; no candidate contest.')
+        ids = set()
         for script in scripts:
+            if not isinstance(script, dict):
+                raise ContractError('Each script guide must be an object')
             for key in ('id', 'title', 'premise', 'script', 'visual_direction', 'product', 'cta'):
                 text(script, key)
+            text(script, 'viewer_takeaway')
+            cast = script.get('cast')
+            if not isinstance(cast, list) or not cast:
+                raise ContractError('Script needs cast: [{speaker,character,reason}] using supplied active characters')
+            speakers = set()
+            for actor in cast:
+                if not isinstance(actor, dict):
+                    raise ContractError('Script cast entries must be objects')
+                for key in ('speaker', 'character', 'reason'):
+                    text(actor, key)
+                if actor['speaker'] in speakers:
+                    raise ContractError('Script cast speaker IDs must be unique')
+                speakers.add(actor['speaker'])
+            dialogue = script.get('dialogue')
+            if not isinstance(dialogue, list) or not dialogue:
+                raise ContractError('Script needs exact dialogue: [{speaker,text}]; the words must carry the meaning')
+            for line in dialogue:
+                if not isinstance(line, dict):
+                    raise ContractError('Dialogue entries must be objects')
+                text(line, 'speaker'); text(line, 'text')
+                if line['speaker'] not in speakers:
+                    raise ContractError('Dialogue speaker must name a cast speaker')
+            if script['id'] in ids:
+                raise ContractError('Script guide IDs must be unique')
+            ids.add(script['id'])
+    elif stage in ('write', 'revise'):
+        scripts = data.get('scripts')
+        count = context.get('count', 1)
+        required = count * 2
+        if not isinstance(scripts, list):
+            raise ContractError(f'scripts must be an array of at least {required} candidate objects '
+                                f'for {count} ads (two per ad), not an object or plain text.')
+        if len(scripts) < required:
+            raise ContractError(f'Need two distinct candidate scripts per requested ad: '
+                                f'{count} ads require at least {required}; received {len(scripts)}. '
+                                f'Preserve existing valid candidates and add {required - len(scripts)} '
+                                'distinct candidates with unique IDs. Ad count is not product count. '
+                                'Resubmit the complete scripts array in result.json.')
+        ids = []
+        for index, script in enumerate(scripts):
+            if not isinstance(script, dict):
+                raise ContractError(f'scripts[{index}] must be an object with id, title, premise, '
+                                    'script, visual_direction, product, and cta as plain-text fields.')
+            try:
+                for key in ('id', 'title', 'premise', 'script', 'visual_direction', 'product', 'cta'):
+                    text(script, key)
+            except ContractError as exc:
+                raise ContractError(f'scripts[{index}]: {exc}') from exc
             ids.append(script['id'])
         if len(set(ids)) != len(ids):
             raise ContractError('Script IDs must be unique')
@@ -84,13 +154,18 @@ def validate(stage, data, workspace, context):
         for f in data['findings']:
             for key in ('target', 'problem', 'fix', 'severity'):
                 text(f, key)
+            severity = f['severity'].strip().lower()
+            f['severity'] = SEVERITY_SYNONYMS.get(severity, severity)
             if f['severity'] not in ('blocking', 'important', 'minor'):
-                raise ContractError('Unknown finding severity')
+                raise ContractError('Unknown finding severity. Expected blocking, important, or minor; '
+                                    'use summary for unverified observations that are not defects.')
         if data['verdict'] == 'pass' and any(f['severity'] == 'blocking' for f in data['findings']):
             raise ContractError('Review cannot pass unresolved blockers')
-        if stage in ('script_sense', 'edit_review') and data['verdict'] == 'pass' and any(
+        strict = stage in ('script_sense', 'edit_review') or (
+            context.get('strict_review') and stage in ('board_review', 'creative_qa'))
+        if strict and data['verdict'] == 'pass' and any(
                 f['severity'] == 'important' for f in data['findings']):
-            raise ContractError('Story and edit reviews cannot pass unresolved important problems')
+            raise ContractError('Review cannot pass unresolved important problems')
         if data['verdict'] == 'revise' and not data['findings']:
             raise ContractError('Revision needs actionable findings')
         if stage == 'script_sense':
@@ -127,7 +202,9 @@ def validate(stage, data, workspace, context):
             if selected:
                 raise ContractError('Rejected selection must not authorize production')
         elif len(selected) != context['count'] or len(set(selected)) != len(selected):
-            raise ContractError('Select exactly count distinct scripts')
+            raise ContractError(f'Select exactly {context["count"]} distinct script ID(s) in total; '
+                                f'received {len(selected)}: {selected}. Keep only the best '
+                                'requested number and matching logic entries.')
         if not set(selected) <= set(context['candidate_ids']):
             raise ContractError('Selection refers to an unknown script')
         if data['verdict'] == 'pass' and any(f['severity'] in ('blocking', 'important') for f in data['findings']):
@@ -155,6 +232,12 @@ def validate(stage, data, workspace, context):
         if not isinstance(data.get('plan'), dict):
             raise ContractError('edit_plan must return a structured cut plan')
     elif stage == 'edit':
+        if context.get('compact'):
+            validate('creative_qa', data, workspace, {**context, 'strict_review': True})
+            if data['verdict'] == 'revise':
+                if data.get('restart') != 'animate':
+                    raise ContractError('Editor repair must target animate; preserve the script guide')
+                return data
         if not isinstance(data.get('plan'), dict):
             raise ContractError('Editor must return its approved cut plan')
         for key in ('master', 'timeline'):
@@ -169,7 +252,26 @@ def validate(stage, data, workspace, context):
     return data
 
 
-def promote(data, workspace, destination):
+def copy_checked(source, target, checkpoint):
+    """Checked atomic copy; a prior read-only export is safely replaceable."""
+    checkpoint()
+    target=Path(target)
+    with tempfile.NamedTemporaryFile(dir=target.parent,prefix=f'.{target.name}.',delete=False) as dst:
+        temporary=Path(dst.name)
+        try:
+            with Path(source).open('rb') as src:
+                for block in iter(lambda: src.read(1024 * 1024), b''):
+                    checkpoint()
+                    dst.write(block)
+            dst.close()
+            shutil.copystat(source,temporary)
+            checkpoint()
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def promote(data, workspace, destination, checkpoint=None):
     """Copy declared files; accepted artifacts never share a writable worker directory."""
     destination = Path(destination)
     if destination.exists():
@@ -178,12 +280,18 @@ def promote(data, workspace, destination):
     accepted = json.loads(json.dumps(data))
     mapping = {}
     for f in accepted['files']:
-        source = contained(workspace, f['path'])
+        if checkpoint:
+            checkpoint()
+        source = contained(workspace, f['path'],
+                           allow_empty=f['kind'] == 'notes' and Path(f['path']).suffix.lower() == '.log')
         target = destination / f['path']; target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        if checkpoint:
+            copy_checked(source, target, checkpoint)
+        else:
+            shutil.copy2(source, target)
         target.chmod(0o444)
         mapping[f['path']] = str(target)
-        f.update(path=str(target), sha256=digest(target), bytes=target.stat().st_size)
+        f.update(path=str(target), sha256=digest(target, checkpoint), bytes=target.stat().st_size)
     def remap(value):
         # Any declared relative path, wherever it appears (scene, source lists, board images...).
         if isinstance(value, str):
@@ -196,12 +304,16 @@ def promote(data, workspace, destination):
     for key in list(accepted):
         if key not in ('summary', 'files'):
             accepted[key] = remap(accepted[key])
+    if checkpoint:
+        checkpoint()
     (destination / 'accepted.json').write_text(json.dumps(accepted, indent=2))
     return accepted
 
 
-def verify_accepted(result):
+def verify_accepted(result, checkpoint=None):
     for f in result.get('files', []):
+        if checkpoint:
+            checkpoint()
         p = Path(f['path'])
-        if not p.is_file() or digest(p) != f['sha256']:
+        if not p.is_file() or digest(p, checkpoint) != f['sha256']:
             raise ContractError(f'Accepted artifact changed or disappeared: {p}')

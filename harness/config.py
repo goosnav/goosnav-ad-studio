@@ -5,18 +5,22 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .presets import EFFORTS, PROVIDERS, worker_presets
+
 
 class ConfigError(ValueError):
     pass
 
 
 def profiles(tier):
-    return [{'provider': 'codex', 'model': f'auto:{tier}'},
-            {'provider': 'claude', 'model': f'auto:{tier}'}]
+    return [{'provider': 'claude', 'model': f'auto:{tier}'},
+            {'provider': 'codex', 'model': f'auto:{tier}'}]
 
 
 DEFAULTS = {
     'website': '', 'products': [], 'concept': '', 'count': 1,
+    'generation': {'effort': 'medium', 'provider': 'auto', 'fast': False},
+    'library': {'root': '', 'catalog': 'asset-catalog.json', 'publish': True},
     'brand': {'name': '', 'direction': '', 'documents': []},
     'sources': {'assets': [], 'scripts': [], 'inspiration': [], 'characters': []},
     # min/max 0 = derive an accepted range around the target (80-130 %).
@@ -25,22 +29,16 @@ DEFAULTS = {
                # Frame writes the end text. end_card: the last seconds become a Frame card
                # (title, picture, link); full: the whole ad is framed like a Frame post.
                'frame': 'end_card', 'end_card_seconds': 2.5,
+               'end_card_library': '', 'end_card_clips': [],
                # Frame's treatment of picture and text: clean, or ps1 (late-90s console crunch).
-               'look': 'clean', 'loudness': -14},
-    # Faster/cheaper routes are a last resort for hung research or writing sessions.
-    'workers': {'researcher': profiles('economy'),
-                'writer': profiles('balanced'),
-                'critic': profiles('economy'), 'selector': profiles('balanced'),
-                'producer': profiles('balanced'),
-                'animator': [{'provider': 'claude', 'model': 'opus'},
-                             {'provider': 'codex', 'model': 'auto:quality'}],
-                'director': profiles('balanced'),
-                'editor': profiles('balanced'),
-                'reviewer': profiles('economy')},
+               'look': 'retro_world', 'loudness': -14},
+    'workers': worker_presets(),
     'limits': {'timeout_seconds': 3600, 'production_timeout_seconds': 14400,
                'quick_timeout_seconds': 600, 'review_timeout_seconds': 900,
                'idle_timeout_seconds': 300,
-               'repairs': 1, 'board_repairs': 4, 'provider_cooldown_seconds': 3600, 'log_mb': 32},
+               'repairs': 1, 'contract_repairs': 1, 'board_repairs': 4,
+               'review_repairs': 2, 'autonomous_replans': 1,
+               'provider_cooldown_seconds': 3600, 'capacity_cooldown_seconds': 300, 'log_mb': 32},
     # No default voice: the director casts every speaker (a default once voiced a man as af_heart).
     'audio': {'python': '', 'voice_provider': 'kokoro', 'voice': '', 'asr_model': 'openai/whisper-small.en',
               'effects_provider': '', 'music': [], 'allow_piper_fallback': False},
@@ -77,14 +75,28 @@ def website(value):
 def load_config(path=None, overrides=None):
     c = copy.deepcopy(DEFAULTS)
     base = Path.cwd()
+    saved = {}
     if path:
         p = Path(path).expanduser().resolve(); base = p.parent
         try:
-            merge(c, json.loads(p.read_text()))
+            saved = json.loads(p.read_text())
+            merge(c, saved)
         except (OSError, ValueError) as e:
             raise ConfigError(f'{p}: {e}') from e
     if overrides:
         merge(c, overrides)
+    for key, choices in (('effort', EFFORTS), ('provider', PROVIDERS)):
+        if c['generation'][key] not in choices:
+            raise ConfigError(f'generation.{key} must be one of: {", ".join(choices)}')
+    if type(c['generation']['fast']) is not bool or type(c['library']['publish']) is not bool:
+        raise ConfigError('generation.fast and library.publish must be booleans')
+    c['workers'] = worker_presets(c['generation']['effort'], c['generation']['provider'])
+    # Existing custom JSON routes still work. An explicit per-run preset takes
+    # precedence over those routes, without modifying the source configuration.
+    if not overrides or not {'effort', 'provider'} & overrides.get('generation', {}).keys():
+        merge(c['workers'], saved.get('workers', {}), 'workers.')
+    if overrides:
+        merge(c['workers'], overrides.get('workers', {}), 'workers.')
     c['website'] = website(c['website'])
     for key in ('concept',):
         if not isinstance(c[key], str):
@@ -102,7 +114,7 @@ def load_config(path=None, overrides=None):
         if 'url' in product:
             product['url'] = website(product['url'])
     for key, value in c['limits'].items():
-        if type(value) is not int or not (0 if key in ('repairs', 'board_repairs') else 1) <= value <= 86400:
+        if type(value) is not int or not (0 if key in ('repairs', 'contract_repairs', 'board_repairs', 'review_repairs', 'autonomous_replans') else 1) <= value <= 86400:
             raise ConfigError(f'limits.{key} is out of range')
     if not isinstance(c['delivery']['drive'], str):
         raise ConfigError('delivery.drive must be an rclone destination string')
@@ -122,12 +134,27 @@ def load_config(path=None, overrides=None):
         raise ConfigError('output.loudness is integrated LUFS between -24 and -9 (social video: -14)')
     if not isinstance(c['audio']['asr_model'], str) or not c['audio']['asr_model']:
         raise ConfigError('audio.asr_model must name a Hugging Face speech-recognition model')
-    if o['look'] not in ('clean', 'ps1'):
-        raise ConfigError('output.look must be clean or ps1')
+    if o['look'] not in ('clean', 'ps1', 'retro_world'):
+        raise ConfigError('output.look must be clean, ps1 or retro_world')
     if o['frame'] not in ('end_card', 'full'):
         raise ConfigError('output.frame must be end_card or full')
     if type(o['end_card_seconds']) not in (int, float) or not 0.5 <= o['end_card_seconds'] <= 30:
         raise ConfigError('output.end_card_seconds must be from 0.5 to 30 (capped at half the ad)')
+    clips = o['end_card_clips']
+    if not isinstance(clips, list):
+        raise ConfigError('output.end_card_clips must be a list of product/asset_id/start objects')
+    products = set()
+    for clip in clips:
+        if (not isinstance(clip, dict) or set(clip) - {'product', 'asset_id', 'start'}
+                or any(not isinstance(clip.get(k), str) or not clip[k].strip() for k in ('product', 'asset_id'))):
+            raise ConfigError('Each end-card clip needs product and asset_id text, plus optional start seconds')
+        name = clip['product'].strip().casefold()
+        if name in products:
+            raise ConfigError('End-card clip products must be unique')
+        products.add(name)
+        start = clip.get('start', 0)
+        if type(start) not in (int, float) or not 0 <= start <= 3600:
+            raise ConfigError('End-card clip start must be from 0 to 3600 seconds')
     if type(o['cta']) is not bool or type(c['audio']['allow_piper_fallback']) is not bool:
         raise ConfigError('cta and allow_piper_fallback must be booleans')
     for role, routes in c['workers'].items():
@@ -156,7 +183,7 @@ def load_config(path=None, overrides=None):
         for key in keys:
             if not isinstance(c[group][key], str):
                 raise ConfigError(f'{group}.{key} must be text')
-    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python'), ('output', 'folder')]:
+    for group, key in [('audio', 'python'), ('tools', 'frame_root'), ('tools', 'frame_python'), ('output', 'folder'), ('output', 'end_card_library'), ('library', 'root')]:
         value = c[group][key]
         if not isinstance(value, str):
             raise ConfigError(f'{group}.{key} must be a path string')

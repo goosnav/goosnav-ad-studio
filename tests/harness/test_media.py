@@ -56,7 +56,10 @@ def test_frame_writes_a_native_end_card_and_keeps_the_audio(tmp_path):
     result=finish_frame(p,{'cta':'ignored: the director title wins'},c,tmp_path,lambda:False,direction)
     final=tmp_path/'final.mp4'
     assert result['end_card_start']==2.5 and (tmp_path/'end_card.png').is_file()
-    assert json.loads((tmp_path/'frame.json').read_text())['jobs'][-1]['settings']['title']['text']=='Read the book'
+    card = json.loads((tmp_path/'frame.json').read_text())['jobs'][-1]['settings']
+    assert card['title']['text']=='Read the book'
+    assert card['link']['font'] == 'sys-times'
+    assert card['link']['underline'] is True
     def brightness(t,crop='iw:ih:0:0'):
         r=subprocess.run(['ffmpeg','-v','error','-ss',str(t),'-i',str(final),'-frames:v','1',
             '-vf',f'crop={crop}','-pix_fmt','gray','-f','rawvideo','-'],capture_output=True,check=True)
@@ -69,6 +72,12 @@ def test_frame_writes_a_native_end_card_and_keeps_the_audio(tmp_path):
     pcm=subprocess.run(['ffmpeg','-v','error','-ss','3','-i',str(final),'-t','0.5','-vn','-f','s16le','-ac','1','-'],
                        capture_output=True,check=True).stdout
     assert max(abs(int.from_bytes(pcm[i:i+2],'little',signed=True)) for i in range(0,len(pcm),2))>1000
+    rgb=subprocess.run(['ffmpeg','-v','error','-ss','3','-i',str(final),'-frames:v','1',
+                        '-vf','crop=iw:100:0:440','-pix_fmt','rgb24','-f','rawvideo','-'],
+                       capture_output=True,check=True).stdout
+    blue = [rgb[i+2] > rgb[i] + 60 and rgb[i+2] > rgb[i+1] + 60 for i in range(0,len(rgb),3)]
+    assert sum(blue) > 200  # A real blue hyperlink is present in the encoded end card.
+    assert max(sum(blue[y*432:(y+1)*432]) for y in range(100)) > 180  # Continuous blue underline.
 
 
 def test_long_end_titles_break_into_two_big_lines():
@@ -78,14 +87,24 @@ def test_long_end_titles_break_into_two_big_lines():
     assert balance('The card game nobody asked for') == 'The card game\nnobody asked for'
 
 
-def test_frame_text_is_clean_for_every_look(tmp_path):
+@pytest.mark.parametrize(('available', 'expected'), [
+    ({'sys-times', 'termes-regular'}, 'sys-times'),
+    ({'heros-bold', 'termes-regular'}, 'termes-regular'),
+])
+def test_times_link_uses_real_face_or_bundled_times_never_sans(available, expected):
+    from harness.frame_runner import link_font
+    assert link_font('sys-times', available) == expected
+
+
+@pytest.mark.parametrize('look', ['clean', 'ps1'])
+def test_2002_card_dithers_picture_but_story_and_text_stay_steady(tmp_path, look):
     from pathlib import Path
     if not Path('harness.local.json').is_file():
         pytest.skip('local Frame config unavailable')
     c=load_config('harness.local.json')
     if not Path(c['tools']['frame_python']).is_file():
         pytest.skip('local Frame runtime unavailable')
-    c['output'].update(width=432,height=540,target_seconds=4,min_seconds=4,max_seconds=4,look='ps1')
+    c['output'].update(width=432,height=540,target_seconds=4,min_seconds=4,max_seconds=4,look=look)
     p=tmp_path/'input.mp4'
     subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=0x808080:s=432x540:r=24',
         '-f','lavfi','-i','sine=frequency=300:sample_rate=48000','-t','4','-c:v','libx264',
@@ -100,6 +119,14 @@ def test_frame_text_is_clean_for_every_look(tmp_path):
     assert max(rows)-min(rows)<3                      # story picture untouched: no scanlines/crunch
     ink=lambda f:sum(v<60 for v in f[:432*120])       # dark title pixels in the top band
     assert ink(gray(2.1)) > 0 and abs(ink(gray(2.1))-ink(gray(3.8))) < 50   # whole title at once, steady
+    card = gray(3)
+    center = [card[y*432+x] for y in range(240,280) for x in range(196,236)]
+    assert max(center) - min(center) > 4  # Ordered dither adds a real pattern to flat midtones.
+    request = json.loads((tmp_path/'frame.json').read_text())
+    assert request['jobs'][0]['settings']['media_fx']['mode'] == 'none'
+    assert request['jobs'][-1]['settings']['media_fx']['mode'] == 'ps1'
+    assert request['jobs'][-1]['settings']['retro']['aliased'] is True
+    assert request['jobs'][-1]['settings']['retro']['jitter'] is False
 
 
 def _clip(path, source, seconds=4, size='108x136'):
@@ -108,6 +135,30 @@ def _clip(path, source, seconds=4, size='108x136'):
         '-i','sine=frequency=300:sample_rate=48000','-t',str(seconds),'-c:v','libx264','-pix_fmt','yuv420p',
         '-c:a','aac','-ar','48000',str(path)],check=True)
     return path
+
+
+def test_full_framing_keeps_picture_clean_with_the_new_hyperlink(tmp_path):
+    from pathlib import Path
+    if not Path('harness.local.json').is_file():
+        pytest.skip('local Frame config unavailable')
+    c = load_config('harness.local.json')
+    c['output'].update(width=108, height=136, frame='full', target_seconds=4, min_seconds=4, max_seconds=4)
+    master = tmp_path/'input.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=0x808080:s=108x136:r=24',
+                    '-f', 'lavfi', '-i', 'sine=frequency=300:sample_rate=48000', '-t', '4',
+                    '-vf', r'drawbox=x=0:y=0:w=24:h=24:color=white:t=fill:enable=gte(t\,2)',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', str(master)],
+                   check=True)
+    finish_frame(master, {}, c, tmp_path, lambda: False,
+                 {'end_card': {'title': 'Read', 'picture': 'Grey'}})
+    settings = json.loads((tmp_path/'frame.json').read_text())['jobs'][0]['settings']
+    assert settings['link']['font'] == 'sys-times'
+    assert settings['link']['underline'] is True
+    assert settings['media_fx']['mode'] == 'none'
+    pixels = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '1', '-i', str(tmp_path/'final.mp4'),
+                             '-frames:v', '1', '-vf', 'crop=12:12:48:60', '-pix_fmt', 'gray',
+                             '-f', 'rawvideo', '-'], capture_output=True, check=True).stdout
+    assert max(pixels) - min(pixels) < 4
 
 
 def test_picture_qa_rejects_frozen_flat_and_missing_card(tmp_path):
@@ -121,3 +172,46 @@ def test_picture_qa_rejects_frozen_flat_and_missing_card(tmp_path):
         check_picture(_clip(tmp_path/'flat.mp4','color=0xb0b0b0'),c,story_end=4,check_freeze=False)
     with pytest.raises(ContractError,match='end card'):
         check_picture(moving,c,story_end=2,master=moving)   # "framed" video identical to the master
+def test_compact_picture_allows_short_hold_but_not_mostly_static_story(tmp_path):
+    from harness.config import load_config
+    from harness.media import check_picture
+    from harness.contracts import ContractError
+    import subprocess
+    moving = tmp_path / 'held-reaction.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                    'testsrc2=size=160x200:rate=24:duration=4', '-vf',
+                    'tpad=stop_mode=clone:stop_duration=2.2', '-c:v', 'libx264',
+                    '-pix_fmt', 'yuv420p', str(moving)], check=True)
+    c = load_config()
+    result = check_picture(moving, c, story_end=6.2, max_frozen_fraction=.5)
+    assert result['freezes'] and result['freezes'][0][1] > 2
+    with pytest.raises(ContractError, match='frozen'):
+        check_picture(_clip(tmp_path/'still-compact.mp4', 'smptebars'), c, story_end=4,
+                      max_frozen_fraction=.5)
+
+
+def test_compact_picture_counts_short_stills_across_multiple_shots(tmp_path):
+    from harness.config import load_config
+    from harness.media import check_picture
+    from harness.contracts import ContractError
+    import subprocess
+    slideshow = tmp_path / 'slideshow.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                    'testsrc2=size=160x200:rate=24:duration=6', '-vf', 'fps=2/3,fps=24',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(slideshow)], check=True)
+    with pytest.raises(ContractError, match='picture frozen'):
+        check_picture(slideshow, load_config(), story_end=6, max_frozen_fraction=.5)
+
+
+def test_dialogue_picture_detects_local_acting_without_camera_drift(tmp_path):
+    from harness.config import load_config
+    from harness.media import check_picture
+    import subprocess
+    path = tmp_path / 'local-motion.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                    'smptebars=size=640x800:rate=24:duration=3', '-vf',
+                    "drawbox=x=300:y=300:w=20:h=20:color=black:t=fill:enable='lt(mod(t,0.4),0.2)'",
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(path)], check=True)
+    # Like mouth/head acting against a stationary set. No invented camera move
+    # is necessary to pass; true stills/slideshows remain covered above.
+    check_picture(path, load_config(), story_end=3, max_frozen_fraction=.5)

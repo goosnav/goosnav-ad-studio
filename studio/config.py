@@ -9,6 +9,7 @@ Works in system Python and inside Blender's bundled Python (no third-party impor
 """
 import json, os, shutil, glob
 from pathlib import Path
+from harness.resources import default_render_lock
 
 REPO = Path(__file__).resolve().parent.parent
 HOME = Path.home()
@@ -23,7 +24,7 @@ DEFAULTS = {
     'rclone_remote': 'agent-exchange:',                  # Drive delivery target (root = Agent Exchange folder)
     'rclone_subdir': 'deliverables/claude',
     'local_delivery': '',                                # optional mirror folder for deliveries
-    'render_lock': str(Path(os.environ.get('TMPDIR', '/tmp')) / 'goosnav-render.lock'),
+    'render_lock': str(default_render_lock()),
     'font_sans_bold': '',                                # auto-discovered when empty
     'font_sans': '',
     'font_serif': '',
