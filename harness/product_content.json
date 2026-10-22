@@ -20,6 +20,21 @@
      "item": "Offer as listed on 2026-10-21: best Goosnav comics drawn in 2025; every order gets a limited signed copy and a free eBook PDF; $29.95; ships in 1-2 weeks",
      "locator": "https://www.goosnav.shop/products/goosnav-book-two (.json)",
      "evidence": "live product page read 2026-10-21; re-check before quoting price, signing or eBook"
+    },
+    {
+     "item": "Printed comic 28: two panels, then an empty third panel captioned \"DRAW YOUR OWN PANEL\" with an arrow (the reader draws in the book)",
+     "locator": "3D props/hq/book2_goosnav_dilemma_openable_v2.blend interior page 30 (leaf 15 verso); textures/book2_openable_v2/page_030.jpg",
+     "evidence": "Book Two v2 uses the actual print PDF pages (textures/book2_openable_v2/pages.json)"
+    },
+    {
+     "item": "Printed comic 34: SHOE MULTIPLIERS (\"PLACE THE FEETS HERE\"), GNOME DEFLACATOR (\"NOTE: GNOMES REPRODUCE BY MITOSIS\"), SPIGLET",
+     "locator": "3D props/hq/book2_goosnav_dilemma_openable_v2.blend interior page 36 (leaf 18 verso); textures/book2_openable_v2/page_036.jpg",
+     "evidence": "Book Two v2 actual print PDF pages; the same sheet is v1 sample page 9"
+    },
+    {
+     "item": "All 144 printed interior pages (title page, copyright, numbered comics 1-141, final blank) in order",
+     "locator": "3D props/hq/book2_goosnav_dilemma_openable_v2.blend (72 leaves; leaf n shows interior pages 2n-1 and 2n); textures/book2_openable_v2/pages.json",
+     "evidence": "Extracted byte for byte from the Book Two print PDF; read the page texture before quoting a comic"
     }
    ],
    "unconfirmed": [
@@ -60,7 +75,7 @@
     }
    ],
    "staging": {
-    "openable_model": "props/hq/book2_goosnav_dilemma_openable.blend (leaf n shows pages 2n-1 front, 2n back)",
+    "openable_model": "props/hq/book2_goosnav_dilemma_openable_v2.blend (actual interior; prefer it) or the v1 sample model",
     "helpers": "blender/book2.py: retime(open_through, turns, slam), turn_page_by_hand, slam_by_hand",
     "starter_scene": "catalog ID book2-reading-desk-blocking (reader + listener at a human-scale desk, book open on the library book rest, page-insert cameras)",
     "end_card_clip": "end-card-book2-item"
