@@ -198,8 +198,11 @@ export function createActor(source, id, index = 0, config = {}) {
       }
       aim(upper, lower, elbow); aim(lower, hand, end);
       if (bookRotation) {
-        const forward = new THREE.Vector3(side === 'L' ? -1 : 1, 0, 0).applyQuaternion(bookRotation);
         const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(bookRotation);
+        // Grip sides change when the book faces the readers. Fingers always
+        // point toward the other grip, independently of the book's yaw.
+        const forward = targets[1 - i].clone().sub(targets[i]).normalize();
+        forward.addScaledVector(normal, -forward.dot(normal)).normalize();
         const across = new THREE.Vector3().crossVectors(forward, normal).normalize();
         const desired = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(across, forward, normal));
         const local = hand.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(desired);

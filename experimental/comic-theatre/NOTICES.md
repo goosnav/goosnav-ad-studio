@@ -27,6 +27,10 @@ page. These are portable snapshots, not runtime links to the source checkouts.
 - Reviewed pages: printed 20, 36 and 95; PDF pages 24, 40 and 99 respectively.
   Source PDF SHA-256 is recorded in the catalog. Verification establishes supplied
   file/page identity, not that a particular live store offer uses that edition.
+- Spinning-book end card: unchanged `videos/end-cards/book2-item.mp4` from
+  Goosnav-3D-assets at `65f9ae1f791b86b5e2ce2b235ee0d2f00908557a`, bundled as
+  `assets/book2-item.mp4` with its exact hash in the catalog. Runtime resolves
+  the catalog entry; it does not require a source checkout or archived folder.
 
 New source additions require manual image/transcript review and an exact embedded
 book-page match. See the tutorial. Changing a file without reviewing its catalog

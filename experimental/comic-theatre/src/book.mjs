@@ -8,6 +8,21 @@ const mix = THREE.MathUtils.lerp;
 export function createBook(gltf, timeline, comics) {
   const root = new THREE.Group(); root.name = 'controlled-original-book';
   const model = gltf.scene;
+  // Preserve canonical textures/UVs; room lighting must not bleach printed ink.
+  const pageMaterials = new Map();
+  model.traverse(o => {
+    if (!o.isMesh) return;
+    const readable = m => {
+      if (!/^Comic page /.test(m.name)) return m;
+      if (!pageMaterials.has(m)) {
+        const page = new THREE.MeshBasicMaterial({ map: m.map, color: m.color, side: m.side, toneMapped: false });
+        page.name = m.name; pageMaterials.set(m, page);
+      }
+      return pageMaterials.get(m);
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(readable) : readable(o.material);
+  });
+  pageMaterials.forEach((_, original) => original.dispose());
   root.add(model);
   const binding = model.getObjectByName('Book2_Root');
   const cover = model.getObjectByName('Cover_Hinge');
@@ -79,16 +94,17 @@ export function createBook(gltf, timeline, comics) {
     const table = new THREE.Vector3(-.48, .823, .32);
     const heldPoint = new THREE.Vector3(0, 1.08, .38).applyQuaternion(reader.root.quaternion).add(reader.root.position);
     root.position.copy(table).lerp(heldPoint, state.held);
-    root.rotation.set(mix(0, .35, state.held), mix(-.12, reader.root.rotation.y, state.held), 0);
+    // Page top is local -Z: turn it away from the readers, not the audience.
+    root.rotation.set(mix(0, -.35, state.held), Math.PI + mix(-.12, reader.root.rotation.y, state.held), 0);
     root.updateMatrixWorld(true);
-    const targets = [1, -1].map(sign => root.localToWorld(new THREE.Vector3(sign * .20, -.024, .025)));
+    const targets = [-1, 1].map(sign => root.localToWorld(new THREE.Vector3(sign * .20, -.024, .025)));
     const manipulating = ['open', 'close', 'slam', 'turn'].includes(state.rail) && state.progress < 1;
     let contact = 0;
     if (manipulating && state.held === 0) {
       // One hand steadies the board, the other follows the *actual* hinge edge.
       const hinge = state.rail === 'turn' ? leaves[Math.min(71, Math.floor(state.page))] : cover;
-      targets[0] = root.localToWorld(new THREE.Vector3(.05, -.012, -.10));
-      targets[1] = hinge.localToWorld(new THREE.Vector3(.16, .015, -.10));
+      targets[1] = root.localToWorld(new THREE.Vector3(.05, -.012, .10));
+      targets[0] = hinge.localToWorld(new THREE.Vector3(.16, .015, .10));
       contact = ease(state.progress / .18) * ease((1 - state.progress) / .18);
     }
     const weight = Math.max(state.held, contact);

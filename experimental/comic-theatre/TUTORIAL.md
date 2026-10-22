@@ -161,10 +161,13 @@ Add only the fields you need:
   gets its full time. It is not cut short by a smaller pause.
 - `shot`: `auto` (default), `speaker`, `two-shot`, `over-shoulder`, `book`, or
   `source`. Auto chooses a repeatable varied sequence using the seed, starting
-  with both readers when appropriate. Explicit choices always win. `book` slowly
-  approaches the real open book and selected page; `source` shows the unchanged
-  page flat for maximum reading clarity. Before each new comic, a three-second
-  physical-book reveal establishes it. Use `shot: source` for a longer reading.
+  with both readers after the opening page coverage when appropriate. Explicit
+  choices always win. `book` starts close to the real selected page and gently
+  pushes in; `source` shows the unchanged page flat for maximum reading clarity.
+  Each new comic gets up to five seconds of physical-book coverage **during**
+  narration, not before it. Speech starts immediately unless you author a leading
+  action. Coverage ends at the next comic, explicit shot, action, or end of
+  dialogue; it never delays speech or covers the end card.
 
 At the **top level** (alongside `template`, not inside a dialogue row), optional
 clothing and end-card controls look like this:
@@ -189,9 +192,12 @@ eyes without whites. You can mix the eye styles in one cast. Default readers wea
 different colors. Book Two is the currently supported
 product. Omitted end-card values use the example defaults. Title/text/URL limits
 are 120/240/160 characters; duration is 1–12 seconds. The card is appended after
-every spoken line and reaction. Its white, aliased early-web layout has a dithered
-product image and blue underlined Times-compatible URL. Original comic pages are
-not dithered. Fonts are bundled so another computer does not change the typeface.
+every spoken line and reaction. It uses the bundled Minecraft-style spinning-book
+video, starting two seconds into the source clip, with a white early-web layout
+and blue underlined Times-compatible URL. The clip is looped if needed and decoded
+at exact requested times, including when resuming a render. No extra downscaling
+or color quantization is applied. Original comic pages are not dithered. Fonts and
+the video are bundled so another computer uses the same assets.
 
 Mouth motion uses measured speech energy with smooth jaw/round/wide shapes and
 onset/offset easing. It is not phoneme-accurate lip sync. Expressions blend in and

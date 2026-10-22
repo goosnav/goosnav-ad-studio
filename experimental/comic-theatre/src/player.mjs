@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createActor } from './actor.mjs';
 import { createBook } from './book.mjs';
-import { createEndcard, endCardFields } from './endcard.mjs';
+import { createEndcard, endCardFields, loadEndcardVideo } from './endcard.mjs';
 
 function assetURL(base, path) {
   if (typeof path !== 'string' || !path || /^(?:[a-z]+:|\/|\\)/i.test(path) || path.includes('\\') || decodeURIComponent(path).split('/').includes('..')) throw new Error('Asset paths must be portable relative paths');
@@ -43,14 +43,13 @@ function frameCamera(camera, { shot, focusId, actors, book, bookState, event, ti
   if (shot === 'book') {
     const progress = event ? THREE.MathUtils.clamp((time - event.start) / (event.end - event.start), 0, 1) : 0;
     const u = progress * progress * (3 - 2 * progress);
-    const center = book.root.getWorldPosition(new THREE.Vector3());
     const page = pageCenter(book, bookState.selectedPdfPage);
-    const target = center.lerp(page, .2 + .8 * u);
+    const target = page;
     const q = book.root.getWorldQuaternion(new THREE.Quaternion());
     camera.fov = 38;
     const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const distance = THREE.MathUtils.lerp(Math.max(.95, .36 / (tangent * camera.aspect)), Math.max(.64, .15 / (tangent * camera.aspect)), u);
-    camera.position.copy(target).add(new THREE.Vector3(.035 * (1 - u), distance * .91, distance * .415).applyQuaternion(q));
+    const distance = THREE.MathUtils.lerp(Math.max(.72, .15 / (tangent * camera.aspect)), Math.max(.64, .14 / (tangent * camera.aspect)), u);
+    camera.position.copy(target).add(new THREE.Vector3(.025 * (1 - u), distance * .98, distance * .20).applyQuaternion(q));
     camera.up.copy(new THREE.Vector3(0, 0, -1).applyQuaternion(q));
     camera.lookAt(target);
   } else if (shot === 'speaker') {
@@ -194,7 +193,8 @@ export async function createPlayer(canvas, { timeline: input, catalog, assetBase
   insertCamera.position.z = 2;
   const textures = new Map(), loadedRoots = [];
   const endcards = new Map(), fonts = [];
-  let renderer, actors, book, sourcePlane, coverTexture, disposed = false, frame = null, active = null, source = null, shot = 'two-shot', endcard = null;
+  let renderRequest = 0;
+  let renderer, actors, book, sourcePlane, endcardVideo, disposed = false, frame = null, active = null, source = null, shot = 'two-shot', endcard = null;
   try {
     // Load sequentially so every fulfilled allocation is owned even if a later load fails.
     const manager = new THREE.LoadingManager();
@@ -224,15 +224,8 @@ export async function createPlayer(canvas, { timeline: input, catalog, assetBase
         const font = new FontFace(family, `url(${JSON.stringify(assetURL(assetBase, catalog.assets[key].path))})`, { weight });
         await font.load(); document.fonts.add(font); fonts.push(font);
       }
-      if (catalog.assets.cover?.path) {
-        coverTexture = await textureLoader.loadAsync(assetURL(assetBase, catalog.assets.cover.path));
-        textures.set('endcard-cover', coverTexture);
-      } else {
-        bookGLTF.scene.traverse(o => {
-          for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m?.name === 'Book Two original front') coverTexture = m.map;
-        });
-      }
-      if (!coverTexture?.image) throw new Error('Endcard needs the original book cover');
+      if (!catalog.assets.endCardVideo?.path) throw new Error('Endcard needs the catalog spinning-product video');
+      endcardVideo = await loadEndcardVideo(assetURL(assetBase, catalog.assets.endCardVideo.path));
     }
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true });
     renderer.setPixelRatio(1); renderer.setSize(timeline.width, timeline.height, false);
@@ -261,6 +254,7 @@ export async function createPlayer(canvas, { timeline: input, catalog, assetBase
     sourcePlane = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ toneMapped: false }));
     insertScene.background = new THREE.Color(0xeee9df); insertScene.add(sourcePlane);
   } catch (error) {
+    endcardVideo?.dispose();
     disposeObjects([scene, insertScene, ...loadedRoots], [...textures.values()]);
     fonts.forEach(f => document.fonts.delete(f)); renderer?.dispose(); throw error;
   }
@@ -268,6 +262,7 @@ export async function createPlayer(canvas, { timeline: input, catalog, assetBase
   function renderAt(frameIndex) {
     if (disposed) throw new Error('Player is disposed');
     if (!Number.isInteger(frameIndex) || frameIndex < 0 || frameIndex >= timeline.frames) throw new RangeError(`frameIndex must be an integer from 0 to ${timeline.frames - 1}`);
+    const request = ++renderRequest;
     frame = frameIndex;
     const time = frame / timeline.fps;
     const current = timeline.events.filter(e => e.start <= time && time < e.end);
@@ -282,7 +277,7 @@ export async function createPlayer(canvas, { timeline: input, catalog, assetBase
       listening: !!active && active.speaker !== timeline.cast[i],
       gaze: actors.length > 1 ? (i === 0 ? .32 : -.32) : 0,
       held: timeline.cast[i] === 'reader' ? bookState.held : 0,
-      reading: timeline.cast[i] === 'reader' && bookState.rail === 'read' && bookState.progress < 1,
+      reading: sourceEvent?.shot === 'book' || (timeline.cast[i] === 'reader' && bookState.rail === 'read' && bookState.progress < 1),
       seed: timeline.seed || 0 }));
     book.apply(time, reader);
     scene.updateMatrixWorld(true);
@@ -293,10 +288,15 @@ export async function createPlayer(canvas, { timeline: input, catalog, assetBase
     frameCamera(camera, { shot, focusId, actors, book, bookState: book.diagnostics(), event: sourceEvent || active || current.find(e => e.shot), time });
     if (endEvent) {
       if (!endcards.has(endEvent)) endcards.set(endEvent, createEndcard({ width: timeline.width, height: timeline.height,
-        card: endCardFields(timeline, endEvent), cover: coverTexture.image,
-        coverAsset: catalog.assets.cover || { path: catalog.assets.book.path, embedded: 'Book Two original front' } }));
+        card: endCardFields(timeline, endEvent), video: endcardVideo.video,
+        videoAsset: catalog.assets.endCardVideo }));
       endcard = endcards.get(endEvent); shot = 'endcard'; source = null;
-      renderer.render(endcard.scene, endcard.camera);
+      const card = endcard;
+      return card.renderAt(time - endEvent.start).then(() => {
+        if (disposed) throw new Error('Player is disposed');
+        if (request !== renderRequest) return;
+        renderer.render(card.scene, card.camera);
+      });
     } else if (source && shot === 'source') {
       const texture = textures.get(source.id);
       sourcePlane.material.map = texture; sourcePlane.material.needsUpdate = true;
@@ -323,10 +323,11 @@ export async function createPlayer(canvas, { timeline: input, catalog, assetBase
   function dispose() {
     if (disposed) return;
     disposed = true;
+    endcardVideo?.dispose();
     disposeObjects([scene, insertScene, ...loadedRoots, ...[...endcards.values()].map(c => c.scene)], [...textures.values()]);
     fonts.forEach(f => document.fonts.delete(f));
     renderer.renderLists.dispose(); renderer.dispose();
   }
-  renderAt(0);
+  try { await renderAt(0); } catch (error) { dispose(); throw error; }
   return { renderAt, diagnostics, dispose };
 }

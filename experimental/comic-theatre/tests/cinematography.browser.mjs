@@ -7,6 +7,7 @@ import { resolve, sep, extname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { compileTimeline } from '../src/timeline.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 async function fixture(t) {
@@ -20,8 +21,8 @@ async function fixture(t) {
       }
       const path = resolve(root, `.${pathname}`);
       if (!path.startsWith(root.replace(/\/$/, '') + sep)) throw Error('outside fixture');
-      res.setHeader('Content-Type', ({ '.mjs': 'text/javascript', '.js': 'text/javascript', '.glb': 'model/gltf-binary', '.jpg': 'image/jpeg' })[extname(path)] || 'application/octet-stream');
-      res.end(await readFile(path));
+      res.setHeader('Content-Type', ({ '.mjs': 'text/javascript', '.js': 'text/javascript', '.glb': 'model/gltf-binary', '.jpg': 'image/jpeg', '.mp4':'video/mp4' })[extname(path)] || 'application/octet-stream');
+      const bytes = await readFile(path); res.setHeader('Content-Length',bytes.length); res.end(bytes);
     } catch { res.writeHead(404); res.end(); }
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -92,8 +93,8 @@ async function fixture(t) {
     const { createPlayer } = await import('/src/player.mjs');
     window.player = await createPlayer(document.querySelector('canvas'), { timeline, catalog });
   }, { timeline: input, catalog: assets });
-  const render = frame => page.evaluate(f => {
-    window.player.renderAt(f);
+  const render = frame => page.evaluate(async f => {
+    await window.player.renderAt(f);
     return { ...window.player.diagnostics(), perspective: window.drawnCamera.isPerspectiveCamera === true,
       physicalBook: !!window.drawnScene.getObjectByName('controlled-original-book'),
       pixels: document.querySelector('canvas').toDataURL() };
@@ -114,6 +115,18 @@ test('physical selected-page reveal, portrait conversations and reverse seeks us
   assert.equal(start.book.selectedPdfPage, 40);
   assert.equal(start.book.page, 19);
   await capture('book-wide');
+  const reading = await page.evaluate(() => {
+    const book = drawnScene.getObjectByName('controlled-original-book');
+    const reader = drawnScene.getObjectByName('actor-reader');
+    const top = new T.Vector3(0,0,-1).transformDirection(book.matrixWorld);
+    const away = book.position.clone().sub(reader.position); away.y=0; away.normalize();
+    let inkMaterial;
+    book.traverse(o=>{for(const m of(Array.isArray(o.material)?o.material:[o.material]))if(m?.name==='Comic page 38')inkMaterial=m;});
+    return {facing:top.dot(away),unlit:inkMaterial?.isMeshBasicMaterial,toneMapped:inkMaterial?.toneMapped};
+  });
+  assert.ok(reading.facing>.8,'top of page points away from readers, not toward them');
+  assert.equal(reading.unlit,true,'original page ink is not washed out by room lights');
+  assert.equal(reading.toneMapped,false);
   const pushed = await render(32);
   assert.notDeepEqual(pushed.camera.position, start.camera.position, 'book reveal moves slowly toward the selected page');
   assert.equal(pushed.book.selectedPdfPage, 40);
@@ -185,11 +198,21 @@ test('physical selected-page reveal, portrait conversations and reverse seeks us
   await page.setViewportSize({ width: 960, height: 540 });
   await load({ ...timeline, width: 960, height: 540 });
   await render(42); await capture('landscape-two');
+  const concurrent = compileTimeline({ ...timeline, output:{width:432,height:540,fps:12},
+    comics:[catalog.comics[1].id],cast:[{id:'reader'},{id:'friend'}],lines:[
+      {id:'narration',speaker:'reader',comic:catalog.comics[1].id,shot:'auto',pause:0},
+    ] }, { narration:{duration:7,mouth:[{t:0,value:0},{t:.5,value:.8},{t:7,value:0}]} });
+  await load(concurrent);
+  const opening=await render(6);
+  assert.equal(opening.shot,'book');assert.equal(opening.activeEvent,'narration');
+  assert.equal(opening.source.pdfPage,40);
+  assert.equal((await render(59)).shot,'book');
+  assert.equal((await render(60)).shot,'two-shot','readers appear after five seconds without a speech gap');
 });
 
 // Breaks if an endcard is rejected, ignores authored text, changes the URL to
 // non-Times/plain text, mutates a frame on seeking, or ignores enabled:false.
-test('endcard draws exact custom text, original cover and a blue Times URL locally', { timeout: 120000 }, async t => {
+test('endcard draws exact custom text, spinning product and a blue Times URL locally', { timeout: 120000 }, async t => {
   const { page, catalog, timeline, load, render, capture } = await fixture(t);
   const endCard = { enabled: true, title: 'Comics for the shelf.', text: 'Take the strange bits home.', url: 'www.goosnav.shop/books', seconds: 3 };
   const events = [...timeline.events.filter(e => e.start < 9), { id: 'end-card', type: 'endcard', start: 9, end: 12, ...endCard }];
@@ -201,7 +224,16 @@ test('endcard draws exact custom text, original cover and a blue Times URL local
   const url = text.find(t => t.text === endCard.url);
   assert.match(url.font, /Times|Tinos/);
   assert.equal(url.color, '#0000ee');
-  assert.equal(card.endCard.cover.path, catalog.assets.cover.path);
+  assert.equal(card.endCard.video.path, catalog.assets.endCardVideo.path);
+  const beforeSeek=await render(0);
+  const raced=await page.evaluate(async()=>{
+    const pending=window.player.renderAt(120);
+    await window.player.renderAt(0);
+    await pending;
+    return {pixels:document.querySelector('canvas').toDataURL(),frame:window.player.diagnostics().frame};
+  });
+  assert.equal(raced.frame,0);
+  assert.ok(raced.pixels===beforeSeek.pixels,'a stale video seek cannot paint over a newer conversation frame');
   await render(64); assert.deepEqual(await render(120), card, 'endcard pixels survive reverse seeking');
   await load({ ...timeline, endCard, events: [...events.slice(0, -1), { id: 'end-card', type: 'endcard', start: 9, end: 12 }] });
   await render(120);

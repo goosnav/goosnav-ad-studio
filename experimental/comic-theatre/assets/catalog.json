@@ -7,6 +7,7 @@
     "evidence": "Exact JPEGs from the active 3D library's book2_openable_v2/pages.json at 0b1bccff8e78a5ef2591adfe1170dd1255ea9216. Each selected image personally inspected 2026-10-21. Verification means source-file/page identity, not independent proof of a live storefront offer. No price, availability or edition-title claims are generated."
   },
   "assets": {
+    "endCardVideo": {"path":"assets/book2-item.mp4","sha256":"503f1c67fbe1dafb17bb4224b9dd0bc1b10828077b376d5299757699c995c1c2"},
     "actorBlueBeady": {"path":"assets/actor-blue-beady.glb","sha256":"3afd5c44e77c8619d7a3eea02f80719ad77d8061fd42d8bb4cb0e33164850a18"},
     "actorRustBeady": {"path":"assets/actor-rust-beady.glb","sha256":"998da3e6280b3e71350082d060081188ef5c84899d92a7f3912daafec626b648"},
     "actorOliveBeady": {"path":"assets/actor-olive-beady.glb","sha256":"81cb37bfc60b58b7d9f12a52b11435ed7031293437553a23bd2d581a867b7e44"},

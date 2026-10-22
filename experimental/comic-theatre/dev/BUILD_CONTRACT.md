@@ -42,7 +42,8 @@ start,end,comic,speaker?,text?,emotion?,gesture?,face?,reaction?,shot?,
 mouth?:[{t,value}],rail?,bookState?}],sources:[catalogComicId]}`.
 All times are seconds. `mouth.t` is line-relative seconds. `bookState` is one of
 table-open/table-closed/held-open. Source inserts are auto-added before each new
-comic (3 seconds), not in place of dialogue. Compile duration from real audio.
+comic (up to 5 seconds overlapping narration), not in place of or before dialogue.
+Explicit shots/actions take priority. Compile duration from real audio.
 
 Renderer owns src/player.mjs and src/actor.mjs (may add src/book.mjs).
 `createPlayer(canvas,{timeline,catalog,assetBase:''}) -> Promise<Player>`;

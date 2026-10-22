@@ -4,8 +4,27 @@ import { readFile } from 'node:fs/promises';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createActor, sampleMouth } from '../src/actor.mjs';
 import { sampleVisemes } from '../src/facial-performance.mjs';
+import * as THREE from 'three';
 
 const assetRoot = new URL('../assets/', import.meta.url);
+test('held-book hands point inward for either page orientation', async()=>{
+ const a=createActor(await load('actor-blue.glb'),'reader');
+ for(const yaw of [0,Math.PI]){
+  apply(a,0,null);
+  const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(-.35,yaw,0));
+  const center=new THREE.Vector3(0,1.08,.38);
+  const targets=(yaw===0?[1,-1]:[-1,1]).map(sign=>new THREE.Vector3(sign*.2,0,0).applyQuaternion(q).add(center));
+  a.grip(targets,1,q);
+  for(const side of ['L','R']){
+   const hand=a.bones['hand'+side];
+   const forward=new THREE.Vector3(0,1,0).applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion()));
+   const inward=center.clone().sub(hand.getWorldPosition(new THREE.Vector3())).normalize();
+   assert.ok(forward.dot(inward)>.95,`${side} fingers must face the book center at yaw ${yaw}`);
+   const finger=a.bones['f21'+side].getWorldPosition(new THREE.Vector3()).sub(hand.getWorldPosition(new THREE.Vector3())).normalize();
+   assert.ok(finger.dot(inward)>.9,`actual ${side} finger bones point inward at yaw ${yaw}`);
+  }
+ }
+});
 async function load(relative) {
   const bytes = await readFile(new URL(relative, assetRoot));
   return (await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')).scene;

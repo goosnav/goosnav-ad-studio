@@ -1,5 +1,67 @@
 # Implementation and verification record
 
+## Reading direction / immediate opening / spinning end card — 2026-10-21
+
+Targeted owner-feedback fixes:
+
+- Removed the compiler's automatic three-second silent source introduction.
+  Up to five seconds of close physical-page coverage now overlaps measured speech.
+  Source changes, explicit shots/actions and the end of dialogue bound that window.
+- Turned the book toward its readers on the table and while held. Adjusted hand
+  targets and inward finger orientation; retained bounded wrist/palm checks.
+- Kept canonical image bytes and UVs unchanged. Only printed-page materials are
+  unlit/non-tone-mapped to avoid room lights bleaching the ink. Room lights remain
+  unchanged. The initial camera already frames the selected page, then pushes in.
+- Bundled the existing spinning-book MP4 by catalog path/hash. End-card type stays
+  editable, with a blue underlined Times-compatible URL. Removed the additional
+  one-third-resolution raster and quantization; use the original video frames.
+- Integration testing exposed Chromium's non-Range HTTP seeking failure and a
+  fractional timestamp tolerance that was too strict. Load an owned local video
+  blob, bound fetch/decode/seek waits, and allow 0.1ms timestamp rounding (far below
+  one source frame). Missing/broken clips still report an error, never a static
+  substitute. A request-generation guard prevents stale seeks repainting a newer
+  conversation frame; dispose releases the video and its object URL.
+
+Fresh unit suite with the installed local-voice identity check: **44 passed,
+no skips**. All **16 bundled assets** pass hash verification. Independent review
+found the inward-finger and stale-render issues above; both were reproduced with
+regressions, fixed, and rechecked. Browser/capture evidence follows below.
+
+An isolated copy populated from staged Git files also passes a clean cached
+`npm ci --ignore-scripts --offline --no-audit --no-fund`, all 16 asset hashes and
+all 44 unit tests. No sibling asset checkout is needed. This shares the installed
+host voice/browser tools, not a fresh operating-system certification. The first
+ordinary install was interrupted while its registry audit request stalled; the
+offline install verifies portability, not a new dependency security audit.
+
+The fresh capture/recovery run passes both watchdog and real-video recovery tests:
+verified complete video, deleted final delivery rebuilt from valid segments, and
+corrupt checkpoint regenerated. Early integration runs deliberately exposed the
+HTTP and timestamp bugs above; those failed test artifacts are not deliveries.
+All **39 browser cases pass across final scoped runs**: the broad run started
+before the timestamp correction and retained that one capture failure; its other
+36 cases passed. The fresh two-case capture run passed after the fix, as did both
+opt-in real-server GUI cases. Fractional 12/24/30fps tests cover 36/72/90 closing
+frames, backward and repeated seeks with identical pixels; maximum observed
+timestamp drift is 1.67 microseconds. Long custom copy, stale completion races,
+book orientation, actual page identity and original-asset hashes are covered.
+
+### Inspected corrected preview
+
+Run `an-inside-source-2026-10-22T02-28-51-438Z-cdba6b75` completed at
+**16.0 seconds, 192 frames, 432×540/12fps**, with all four original spoken lines,
+reactions and the three-second spinning end card. Wall time: **87.5 seconds**,
+with cached local voices and concurrent tests, not a full-resolution benchmark.
+SHA-256: `e2f27e6a9e4c6f6fbc618a541d43d7b96318acf72765591ef439f75072fc8be4`.
+
+Main personally inspected extracted final-MP4 frames at the opening, four seconds,
+the two-shot, speaker close-up and two different closing rotations. The physical
+page is upright/readable and its original ink is clearer; the spinning product
+and full-resolution title/URL replace the degraded static image. Measured audio
+starts at timeline zero; the existing take's natural lead-in reaches -40dB at
+0.262s, rather than waiting through the old additional three-second intro. Audio
+was decoded/checked, not personally listened to. No upload or publication occurred.
+
 ## Performance/appearance follow-up — 2026-10-21
 
 The follow-up adds six color/eye combinations (blue/rust/olive with white or beady

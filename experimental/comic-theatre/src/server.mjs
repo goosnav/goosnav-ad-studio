@@ -14,7 +14,7 @@ async function file(req,res,p){const stat=await fs.stat(p);if(!stat.isFile())ret
  if(req.headers.range){const m=/^bytes=(\d+)-(\d*)$/.exec(req.headers.range);if(!m)return json(res,416,{error:'Invalid range'});start=Number(m[1]);end=m[2]?Math.min(Number(m[2]),end):end;if(start>end||start>=stat.size)return json(res,416,{error:'Invalid range'});status=206;headers['Content-Range']=`bytes ${start}-${end}/${stat.size}`;}
  res.writeHead(status,{...headers,'Content-Length':end-start+1});createReadStream(p,{start,end}).on('error',()=>res.destroy()).pipe(res);
 }
-function renderHTML(id){return `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style><canvas></canvas><script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script><script type="module">import{createPlayer}from'/src/player.mjs';try{const[timeline,catalog]=await Promise.all([fetch('/api/jobs/${id}/timeline').then(r=>r.json()),fetch('/api/catalog').then(r=>r.json())]);window.player=await createPlayer(document.querySelector('canvas'),{timeline,catalog,assetBase:''});window.player.renderAt(0);window.renderReady=true;}catch(e){window.renderError=e.stack||String(e);}</script>`;}
+function renderHTML(id){return `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style><canvas></canvas><script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script><script type="module">import{createPlayer}from'/src/player.mjs';try{const[timeline,catalog]=await Promise.all([fetch('/api/jobs/${id}/timeline').then(r=>r.json()),fetch('/api/catalog').then(r=>r.json())]);window.player=await createPlayer(document.querySelector('canvas'),{timeline,catalog,assetBase:''});window.renderReady=true;}catch(e){window.renderError=e.stack||String(e);}</script>`;}
 export async function startServer({port=0,outputRoot=OUTPUT,renderCatalog}={}){
  const catalog=renderCatalog??await loadCatalog(),token=randomBytes(32).toString('hex');let origin;
  const assets=await freezeAssets(catalog);
@@ -42,7 +42,7 @@ export async function startServer({port=0,outputRoot=OUTPUT,renderCatalog}={}){
    if(assets.has(p)){res.writeHead(200,{'Content-Type':types[path.extname(p)]??'application/octet-stream','Content-Length':assets.get(p).length,'X-Content-Type-Options':'nosniff'});res.end(assets.get(p));return;}
    const web={'/':'web/index.html','/app.mjs':'web/app.mjs','/style.css':'web/style.css'};
    if(web[p])return file(req,res,await safePath(ROOT,web[p]));
-   if(['/src/player.mjs','/src/actor.mjs','/src/facial-performance.mjs','/src/endcard.mjs','/src/book.mjs','/src/book-pages.mjs'].includes(p)||p.startsWith('/node_modules/three/')&&p.endsWith('.js'))return file(req,res,await safePath(ROOT,p.slice(1)));
+   if(['/src/player.mjs','/src/actor.mjs','/src/facial-performance.mjs','/src/endcard.mjs','/src/endcard-video.mjs','/src/book.mjs','/src/book-pages.mjs'].includes(p)||p.startsWith('/node_modules/three/')&&p.endsWith('.js'))return file(req,res,await safePath(ROOT,p.slice(1)));
    json(res,404,{error:'Not found'});
   }catch(e){if(!res.headersSent)json(res,e.code==='ENOENT'?404:400,{error:e.message});else res.destroy();}
  });

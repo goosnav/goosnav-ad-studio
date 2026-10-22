@@ -1,25 +1,10 @@
 import * as THREE from 'three';
+import { seekEndcardVideo } from './endcard-video.mjs';
+export { loadEndcardVideo } from './endcard-video.mjs';
 
 const defaults = { enabled: true, title: 'Goosnav Book Two', text: 'A book of comics.', url: 'www.goosnav.shop', seconds: 3 };
 export const endCardFields = (timeline, event) => Object.fromEntries(Object.entries(defaults).map(([key, value]) =>
   [key, event?.[key] ?? timeline.endCard?.[key] ?? value]));
-
-// A standalone, deterministic card. Only this product thumbnail is dithered;
-// book/source textures never enter this canvas or undergo pixel processing.
-function productImage(image, width, height) {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(width / 3)); canvas.height = Math.max(1, Math.round(height / 3));
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
-    const offset = (y * canvas.width + x) * 4;
-    const bias = (bayer[(y % 4) * 4 + x % 4] / 16 - .5) * (255 / 31);
-    for (let c = 0; c < 3; c++) data.data[offset + c] = Math.round(Math.max(0, Math.min(255, data.data[offset + c] + bias)) / 255 * 31) * 255 / 31;
-  }
-  ctx.putImageData(data, 0, 0); return canvas;
-}
 
 function wrappedLines(ctx, text, maxWidth) {
   const lines = [];
@@ -70,35 +55,48 @@ function textBlock(ctx, text, rect, { font, size, weight = 'normal', color = '#0
   return { lines, size: fitted, color, underline, font, rect };
 }
 
-export function createEndcard({ width, height, card, cover, coverAsset }) {
+export function createEndcard({ width, height, card, video, videoAsset, coverAsset, sourceOffset = 2 }) {
+  if (!video?.videoWidth || !video.videoHeight || !Number.isFinite(video.duration) || video.duration <= 0) throw new Error('Endcard requires a loaded video');
+  if (!Number.isFinite(sourceOffset)) throw new Error('Endcard source offset must be finite');
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
-  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
+  const ctx = canvas.getContext('2d');
   const landscape = width > height * 1.15, unit = Math.min(width, height), margin = unit * .065;
   const imageArea = landscape
-    ? { x: margin, y: height * .12, width: width * .38, height: height * .76 }
-    : { x: margin, y: height * .19, width: width - 2 * margin, height: height * .42 };
-  const ratio = cover.width / cover.height;
+    ? { x: 0, y: 0, width: width * .46, height }
+    : { x: 0, y: 0, width, height };
+  const ratio = video.videoWidth / video.videoHeight;
   const h = Math.min(imageArea.height, imageArea.width / ratio), w = h * ratio;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(productImage(cover, w, h), Math.round(imageArea.x + (imageArea.width - w) / 2), Math.round(imageArea.y + (imageArea.height - h) / 2), Math.round(w), Math.round(h));
-  // Threshold type alpha at output resolution. Small fitted text keeps every
-  // pixel of its glyphs instead of becoming illegible when enlarged from 6px.
+  const videoRect = { x: Math.round(imageArea.x + (imageArea.width - w) / 2), y: Math.round(imageArea.y + (imageArea.height - h) / 2), width: Math.round(w), height: Math.round(h) };
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  // Type is drawn once at output resolution with the fonts loaded by the player.
   const type = document.createElement('canvas'); type.width = width; type.height = height;
-  const tc = type.getContext('2d', { willReadFrequently: true });
+  const tc = type.getContext('2d');
   const x = landscape ? width * .46 : margin, textWidth = landscape ? width * .49 : width - 2 * margin;
   const block = (y, h) => ({ x, y: y * height, width: textWidth, height: h * height });
   const typography = {
-    title: textBlock(tc, card.title, block(landscape ? .2 : .045, landscape ? .18 : .13), { font: '"ComicTheatreSans", "Helvetica", "Arial", sans-serif', weight: 'bold', size: unit * .068 }),
-    text: textBlock(tc, card.text, block(landscape ? .43 : .65, .15), { font: '"ComicTheatreTimes", "Times New Roman", "Liberation Serif", Times, serif', size: unit * .045 }),
-    url: textBlock(tc, card.url, block(landscape ? .66 : .83, .12), { font: '"ComicTheatreTimes", "Times New Roman", "Liberation Serif", Times, serif', size: unit * .053, color: '#0000ee', underline: true }),
+    title: textBlock(tc, card.title, block(landscape ? .2 : .025, landscape ? .18 : .105), { font: '"ComicTheatreSans", "Helvetica", "Arial", sans-serif', weight: 'bold', size: unit * .068 }),
+    text: textBlock(tc, card.text, block(landscape ? .43 : .80, landscape ? .15 : .09), { font: '"ComicTheatreTimes", "Times New Roman", "Liberation Serif", Times, serif', size: unit * .045 }),
+    // Three 12px lines need 43.92px at 4:5/432x540. Expand around the
+    // existing URL center, keeping a gap below body text and clear of the book.
+    url: textBlock(tc, card.url, block(landscape ? .66 : .90, landscape ? .12 : .09), { font: '"ComicTheatreTimes", "Times New Roman", "Liberation Serif", Times, serif', size: unit * .053, color: '#0000ee', underline: true }),
   };
-  const pixels = tc.getImageData(0, 0, type.width, type.height);
-  for (let i = 3; i < pixels.data.length; i += 4) pixels.data[i] = pixels.data[i] >= 96 ? 255 : 0;
-  tc.putImageData(pixels, 0, 0); ctx.drawImage(type, 0, 0, width, height);
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-  texture.generateMipmaps = false; texture.minFilter = THREE.NearestFilter; texture.magFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false; texture.minFilter = THREE.LinearFilter; texture.magFilter = THREE.LinearFilter;
   const scene = new THREE.Scene();
   scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })));
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .1, 5); camera.position.z = 2;
-  return { scene, camera, diagnostics: () => ({ ...card, cover: coverAsset, typography, treatment: 'white / aliased type / ordered product dither' }) };
+  let sourceTime = null, pending = Promise.resolve();
+  const renderAt = seconds => {
+    const render = async () => {
+      if (!Number.isFinite(seconds)) throw new Error('Endcard time must be finite');
+      sourceTime = await seekEndcardVideo(video, sourceOffset + seconds);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(video, videoRect.x, videoRect.y, videoRect.width, videoRect.height);
+      ctx.drawImage(type, 0, 0); texture.needsUpdate = true;
+    };
+    const result = pending.then(render);
+    pending = result.catch(() => {});
+    return result;
+  };
+  return { scene, camera, renderAt, diagnostics: () => ({ ...card, video: videoAsset, cover: coverAsset, sourceOffset, sourceTime, videoRect, typography, treatment: 'white / full-resolution type / original spinning product video' }) };
 }
