@@ -1,4 +1,4 @@
-"""Perform the openable Book Two (props/hq/book2_goosnav_dilemma_openable.blend) on a cut.
+"""Perform the openable Book Two (props/hq/book2_goosnav_dilemma_openable[_v2].blend) on a cut.
 
 Run inside Blender after appending the "Book Two — openable" collection.
 
@@ -17,11 +17,16 @@ Hand helpers drive the v10 rig's existing hand IK (forearm IK constraint, influe
 rest): the wrist rides the turning leaf's free edge, offset so the fingertips touch it.
 """
 import math
+import re
 
 import bpy
 from mathutils import Vector
 
-HINGES = ['Cover_Hinge'] + [f'Page_0{i}_Hinge' for i in range(1, 7)]
+def _hinges():
+    """Cover plus every leaf hinge in the scene: 6 leaves in v1, 72 in v2 (actual interior)."""
+    leaves = sorted((o for o in bpy.data.objects if re.fullmatch(r'Page_\d+_Hinge', o.name)),
+                    key=lambda o: int(o.name.split('_')[1]))
+    return ['Cover_Hinge'] + [o.name for o in leaves]
 HAND_OFFSET = Vector((0, 0.015, 0.068))   # v10 three-fingered hand hangs ~7 cm below the wrist
 _state = {}
 
@@ -32,7 +37,7 @@ def _demo_turn(leaf):
 
 
 def leaf_object(leaf):
-    return next(o for o in bpy.data.objects if o.name.startswith(f'Leaf_0{leaf}_'))
+    return next(o for o in bpy.data.objects if o.name.startswith(f'Leaf_{leaf:02d}_'))
 
 
 def _fps():
@@ -71,11 +76,11 @@ def retime(*, open_through=0, turns=None, slam=None, turn_seconds=0.5, close_sec
         return frame
 
     owners = []
-    for name in HINGES:
+    for name in _hinges():
         hinge = bpy.data.objects[name]
         owners.append((hinge, hinge.animation_data.action))
         if name != 'Cover_Hinge':
-            keys = leaf_object(int(name[6])).data.shape_keys
+            keys = leaf_object(int(name.split('_')[1])).data.shape_keys
             owners.append((keys, keys.animation_data.action))
     shut = slam - close_seconds if slam is not None else None
     for owner, source in owners:

@@ -1,0 +1,121 @@
+{
+  "title": "Draw Your Own",
+  "fps": 24,
+  "duration": 15.875,
+  "book": {
+    "model": "props/hq/book2_goosnav_dilemma_openable_v2.blend",
+    "collection": "Book Two — openable v2",
+    "open_through": 14,
+    "turn_leaf": 15,
+    "insert_page": "page_030 (printed comic 28: two panels, then a blank panel with 'DRAW YOUR OWN PANEL')"
+  },
+  "end_card": {
+    "start": 12.875,
+    "seconds": 3.0,
+    "title": "Draw in your own copy"
+  },
+  "lines": [
+    {
+      "id": "r1",
+      "speaker": "READER",
+      "text": "This panel's empty.",
+      "take": "voice:r1:0.92",
+      "start": 3.5
+    },
+    {
+      "id": "p1",
+      "speaker": "PAL",
+      "text": "Empty?",
+      "take": "voice:p1:0.9",
+      "start": 5.15
+    },
+    {
+      "id": "r2",
+      "speaker": "READER",
+      "text": "It says, draw your own panel.",
+      "take": "voice:r2:0.92",
+      "start": 6.05
+    },
+    {
+      "id": "p2",
+      "speaker": "PAL",
+      "text": "Can I draw it?",
+      "take": "voice:p2:1.0",
+      "start": 8.45
+    },
+    {
+      "id": "r3",
+      "speaker": "READER",
+      "text": "Draw in your own.",
+      "take": "voice:r3:0.9",
+      "start": 10.0
+    },
+    {
+      "id": "p3",
+      "speaker": "PAL",
+      "text": "I don't have one.",
+      "take": "voice:p3:0.88",
+      "start": 11.65
+    }
+  ],
+  "events": [
+    {
+      "name": "page_turn",
+      "at": 1.95,
+      "leaf": 15
+    },
+    {
+      "name": "slam",
+      "at": 9.75
+    }
+  ],
+  "shots": [
+    {
+      "camera": "CAM_wide",
+      "start": 0.0,
+      "end": 1.8
+    },
+    {
+      "camera": "CAM_insert_L",
+      "start": 1.8,
+      "end": 3.4,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 3.4,
+      "end": 5.0
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 5.0,
+      "end": 5.9
+    },
+    {
+      "camera": "CAM_insert_L",
+      "start": 5.9,
+      "end": 7.2,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 7.2,
+      "end": 8.3
+    },
+    {
+      "camera": "CAM_pal_lean",
+      "start": 8.3,
+      "end": 9.4
+    },
+    {
+      "camera": "CAM_two",
+      "start": 9.4,
+      "end": 11.3
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 11.3,
+      "end": 12.875
+    }
+  ]
+}
