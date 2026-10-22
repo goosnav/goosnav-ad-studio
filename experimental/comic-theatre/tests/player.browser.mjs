@@ -11,6 +11,9 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 
 test('authored eyes stay unchanged at default, centered when narrowed, and visible in speaker/reading views', { timeout: 60000 }, async t => {
   const catalog = JSON.parse(await readFile(resolve(root, 'assets/catalog.json'), 'utf8'));
+  // This regression compares the original sealed-face geometry. Modern variant
+  // morphs are exercised separately in actor-performance and cinematography.
+  delete catalog.variants;
   const server = createServer(async (req, res) => {
     try {
       if (req.url === '/') {
@@ -121,6 +124,12 @@ test('authored eyes stay unchanged at default, centered when narrowed, and visib
     }
     player.renderAt(84);
     const cameraState = player.diagnostics().camera;
+    // Review the legacy actor at the production blocking, not the old fixture's
+    // pre-cinematography position (which points this camera at an empty seat).
+    const stagedActor = productionScene.getObjectByName('actor-friend');
+    actor.root.position.copy(stagedActor.position);
+    actor.root.quaternion.copy(stagedActor.quaternion);
+    actor.apply(args);
     productionRenderer.dispose();
     player.dispose();
     const scene = new T.Scene(); scene.background = new T.Color(0x193b3b); scene.add(actor.root);

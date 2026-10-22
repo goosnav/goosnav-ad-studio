@@ -12,6 +12,25 @@ const stringify = value => JSON.stringify(value, null, 2);
 const templates = () => state.catalog?.templates ?? [];
 const templateFor = script => templates().find(item => item.id === script.template);
 const comicFor = id => state.catalog?.comics.find(item => item.id === id);
+const characterDefaults = { reader: 'blue', friend: 'rust' };
+const endCardDefaults = { enabled: true, title: 'Goosnav Book Two', text: 'A book of comics.', url: 'www.goosnav.shop', seconds: 3 };
+const variants = () => state.catalog?.variants ?? ['blue', 'rust', 'olive'].map(id => ({ id, label: id[0].toUpperCase() + id.slice(1) }));
+const shots = [
+  { id: 'auto', label: 'Auto' }, { id: 'speaker', label: 'Speaker' },
+  { id: 'two-shot', label: 'Two-shot' }, { id: 'over-shoulder', label: 'Over-shoulder' },
+  { id: 'book', label: 'Book' }, { id: 'source', label: 'Source' },
+];
+
+// A new sample or writer changes pages/dialogue, not the author's presentation.
+// Keep server-resolved defaults for omitted fields and preserve advanced keys.
+function keepPresentation(result, original) {
+  const next = clone(result);
+  for (const key of ['characters', 'endCard']) {
+    if (original[key] !== undefined) next[key] = { ...(object(next[key]) ? next[key] : {}), ...clone(original[key]) };
+  }
+  if (original.product !== undefined) next.product = original.product;
+  return next;
+}
 
 function message(text, error = false) {
   $('editor-status').textContent = text;
@@ -77,6 +96,23 @@ function structureErrors(script) {
   if (typeof script.title !== 'string') errors.push('title must be text.');
   if (script.seed !== undefined && !Number.isSafeInteger(script.seed)) errors.push('Seed must be a safe integer or omitted.');
   if (script.scene !== undefined && !state.catalog.scenes.some(item => item.id === script.scene)) errors.push('Choose a scene from the catalog or omit scene.');
+  // These are form shape checks. The server contract owns text limits and all
+  // production validation; unknown advanced fields remain intact for that check.
+  if (script.product !== undefined && script.product !== 'book2') errors.push('product must be book2 or omitted.');
+  if (script.characters !== undefined) {
+    if (!object(script.characters)) errors.push('characters must be an object.');
+    else for (const role of ['reader', 'friend']) {
+      if (script.characters[role] !== undefined && !variants().some(item => item.id === script.characters[role])) errors.push(`characters.${role} must be a clothing variant from the catalog.`);
+    }
+  }
+  if (script.endCard !== undefined) {
+    if (!object(script.endCard)) errors.push('endCard must be an object.');
+    else {
+      if (script.endCard.enabled !== undefined && typeof script.endCard.enabled !== 'boolean') errors.push('endCard.enabled must be true or false.');
+      for (const key of ['title', 'text', 'url']) if (script.endCard[key] !== undefined && typeof script.endCard[key] !== 'string') errors.push(`endCard.${key} must be text.`);
+      if (script.endCard.seconds !== undefined && (typeof script.endCard.seconds !== 'number' || !Number.isFinite(script.endCard.seconds) || script.endCard.seconds <= 0)) errors.push('endCard.seconds must be a positive number.');
+    }
+  }
   if (!Array.isArray(script.comics)) errors.push('comics must be an array of catalog page IDs.');
   else {
     if (new Set(script.comics).size !== script.comics.length) errors.push('Selected page IDs must be unique.');
@@ -96,7 +132,7 @@ function structureErrors(script) {
       for (const key of ['emotion', 'gesture', 'audio']) if (line[key] !== undefined && typeof line[key] !== 'string') errors.push(`${at}${key} must be text.`);
       for (const key of ['face', 'reaction']) if (line[key] !== undefined && !object(line[key])) errors.push(`${at}${key} must be a JSON object.`);
       if (line.pause !== undefined && (typeof line.pause !== 'number' || !Number.isFinite(line.pause) || line.pause < 0)) errors.push(`${at}pause must be a nonnegative number.`);
-      if (line.shot !== undefined && !['speaker', 'two-shot', 'source'].includes(line.shot)) errors.push(`${at}shot must be speaker, two-shot or source.`);
+      if (line.shot !== undefined && !shots.some(item => item.id === line.shot)) errors.push(`${at}shot must be ${shots.map(item => item.id).join(', ')}.`);
     }
     if (line.comic !== undefined && (typeof line.comic !== 'string' || !comicFor(line.comic))) errors.push(`${at}comic must be a known catalog ID.`);
   });
@@ -256,7 +292,11 @@ function renderLines() {
       source.addEventListener('change', () => { if (source.value) line.comic = source.value; else delete line.comic; changed(); });
       pair.append(field('Speaker', speaker), field('Source page', source)); card.append(pair, lineInput(index, 'text', true));
       const performance = el('div', undefined, 'field-pair'); performance.append(lineInput(index, 'emotion'), lineInput(index, 'gesture')); card.append(performance);
-      if (['face', 'reaction', 'pause', 'shot', 'audio'].some(key => line[key] !== undefined)) card.append(el('p', 'Advanced fields present; edit them in JSON. Form edits preserve them.', 'hint'));
+      const shot = el('select'); shot.id = `line-${index}-shot`; shot.setAttribute('aria-label', `Line ${index + 1} shot`);
+      choose(shot, shots, line.shot ?? 'auto');
+      shot.addEventListener('change', () => { line.shot = shot.value; changed(); });
+      card.append(field('Shot', shot));
+      if (['face', 'reaction', 'pause', 'audio'].some(key => line[key] !== undefined)) card.append(el('p', 'Advanced fields present; edit them in JSON. Form edits preserve them.', 'hint'));
     }
     $('dialogue').append(card);
   });
@@ -266,6 +306,11 @@ function renderForm() {
   choose($('scene'), state.catalog.scenes, state.script.scene, 'Template default');
   $('seed').value = state.script.seed ?? '';
   $('title').value = state.script.title;
+  for (const role of ['reader', 'friend']) choose($(`${role}-clothing`), variants(), state.script.characters?.[role] ?? characterDefaults[role]);
+  $('product').value = state.script.product ?? 'book2';
+  const endCard = { ...endCardDefaults, ...state.script.endCard };
+  $('end-card-enabled').checked = endCard.enabled;
+  for (const key of ['title', 'text', 'url', 'seconds']) $(`end-card-${key}`).value = endCard[key];
   const template = templateFor(state.script);
   $('template-help').textContent = template ? `${template.minComics === template.maxComics ? template.minComics : `${template.minComics}–${template.maxComics}`} page(s) · cast: ${template.speakers.join(', ')}. Changing templates keeps your pages and dialogue; adjust any incompatibilities explicitly.` : 'Choose a catalog template.';
   renderSelection(); renderLines(); controls();
@@ -299,6 +344,20 @@ $('template').addEventListener('change', () => { state.script.template = $('temp
 $('scene').addEventListener('change', () => { if ($('scene').value) state.script.scene = $('scene').value; else delete state.script.scene; changed(); });
 $('seed').addEventListener('input', () => { if ($('seed').value === '') delete state.script.seed; else state.script.seed = Number($('seed').value); changed(); });
 $('title').addEventListener('input', () => { state.script.title = $('title').value; changed(); });
+for (const role of ['reader', 'friend']) $(`${role}-clothing`).addEventListener('change', () => {
+  state.script.characters = { ...state.script.characters, [role]: $(`${role}-clothing`).value }; changed();
+});
+$('product').addEventListener('change', () => { state.script.product = $('product').value; changed(); });
+$('end-card-enabled').addEventListener('change', () => {
+  state.script.endCard = { ...state.script.endCard, enabled: $('end-card-enabled').checked }; changed();
+});
+for (const key of ['title', 'text', 'url', 'seconds']) $(`end-card-${key}`).addEventListener('input', () => {
+  const input = $(`end-card-${key}`);
+  // A cleared/invalid number stays invalid until corrected; never restore a
+  // default silently or serialize NaN as a valid duration.
+  const value = key === 'seconds' ? (Number.isFinite(input.valueAsNumber) ? input.valueAsNumber : null) : input.value;
+  state.script.endCard = { ...state.script.endCard, [key]: value }; changed();
+});
 $('add-line').addEventListener('click', () => {
   const comic = state.script.comics.find(id => !state.script.lines.some(line => line.comic === id)) ?? state.script.comics[0];
   state.script.lines.push({ speaker: templateFor(state.script)?.speakers[0] ?? 'reader', text: '', ...(comic ? { comic } : {}) });
@@ -332,11 +391,12 @@ $('random').addEventListener('click', () => operate('Random sample', async () =>
   if (state.script.lines.length && !window.confirm('Replace the current selected pages and dialogue with a random sample? Download JSON first if you want to keep this script.')) { message('Random sample cancelled. Your script is unchanged.'); return; }
   check(structureErrors(state.script));
   const revision = state.revision;
+  const original = clone(state.script);
   const request = { template: state.script.template, ...(state.script.seed === undefined ? {} : { seed: state.script.seed }) };
   const result = await api('/api/select', request); unchanged(revision);
   check(structureErrors(result.script)); check(selectionErrors(result.script));
   if (result.script.template !== request.template) throw new Error('Server returned a different template. Sample not applied; retry or check the server.');
-  install(result.script); message('Random sample ready. Review the selected pages and edit its dialogue before generating.');
+  install(keepPresentation(result.script, original)); message('Random sample ready. Review the selected pages and edit its dialogue before generating.');
 }));
 $('validate').addEventListener('click', () => operate('Validate', async () => {
   const script = clone(state.script); const revision = state.revision;
@@ -359,7 +419,9 @@ $('draft').addEventListener('click', () => operate('AI Draft', async () => {
   // Allow both bounded 120-second writer attempts plus response overhead.
   try { result = await api('/api/draft', { script }, { timeoutMs: 250000 }); }
   catch (error) { throw new Error(`${error.message}. You can write manually and Generate video, or ask the operator to configure the optional writer.`); }
-  unchanged(revision); check(structureErrors(result.script));
+  unchanged(revision);
+  result.script = keepPresentation(result.script, script);
+  check(structureErrors(result.script));
   if (result.script.template !== script.template || JSON.stringify(result.script.comics) !== JSON.stringify(script.comics)) throw new Error('Writer changed the selected source pages or template. Draft rejected; your source selection and script are unchanged.');
   if (['seed', 'scene', 'sourceLock'].some(key => script[key] !== undefined && JSON.stringify(result.script[key]) !== JSON.stringify(script[key]))) throw new Error('Writer changed the seed, scene or source lock. Draft rejected; retry with the current settings.');
   check(completeErrors(result.script)); install(result.script); message('AI draft applied for the same selected pages. Review the wording and validate before generating.');

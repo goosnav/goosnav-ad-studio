@@ -16,7 +16,7 @@ Clone the repository, then enter `experimental/comic-theatre`. Alternatively cop
 this entire directory into its own repository. Its `assets/` contains the character,
 book, environment export and verified comic excerpts; there are no runtime links
 to another checkout, a home directory, or archived models. The directory is about
-26 MB before dependencies. Node packages, browser binaries and voice weights are
+30 MB before dependencies. Node packages, browser binaries and voice weights are
 installed once, not checked in.
 
 ```sh
@@ -56,6 +56,9 @@ gallery shows the actual image, printed/PDF page numbers, stable ID and transcri
 Write dialogue rows, choose speaker/emotion/gesture, or edit the JSON directly.
 Validate, download a copy of your script, and generate the video. The jobs area
 shows progress/errors and the completed MP4. UI labels may be shortened to fit.
+The clothing selectors distinguish the readers without changing their familiar
+silhouette. The end-card fields edit the closing title, supporting text, URL and
+duration; disabling the card never removes dialogue.
 
 The AI draft action is optional, requires explicit configuration (section 7), and
 sends only the selected comic images and source packet to that configured provider.
@@ -156,9 +159,43 @@ Add only the fields you need:
   gesture, duration. A solo template has no listener, so omit reactions there.
 - `pause`: seconds after the spoken line, default 0.4. A longer line-end reaction
   gets its full time. It is not cut short by a smaller pause.
-- `shot`: `speaker` (default), `two-shot`, or `source` to show the actual comic
-  throughout the spoken line. The engine also inserts the comic for three seconds
-  before the first line about it. Use `shot: source` for a longer readable reading.
+- `shot`: `auto` (default), `speaker`, `two-shot`, `over-shoulder`, `book`, or
+  `source`. Auto chooses a repeatable varied sequence using the seed, starting
+  with both readers when appropriate. Explicit choices always win. `book` slowly
+  approaches the real open book and selected page; `source` shows the unchanged
+  page flat for maximum reading clarity. Before each new comic, a three-second
+  physical-book reveal establishes it. Use `shot: source` for a longer reading.
+
+At the **top level** (alongside `template`, not inside a dialogue row), optional
+clothing and end-card controls look like this:
+
+```json
+{
+  "characters": {"reader":"blue", "friend":"rust"},
+  "product": "book2",
+  "endCard": {
+    "enabled": true,
+    "title": "Goosnav Book Two",
+    "text": "A book of comics.",
+    "url": "www.goosnav.shop",
+    "seconds": 3
+  }
+}
+```
+
+Merge these fields into a complete script. Available variants: `blue`, `rust`,
+`olive` have white eyes; `blue-beady`, `rust-beady`, `olive-beady` have small black
+eyes without whites. You can mix the eye styles in one cast. Default readers wear
+different colors. Book Two is the currently supported
+product. Omitted end-card values use the example defaults. Title/text/URL limits
+are 120/240/160 characters; duration is 1–12 seconds. The card is appended after
+every spoken line and reaction. Its white, aliased early-web layout has a dithered
+product image and blue underlined Times-compatible URL. Original comic pages are
+not dithered. Fonts are bundled so another computer does not change the typeface.
+
+Mouth motion uses measured speech energy with smooth jaw/round/wide shapes and
+onset/offset easing. It is not phoneme-accurate lip sync. Expressions blend in and
+out instead of snapping; all evaluation remains seekable and deterministic.
 
 Local Kokoro currently has stable reader/friend voices, not a reliable direct
 “angry” or “sad” synthesis knob. Use punctuation, short phrase structure and pauses,

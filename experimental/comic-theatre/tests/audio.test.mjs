@@ -17,6 +17,9 @@ test('recorded audio measures real time and mouth activity, then reuses verified
  const script={seed:1,cast:[{id:'reader',voice:'am_onyx'}],lines:[{id:'a',speaker:'reader',text:'Test',audio:'take.wav'}]};
  const options={mode:'recorded',inputRoot:root,cacheRoot:path.join(root,'cache')};
  const takes=await prepareAudio(script,options);assert.equal(takes.a.duration,.75);assert.ok(takes.a.mouth.some(p=>p.value>0));
+ assert.equal(takes.a.mouth[0].value,0,'speech starts at a closed mouth');
+ assert.equal(takes.a.mouth.at(-1).value,0,'speech finishes at a closed mouth');
+ assert.ok(takes.a.mouth.every((p,i,a)=>i===0||Math.abs(p.value-a[i-1].value)<.36),'bounded attack/release avoids mouth chatter');
  assert.equal((await prepareAudio(script,options)).a.sha256,takes.a.sha256);
  const out=path.join(root,'mix.wav');await writeMix({duration:1.5,events:[{id:'a',type:'line',start:.5,end:1.25}]},takes,out);
  const duration=execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',out],{encoding:'utf8'});assert.equal(Number(duration),1.5);

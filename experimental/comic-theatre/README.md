@@ -49,6 +49,9 @@ Normal output is 1080×1350/24 fps. Duration follows measured speech and reactio
   Catalog hashes are checked against the actual embedded book-page image bytes.
 - Optional facial overrides, emotions, gestures, reactions and book-action rails.
 - Seeded staging, independent character rigs, seekable frame-by-frame evaluation.
+- Blue/rust/olive clothing with white or beady eyes, smooth mouths and emotion blends.
+- Seeded close-ups/two-shots/over-shoulders and physical selected-page book reveals.
+- Editable product-specific retro end card in both JSON and GUI, with bundled fonts.
 - Offline local speech or recordings; measured timing and speech-mouth activity.
 - Checkpointed capture, per-run files, a shared production queue, explicit errors,
   and final audio/video verification. Resume refuses stale or damaged checkpoints.

@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node bin/theatre.mjs gui",
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "node --test tests/*.browser.mjs",
+    "test:browser": "node --test --test-concurrency=1 tests/*.browser.mjs",
     "setup:browser": "playwright install chromium",
     "verify:assets": "node bin/theatre.mjs assets"
   },

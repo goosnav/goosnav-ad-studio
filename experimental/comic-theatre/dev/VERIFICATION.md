@@ -1,5 +1,60 @@
 # Implementation and verification record
 
+## Performance/appearance follow-up — 2026-10-21
+
+The follow-up adds six color/eye combinations (blue/rust/olive with white or beady
+eyes), original recessed-mouth speech shapes, smooth expressions, physical-book
+reveals, seeded conversation shots and an editable early-web end card. Asset
+sources, GLBs, emotion bank and review sheets are published in Goosnav-3D-assets
+commit `65f9ae1f791b86b5e2ce2b235ee0d2f00908557a`.
+
+- All six editable sources preserve original base geometry, rig and visemes.
+  Blender checks pass, including 324 actual exported-mouth rays and beady blink
+  geometry. Asset layout and LFS integrity checks pass.
+- Full unit suite: **41 passed, no skips** with the optional installed local-voice
+  identity check enabled. Repeated from an isolated directory populated only by
+  staged Git files, followed by fresh `npm ci` and `doctor`: **41 passed** again.
+  No sibling asset checkout is needed. This uses the same Linux host's browser,
+  FFmpeg and explicitly selected voice environment, not a new-OS certification.
+- GUI integration: **27 passed**, including the real local server, clothing/eye
+  selection, editable card/shot fields, imports/exports and source locks.
+- Renderer/browser regressions: **5 passed** after the fixture corrections below;
+  both portrait formats, physical page identity, mouth visibility, reverse seeking,
+  custom card text, variant lookup and legacy/new book grip behavior are covered.
+  Together with the **2 capture/watchdog tests**, all 34 browser cases pass across
+  these final scoped runs. Browser test files run serially to avoid GPU contention.
+- Recovery regression passed with the new renderer: full video, removed final
+  delivery, reuse of valid segments and regeneration of a corrupted checkpoint.
+- Independent review found pathological multiline end-card overflow; fixed with
+  bounded wrapping/clipping and checked at full, preview and minimum sizes.
+  Newlines in ordinary text remain supported. A previous portrait OTS wall
+  obstruction and foreground nose overlap were corrected. Visibility tests now
+  mask the actual mouth geometry rather than raycasting the obsolete overlay.
+- The old sealed-face eye regression is retained, with its actor placed at the
+  current production blocking. Modern morph-based eyes have separate tests.
+
+### Inspected comparison render
+
+`examples/parasite.json` now pairs `blue-beady` with `rust` and automatic shots.
+Run `an-inside-source-2026-10-22T02-01-38-283Z-e88d364d` produced **19.0 seconds,
+228 frames, 432×540/12 fps**, including every measured line/reaction and the final
+three-second end card. Wall time **97.38 seconds**, with cached local voice takes
+and concurrent browser tests; not a full-resolution or cold-start benchmark.
+SHA-256: `164f8cdb6924be868d1908e1ae1866211d170c4c8f60e2f8c81f8c9ccead7856`.
+
+Main personally inspected frames extracted from the final MP4: physical selected
+page reveal/push, mixed-eye two-shot, speaking mouth in the over-shoulder view and
+the final blue-underlined Times-compatible URL. Audio presence and full decoding
+are technically checked; this is not a claim of personally listening to the audio.
+The beady/white variant, emotion and viseme review sheets were also inspected.
+The video remains local; no ad upload/publication was performed.
+
+Remaining limitations: amplitude-driven mouths are not phoneme-accurate; hands and
+natural acting remain experimental. Canonical comics are unchanged. No audience
+response, owner final-film approval or sales effectiveness is claimed.
+
+## Initial prototype verification (historical)
+
 2026-10-21 local date. Scope: this experimental folder only. This is an implemented
 prototype of the revised [build contract](BUILD_CONTRACT.md), not a declaration
 that every item in the original design vision is complete.

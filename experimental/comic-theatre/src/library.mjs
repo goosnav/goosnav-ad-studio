@@ -24,6 +24,14 @@ export async function freezeAssets(catalog,root=ROOT){
 }
 export async function verifyCatalog(catalog,root=ROOT){
  if(catalog.version!==1||!catalog.edition?.pdfSha256||!Array.isArray(catalog.comics))throw Error('Invalid source catalog');
+ if(catalog.variants!==undefined){
+  const seen=new Set();
+  if(!Array.isArray(catalog.variants)||!catalog.variants.length)throw Error('Variant catalog must contain at least one variant');
+  for(const v of catalog.variants){
+   if(!v||typeof v.id!=='string'||!v.id||seen.has(v.id)||!catalog.assets?.[v.asset]?.path?.endsWith('.glb'))throw Error('Invalid variant ID or missing GLB asset in catalog');
+   seen.add(v.id);
+  }
+ }
  const entries=[...Object.values(catalog.assets),...catalog.comics],results=[];let book;
  for(const entry of entries){
   const p=await safePath(root,entry.path),b=await fs.readFile(p);

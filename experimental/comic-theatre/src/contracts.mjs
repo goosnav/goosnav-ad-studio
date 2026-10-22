@@ -2,6 +2,7 @@ import {randomInt} from 'node:crypto';
 import {bookSpread} from './book-pages.mjs';
 export const EMOTIONS=['neutral','thoughtful','curious','skeptical','dry','pleased','concerned','exasperated'];
 export const GESTURES=['none','explain','nod','head_tilt','shrug','page_glance'];
+export const SHOTS=['auto','speaker','two-shot','over-shoulder','book','source'];
 const ACTIONS=['open','turn','hold','read','place','close','slam'];
 const fail=(s)=>{throw new Error(s);};
 const object=(v,label)=>{if(!v||typeof v!=='object'||Array.isArray(v))fail(`${label} must be an object`);};
@@ -16,10 +17,20 @@ function selection(template,ids,catalog){
  const selected=ids.map(id=>{const c=catalog.comics.find(c=>c.id===id&&c.verified);if(!c)fail(`Unknown or unverified comic: ${id}`);return c;});return {t,selected};
 }
 export function resolveScript(raw,catalog){
- keys(raw,['version','template','title','comics','seed','scene','lines','output','sourceLock','cast'], 'script');
+ keys(raw,['version','template','title','comics','seed','scene','lines','output','sourceLock','cast','characters','product','endCard'], 'script');
  if((raw.version??1)!==1)fail('version must be 1');
  if(typeof raw.title!=='string'||!raw.title.trim()||raw.title.length>160)fail('title must contain 1–160 characters');
  const {t,selected}=selection(raw.template,raw.comics,catalog);
+ const product=choice(raw.product??'book2',['book2'],'product');
+ const variants=catalog.variants?.map(v=>v.id)??['blue','rust','olive'];
+ const characters={};if(raw.characters!==undefined)keys(raw.characters,[...new Set(catalog.templates.flatMap(t=>t.speakers))],'characters');
+ for(const [id,variant] of Object.entries(raw.characters??{}))characters[id]=choice(variant,variants,`characters.${id}`);
+ for(const [i,id] of t.speakers.entries())characters[id]=choice(raw.characters?.[id]??variants[i%variants.length],variants,`characters.${id}`);
+ const endCard={enabled:true,title:'Goosnav Book Two',text:'A book of comics.',url:'www.goosnav.shop',seconds:3,...raw.endCard};
+ if(raw.endCard!==undefined)keys(raw.endCard,['enabled','title','text','url','seconds'],'endCard');
+ if(typeof endCard.enabled!=='boolean')fail('endCard.enabled must be true or false');
+ for(const [key,max] of [['title',120],['text',240],['url',160]])if(typeof endCard[key]!=='string'||endCard[key].length>max||/[\u0000-\u0008\u000b-\u001f]/.test(endCard[key]))fail(`endCard.${key} must be plain text up to ${max} characters`);
+ number(endCard.seconds,1,12,'endCard.seconds');
  const seed=raw.seed??randomInt(0,2147483647);number(seed,0,4294967295,'seed');if(!Number.isInteger(seed))fail('seed must be an integer');
  const scene=raw.scene??t.scenes[Math.floor(seeded(seed)()*t.scenes.length)];choice(scene,t.scenes,'scene');
  const sourceLock=selected.map(c=>({id:c.id,sha256:c.sha256,pdfPage:c.pdfPage,pdfSha256:catalog.edition.pdfSha256}));
@@ -48,11 +59,11 @@ export function resolveScript(raw,catalog){
   let reaction;if(line.reaction){keys(line.reaction,['actor','emotion','gesture','face','at','duration'],label+'.reaction');reaction={...line.reaction,actor:line.reaction.actor??t.speakers.find(s=>s!==line.speaker),emotion:choice(line.reaction.emotion??'neutral',EMOTIONS,label+'.reaction.emotion'),gesture:choice(line.reaction.gesture??'none',GESTURES,label+'.reaction.gesture'),face:face(line.reaction.face,label+'.reaction.face'),at:choice(line.reaction.at??'line_end',['line_start','line_end'],label+'.reaction.at'),duration:number(line.reaction.duration??.8,.1,5,label+'.reaction.duration')};if(!t.speakers.includes(reaction.actor)||reaction.actor===line.speaker)fail(`${label}: reaction needs a different cast actor`);}
   if(line.audio!==undefined&&(typeof line.audio!=='string'||!line.audio||line.audio.includes('\0')))fail(`${label}.audio must be a relative filename`);
   if(state==='held-open'&&reaction?.actor==='reader'&&['explain','shrug'].includes(reaction.gesture))fail(`${label}: held book reserves the reader's hands during reactions too`);
-  return {...line,id:`beat-${i}`,comic,emotion:choice(line.emotion??'neutral',EMOTIONS,label+'.emotion'),gesture,face:face(line.face,label+'.face'),pause:number(line.pause??.4,0,5,label+'.pause'),shot:choice(line.shot??'speaker',['speaker','two-shot','source'],label+'.shot'),...(reaction?{reaction}:{}),bookState:state};
+  return {...line,id:`beat-${i}`,comic,emotion:choice(line.emotion??'neutral',EMOTIONS,label+'.emotion'),gesture,face:face(line.face,label+'.face'),pause:number(line.pause??.4,0,5,label+'.pause'),shot:choice(line.shot??'auto',SHOTS,label+'.shot'),...(reaction?{reaction}:{}),bookState:state};
  });
  if(!used.size)fail('At least one dialogue line is required');for(const c of raw.comics)if(!used.has(c))fail(`Selected comic ${c} needs a dialogue line`);
  const output={width:1080,height:1350,fps:24,...raw.output};keys(output,['width','height','fps'],'output');for(const k of ['width','height']){number(output[k],128,1920,'output.'+k);if(output[k]%2)fail(`output.${k} must be an even integer`);}choice(output.fps,[12,24,30],'output.fps');
- return {version:1,template:t.id,title:raw.title.trim(),comics:[...raw.comics],seed,scene,lines,output,sourceLock,cast:t.speakers.map(id=>({id,voice:id==='reader'?'am_onyx':'am_puck'}))};
+ return {version:1,template:t.id,title:raw.title.trim(),comics:[...raw.comics],seed,scene,lines,output,sourceLock,characters,product,endCard,cast:t.speakers.map(id=>({id,voice:id==='reader'?'am_onyx':'am_puck'}))};
 }
 export function selectScript(template,seed=randomInt(0,2147483647),catalog){
  const t=catalog.templates.find(t=>t.id===template);if(!t)fail('Unknown template');number(seed,0,4294967295,'seed');const rand=seeded(seed);

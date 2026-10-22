@@ -4,12 +4,17 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {safePath,verifyCatalog,loadCatalog,ROOT,freezeAssets,digest} from '../src/library.mjs';
-test('bundled assets are present and match provenance hashes',async()=>{const c=await loadCatalog();assert.equal((await verifyCatalog(c)).length,7);});
+test('bundled assets are present and match provenance hashes',async()=>{const c=await loadCatalog();const verified=await verifyCatalog(c);assert.ok(verified.includes('assets/book.glb'));assert.ok(verified.includes('assets/fonts/LiberationSerif-Regular.ttf'));assert.equal(verified.length,Object.keys(c.assets).length+c.comics.length);});
 test('path escapes and archived material cannot become active sources',async()=>{
  for(const p of ['../package.json','/etc/passwd','assets/archive/bad.glb'])await assert.rejects(safePath(ROOT,p),/outside|relative|archive/i);
  const d=await fs.mkdtemp(path.join(os.tmpdir(),'theatre-path-'));try{await fs.symlink(os.tmpdir(),path.join(d,'escape'));await assert.rejects(safePath(d,'escape/test'),/outside|ENOENT/);}finally{await fs.rm(d,{recursive:true});}
 });
 test('wrong content hash fails verification before expensive work',async()=>{const c=await loadCatalog();c.comics[0].sha256='0'.repeat(64);await assert.rejects(verifyCatalog(c),/hash/i);});
+test('variant catalog cannot reference an absent asset or duplicate its IDs',async()=>{
+ const c=await loadCatalog();c.variants=[{id:'blue',asset:'missing'}];await assert.rejects(verifyCatalog(c),/variant/i);
+ c.variants=[{id:'blue',asset:'actor'},{id:'blue',asset:'actor'}];await assert.rejects(verifyCatalog(c),/variant/i);
+ c.variants=[];await assert.rejects(verifyCatalog(c),/variant/i);
+});
 test('a valid image cannot be mislabeled as another physical book page',async()=>{const c=await loadCatalog();c.comics[0].pdfPage=40;await assert.rejects(verifyCatalog(c),/book page|embedded/i);});
 test('render assets are immutable snapshots of the verified bytes',async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'theatre-freeze-'));try{

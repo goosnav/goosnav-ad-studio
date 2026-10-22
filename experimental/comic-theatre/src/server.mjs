@@ -7,7 +7,7 @@ import {ROOT,loadCatalog,safePath,freezeAssets} from './library.mjs';
 import {resolveScript,selectScript} from './contracts.mjs';
 import {draftScript} from './writer.mjs';
 import {OUTPUT,listJobs,readJob,createJob,processJob} from './jobs.mjs';
-const types={'.html':'text/html; charset=utf-8','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json','.jpg':'image/jpeg','.png':'image/png','.glb':'model/gltf-binary','.mp4':'video/mp4','.wav':'audio/wav'};
+const types={'.html':'text/html; charset=utf-8','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json','.jpg':'image/jpeg','.png':'image/png','.glb':'model/gltf-binary','.mp4':'video/mp4','.wav':'audio/wav','.ttf':'font/ttf'};
 async function body(req){let size=0,parts=[];for await(const p of req){size+=p.length;if(size>256000)throw Error('Request too large');parts.push(p);}return JSON.parse(Buffer.concat(parts).toString());}
 function json(res,status,value){res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value));}
 async function file(req,res,p){const stat=await fs.stat(p);if(!stat.isFile())return json(res,404,{error:'Not found'});const headers={'Content-Type':types[path.extname(p)]??'application/octet-stream','Accept-Ranges':'bytes','X-Content-Type-Options':'nosniff'};let start=0,end=stat.size-1,status=200;
@@ -42,7 +42,7 @@ export async function startServer({port=0,outputRoot=OUTPUT,renderCatalog}={}){
    if(assets.has(p)){res.writeHead(200,{'Content-Type':types[path.extname(p)]??'application/octet-stream','Content-Length':assets.get(p).length,'X-Content-Type-Options':'nosniff'});res.end(assets.get(p));return;}
    const web={'/':'web/index.html','/app.mjs':'web/app.mjs','/style.css':'web/style.css'};
    if(web[p])return file(req,res,await safePath(ROOT,web[p]));
-   if(['/src/player.mjs','/src/actor.mjs','/src/book.mjs','/src/book-pages.mjs'].includes(p)||p.startsWith('/node_modules/three/')&&p.endsWith('.js'))return file(req,res,await safePath(ROOT,p.slice(1)));
+   if(['/src/player.mjs','/src/actor.mjs','/src/facial-performance.mjs','/src/endcard.mjs','/src/book.mjs','/src/book-pages.mjs'].includes(p)||p.startsWith('/node_modules/three/')&&p.endsWith('.js'))return file(req,res,await safePath(ROOT,p.slice(1)));
    json(res,404,{error:'Not found'});
   }catch(e){if(!res.headersSent)json(res,e.code==='ENOENT'?404:400,{error:e.message});else res.destroy();}
  });

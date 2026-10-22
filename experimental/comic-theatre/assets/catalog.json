@@ -7,11 +7,27 @@
     "evidence": "Exact JPEGs from the active 3D library's book2_openable_v2/pages.json at 0b1bccff8e78a5ef2591adfe1170dd1255ea9216. Each selected image personally inspected 2026-10-21. Verification means source-file/page identity, not independent proof of a live storefront offer. No price, availability or edition-title claims are generated."
   },
   "assets": {
+    "actorBlueBeady": {"path":"assets/actor-blue-beady.glb","sha256":"3afd5c44e77c8619d7a3eea02f80719ad77d8061fd42d8bb4cb0e33164850a18"},
+    "actorRustBeady": {"path":"assets/actor-rust-beady.glb","sha256":"998da3e6280b3e71350082d060081188ef5c84899d92a7f3912daafec626b648"},
+    "actorOliveBeady": {"path":"assets/actor-olive-beady.glb","sha256":"81cb37bfc60b58b7d9f12a52b11435ed7031293437553a23bd2d581a867b7e44"},
+    "actorBlue": {"path":"assets/actor-blue.glb","sha256":"2fddb7acf93d9866f366a49bae0da5a09c10b0ac1a6f9ad88d819542c7671cef"},
+    "actorRust": {"path":"assets/actor-rust.glb","sha256":"8209b55e0a7a5fd2e80f524628ffab9c39d50d4ddc17e0b7cbce801fd13f27b3"},
+    "actorOlive": {"path":"assets/actor-olive.glb","sha256":"538335bdd3285c6dd2cca708c502be533ca7a29f88cf34fc4f10a6d4885ea47b"},
+    "serifFont": {"path":"assets/fonts/LiberationSerif-Regular.ttf","sha256":"705903ae1382f0150f115d6f10a30f5b2f3d6ade649c474afe6366c39174fb65"},
+    "sansFont": {"path":"assets/fonts/LiberationSans-Bold.ttf","sha256":"3973aa5054fb467dd5627245d3dc82e37bf16fe075756156a570455871351582"},
     "actor": {"path":"assets/actor.glb","sha256":"b246a917066b5001bc9a6867431d99e2a77426e299cf19c5ce07f5bde0be146b"},
     "book": {"path":"assets/book.glb","sha256":"f18cbb1f2931de424dd5043bc3b3d7a010b4633bf3ba4f686a40e799085ec807"},
     "environment": {"path":"assets/library.glb","sha256":"0081fb35ca70668b88f36bca340cc92d0a6730b31c35f529974e016d97695784"},
     "cover": {"path":"assets/book-front.jpg","sha256":"9b1c03c91cc2fb2504adc87ffdbecd99e58e86e41fbdd0531b03fef932ebd83b"}
   },
+  "variants": [
+    {"id":"blue","label":"Blue · white eyes","asset":"actorBlue"},
+    {"id":"rust","label":"Rust · white eyes","asset":"actorRust"},
+    {"id":"olive","label":"Olive · white eyes","asset":"actorOlive"},
+    {"id":"blue-beady","label":"Blue · beady eyes","asset":"actorBlueBeady"},
+    {"id":"rust-beady","label":"Rust · beady eyes","asset":"actorRustBeady"},
+    {"id":"olive-beady","label":"Olive · beady eyes","asset":"actorOliveBeady"}
+  ],
   "comics": [
     {"id":"book2-020","title":"Great men of history","path":"assets/comics/book2-020.jpg","sha256":"e5148320fc451303e9ea6f4c2bf225d86701db09ff7c351f80e4caa33661c472","pdfPage":24,"printedPage":20,"verified":true,
      "transcript":["I will be one of the great men of history! My life will define an era!!","Son do you want some cookies?","I'll have it all figured out by the time I'm 35"],

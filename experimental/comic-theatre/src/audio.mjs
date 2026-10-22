@@ -12,7 +12,13 @@ async function decode(file){return run(process.env.FFMPEG??'ffmpeg',['-nostdin',
 function measure(pcm){
  if(!pcm.length||pcm.length%2)throw Error('Empty/corrupt audio');let peak=0,clipped=0;const mouth=[];
  for(let off=0;off<pcm.length;off+=1920){let sum=0,n=0;for(let k=off;k<Math.min(off+1920,pcm.length);k+=2){const a=pcm.readInt16LE(k)/32768;peak=Math.max(peak,Math.abs(a));if(Math.abs(a)>.999)clipped++;sum+=a*a;n++;}mouth.push({t:off/96000,value:Math.min(1,Math.sqrt(sum/n)*12)});}
- if(peak<.0001)throw Error('Silent audio take');if(clipped>48)throw Error('Clipped audio take; supply a clean recording');return {duration:pcm.length/96000,mouth};
+ if(peak<.0001)throw Error('Silent audio take');if(clipped>48)throw Error('Clipped audio take; supply a clean recording');
+ const duration=pcm.length/96000;let level=0;
+ // Filter in audio time, once per take—not renderer history—so seeking remains
+ // deterministic. Soft onset/release avoids popping between a line and silence.
+ for(const point of mouth){const target=point.value*.75,tau=target>level?.04:.07;level+=(target-level)*(1-Math.exp(-.02/tau));const edge=Math.min(1,point.t/.06,(duration-point.t)/.08);point.value=level*Math.max(0,edge);}
+ mouth.push({t:duration,value:0});
+ return {duration,mouth};
 }
 export async function prepareAudio(script,{mode='kokoro',inputRoot=ROOT,cacheRoot=path.join(ROOT,'.cache/audio'),progress=()=>{}}={}){
  if(!['recorded','kokoro'].includes(mode))throw Error('voice: choose kokoro or recorded');

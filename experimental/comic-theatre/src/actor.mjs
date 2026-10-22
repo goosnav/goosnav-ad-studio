@@ -1,50 +1,40 @@
 import * as THREE from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
+import { clamp, ease, clothing, envelope as faceEnvelope, sampleMouth, sampleExpression, sampleVisemes } from './facial-performance.mjs';
+export { clamp, ease, sampleMouth } from './facial-performance.mjs';
 
 // Provenance: Homunculus web/room.js (rest-relative bone poses), browser-room.js
 // (sealed-face overlay coordinates and head.attach). No runtime checkout imports.
-export const clamp = (n, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, n));
-export const ease = n => { const x = clamp(n); return x * x * (3 - 2 * x); };
 const number = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
 
-export function sampleMouth(curve, seconds) {
-  if (!curve?.length || seconds < curve[0].t || seconds > curve.at(-1).t) return 0;
-  for (let i = 1; i < curve.length; i++) {
-    if (seconds <= curve[i].t) {
-      const a = curve[i - 1], b = curve[i];
-      return clamp(THREE.MathUtils.lerp(a.value, b.value, clamp((seconds - a.t) / (b.t - a.t || 1))));
-    }
-  }
-  return clamp(curve.at(-1).value);
-}
-
-const expressions = {
-  neutral: { brow: -.12, tilt: 0 }, calm: { brow: -.12, tilt: 0 },
-  curious: { brow: .22, asymmetry: .18, tilt: -.10 },
-  skeptical: { brow: -.26, asymmetry: .38, tilt: .10 },
-  deadpan: { brow: 0, tilt: 0 }, amused: { brow: .12, smile: .6, tilt: -.05 },
-  happy: { brow: .22, smile: 1 }, surprised: { brow: .55, tilt: -.08 },
-  annoyed: { brow: -.40, tilt: .03 }, sad: { brow: .4, tilt: .08 },
-  thoughtful: { brow: .12, tilt: .06 }, dry: { brow: 0, tilt: 0 },
-  pleased: { brow: .18, smile: .7 }, concerned: { brow: .35, tilt: .06 },
-  exasperated: { brow: -.38, asymmetry: .18, tilt: -.09 },
-};
-
-export function createActor(source, id, index = 0) {
+export function createActor(source, id, index = 0, config = {}) {
   const root = new THREE.Group();
   root.name = `actor-${id}`;
   const body = clone(source);
   root.add(body);
-  const bones = {}, rest = {}, skeletons = [], eyes = [];
+  const bones = {}, rest = {}, skeletons = [], eyes = [], mouthMeshes = [], blinkMeshes = [];
+  let authoredVariant;
   body.traverse(o => {
+    if (o.userData?.theatre_variant) authoredVariant = o.userData.theatre_variant;
     if (o.isBone) {
       const key = o.name.replaceAll('.', '');
       bones[key] = o;
       rest[key] = { q: o.quaternion.clone(), p: o.position.clone(), s: o.scale.clone() };
     }
     if (o.isSkinnedMesh) { o.frustumCulled = false; skeletons.push(o.skeleton); }
-    if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
-    if (o.isMesh && ['eye_white', 'eye_black'].includes(o.material?.name)) {
+    if (o.isMesh) {
+      o.castShadow = true; o.receiveShadow = true;
+      const ownMaterial = m => {
+        const owned = m.clone();
+        if (clothing[config?.variant] && m.name.includes('shirt')) owned.color.set(clothing[config.variant]);
+        return owned;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(ownMaterial) : ownMaterial(o.material);
+      if (o.morphTargetInfluences) o.morphTargetInfluences = o.morphTargetInfluences.map(() => 0);
+      if (['open', 'round', 'wide'].every(n => o.morphTargetDictionary?.[n] !== undefined)) mouthMeshes.push(o);
+      if (o.morphTargetDictionary?.blink !== undefined) blinkMeshes.push(o);
+    }
+    if (o.isMesh && o.morphTargetDictionary?.blink === undefined && ['eye_white', 'eye_black'].includes(o.material?.name)) {
       // Own the geometry before a per-frame eye squeeze; never mutate the other
       // actor or the source GLB's shared vertex buffers.
       o.geometry = o.geometry.clone();
@@ -58,20 +48,26 @@ export function createActor(source, id, index = 0) {
   if (!bones.head || !bones.upper_armL || !bones.handR || !skeletons.length) {
     throw new Error('Actor GLB must contain the Homunculus head and arm skeleton');
   }
+  const variant = config?.variant ?? authoredVariant ?? null;
+  const faceMode = mouthMeshes.length ? 'oral-cavity' : 'legacy-overlay';
   const dark = new THREE.MeshStandardMaterial({ color: 0x372722, roughness: .95 });
   const face = new THREE.Group();
   face.name = 'head-attached-expression';
   face.position.set(0, 1.525, .147);
-  // A shallow solid aperture remains visible in three-quarter long-nose shots.
-  const mouth = new THREE.Mesh(new THREE.SphereGeometry(.038, 20, 12), dark);
-  mouth.position.set(0, -.006, .02);
-  mouth.scale.set(1.35, .08, .16);
-  face.add(mouth);
-  const lip = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-.10, -.018, 0), new THREE.Vector3(-.05, .002, .009),
-    new THREE.Vector3(0, .009, .012), new THREE.Vector3(.05, .002, .009), new THREE.Vector3(.10, -.018, 0),
-  ]), 20, .006, 6, false), dark);
-  face.add(lip);
+  // Only old sealed exports need an overlay. New skins use the recessed cavity;
+  // never layer a floating mouth over genuine lip/cavity geometry.
+  let mouth, lip;
+  if (!mouthMeshes.length) {
+    mouth = new THREE.Mesh(new THREE.SphereGeometry(.038, 20, 12), dark);
+    mouth.name = 'legacy-mouth';
+    mouth.position.set(0, -.006, .012);
+    face.add(mouth);
+    lip = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-.10, -.018, 0), new THREE.Vector3(-.05, .002, .009),
+      new THREE.Vector3(0, .009, .012), new THREE.Vector3(.05, .002, .009), new THREE.Vector3(.10, -.018, 0),
+    ]), 20, .006, 6, false), dark);
+    face.add(lip);
+  }
   root.add(face);
   root.updateMatrixWorld(true);
   bones.head.attach(face);
@@ -102,12 +98,17 @@ export function createActor(source, id, index = 0) {
     const reaction = reactionActive ? requested : {};
     const emotion = (ownsLine ? line?.emotion : reaction.emotion) || 'neutral';
     const faceControl = ownsLine ? (line.face || {}) : (reaction.face || {});
-    const exp = { ...(expressions[emotion] || expressions.neutral), ...faceControl };
-    const envelope = line ? ease(age / .25) * ease((line.end - time) / .3) : 0;
-    const mouthValue = speaking ? sampleMouth(line.mouth, age) : 0;
+    const expressionDuration = line ? Math.min(line.end - line.start,
+      !ownsLine && reactionActive ? requested.duration ?? Infinity : Infinity) : 0;
+    const envelope = line ? faceEnvelope(age, expressionDuration, .25, .3) : 0;
+    const expressionWeight = line ? faceEnvelope(age, expressionDuration) : 0;
+    const exp = sampleExpression(emotion, faceMode === 'legacy-overlay'
+      ? { ...faceControl, eye_open: number(faceControl.eye_open, 1) } : faceControl, expressionWeight);
+    const mouthValue = speaking ? sampleMouth(line.mouth, age) * faceEnvelope(age, line.end - line.start, .035, .045) : 0;
+    const visemes = sampleVisemes(mouthValue, age, seed, index);
     const phase = time * 1.7 + index * 2.1 + (seed % 100) * .13;
     const gesture = (ownsLine ? line.gesture : reaction.gesture) || 'none';
-    let tilt = number(exp.tilt) * envelope;
+    let tilt = exp.tilt;
     if (gesture === 'tilt' || gesture === 'head_tilt') tilt += .13 * envelope;
     const gazeTarget = reading || held > .5 || gesture === 'page_glance' ? 'book' : faceControl.gaze ?? reaction.gaze ?? (listening ? 'speaker' : 'partner');
     const yaw = gazeTarget === 'book' ? 0 : typeof gazeTarget === 'number' ? clamp(gazeTarget, -.65, .65)
@@ -115,7 +116,7 @@ export function createActor(source, id, index = 0) {
     const down = gazeTarget === 'book' ? .55 : 0;
     const nod = gesture === 'nod' ? Math.sin(age * 5) * .13 * envelope : 0;
     pose('chest', Math.sin(phase) * .008, 0, 0);
-    pose('head', down + nod + (speaking ? Math.sin(age * 4) * .025 * envelope : -.025), yaw, tilt);
+    pose('head', down + nod - .025 + (speaking ? (.025 + Math.sin(age * 4) * .025) * envelope : 0), yaw, tilt);
     for (const [side, sign] of [['L', 1], ['R', -1]]) {
       let arm = .08, elbow = .10, spread = sign * .04;
       if (gesture === 'shrug') { arm += .22 * envelope; elbow += .8 * envelope; spread += sign * .28 * envelope; }
@@ -129,12 +130,20 @@ export function createActor(source, id, index = 0) {
       for (const digit of ['f11', 'f21', 'f31']) pose(`${digit}${side}`, .15 - held * .05);
       for (const digit of ['f12', 'f22', 'f32']) pose(`${digit}${side}`, held * .08);
     }
-    mouth.scale.set(1.35 - mouthValue * .25, .07 + mouthValue * 1.05, .19);
-    mouth.visible = mouthValue > .025;
-    lip.visible = mouthValue <= .25;
-    lip.scale.y = 1 - 1.8 * number(faceControl.mouth_curve, number(exp.smile));
-    const browValues = [number(faceControl.brow_left, number(exp.brow, -.12)),
-      number(faceControl.brow_right, number(exp.brow, -.12) + number(exp.asymmetry))].map(n => clamp(n, -1, 1));
+    for (const mesh of mouthMeshes) {
+      const weights = { ...visemes, smile: Math.max(0, exp.smile), frown: Math.max(0, -exp.smile) };
+      for (const [name, value] of Object.entries(weights)) {
+        const target = mesh.morphTargetDictionary[name];
+        if (target !== undefined) mesh.morphTargetInfluences[target] = value;
+      }
+    }
+    if (mouth) {
+      mouth.scale.set(1.35 - mouthValue * .25, .025 + mouthValue * 1.05, .14);
+      lip.scale.set(1, 1 - 1.8 * exp.smile, 1);
+      // Continuous recession and thickness, no threshold visibility changes.
+      lip.scale.multiplyScalar(1 - .9 * mouthValue);
+    }
+    const browValues = exp.brows;
     brows.forEach(({ anchor, q, p, sign }, i) => {
       anchor.position.copy(p);
       anchor.quaternion.copy(q).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0,
@@ -143,7 +152,8 @@ export function createActor(source, id, index = 0) {
     const blinkMode = faceControl.blink || 'auto';
     const blinkAge = blinkMode === 'once' ? age - .35 : ((time + index * 1.3 + (seed % 7) * .23) % 4.7) - 4.35;
     const blink = blinkMode === 'off' || blinkAge < 0 || blinkAge > .18 ? 0 : Math.sin(blinkAge / .18 * Math.PI);
-    const eyeOpen = clamp(number(faceControl.eye_open, 1)) * (1 - blink);
+    const eyeOpen = exp.eyeOpen * (1 - blink);
+    for (const mesh of blinkMeshes) mesh.morphTargetInfluences[mesh.morphTargetDictionary.blink] = 1 - eyeOpen;
     for (const { mesh, positions, centerY } of eyes) {
       const attr = mesh.geometry.attributes.position;
       // Preserve the exact original Float32 vertices whenever the eye is open.
@@ -152,7 +162,8 @@ export function createActor(source, id, index = 0) {
       attr.needsUpdate = true;
     }
     root.updateMatrixWorld(true);
-    state = { id, mode: speaking ? 'talk' : listening ? 'listen' : 'idle', emotion, gesture, mouth: mouthValue,
+    state = { id, variant, faceMode, visemes, expressionWeight, smile: exp.smile,
+      mode: speaking ? 'talk' : listening ? 'listen' : 'idle', emotion, gesture, mouth: mouthValue,
       gaze: yaw, gazeTarget, brows: browValues, eyeOpen, head: bones.head.quaternion.toArray(), faceAttachedToHead: face.parent === bones.head };
   }
 

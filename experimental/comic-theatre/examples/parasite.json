@@ -3,9 +3,10 @@
   "title": "An Inside Source",
   "seed": 17,
   "scene": "library",
+  "characters": {"reader":"blue-beady","friend":"rust"},
   "comics": ["book2-036"],
   "lines": [
-    {"speaker":"reader","text":"My brain parasite says you're toxic.","shot":"source","emotion":"thoughtful","pause":0.6},
+    {"speaker":"reader","text":"My brain parasite says you're toxic.","emotion":"thoughtful","pause":0.6},
     {"speaker":"friend","text":"That's a very convenient second opinion.","emotion":"skeptical","gesture":"head_tilt"},
     {"speaker":"reader","text":"He's known him longer.","emotion":"dry","reaction":{"actor":"friend","emotion":"exasperated","at":"line_end","duration":1}},
     {"speaker":"friend","text":"I want to see what else is in that book.","emotion":"curious","gesture":"nod"}

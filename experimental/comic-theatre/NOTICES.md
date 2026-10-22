@@ -13,7 +13,13 @@ page. These are portable snapshots, not runtime links to the source checkouts.
 - Character: Homunculus sealed-face character export; inspected source checkout
   commit `e52576f96f9d2fdb2a0190cd825cb5081e6cdc68`. Runtime face and gesture
   controls adapt its procedural game-character approach. Two independent skeleton
-  instances are used; no new canonical character asset is being published.
+  instances are used. The legacy sealed-face export is retained for compatibility.
+- Theatre clothing variants: Goosnav-3D-assets commit
+  `65f9ae1f791b86b5e2ce2b235ee0d2f00908557a`, active v10 white/beady-eye characters
+  with blue/rust/olive clothes,
+  packed portable GLBs and editable Blender sources in Goosnav-3D-assets. The
+  original silhouette and rig are reused; no replacement canonical drawings.
+  Reusable facial presets are mirrored from `exports/theatre-performance.mjs`.
 - Book, cover, library and comic JPEGs: active Goosnav-3D-assets at commit
   `0b1bccff8e78a5ef2591adfe1170dd1255ea9216`. Book export is the openable v2
   interior. The library export is included for future scene work; current scene
@@ -27,6 +33,11 @@ book-page match. See the tutorial. Changing a file without reviewing its catalog
 entry causes a deliberate validation error.
 
 ## Software and voice dependencies
+
+Bundled Liberation Serif Regular and Liberation Sans Bold are unmodified fonts
+under the SIL Open Font License 1.1. Full copyright and license text is included
+in `assets/fonts/NOTICE.txt`. They provide portable Times/Helvetica-compatible
+metrics; they are not the proprietary Times New Roman or Helvetica font files.
 
 Node dependencies are version-pinned in `package-lock.json`; their installed
 packages contain their respective licenses. Three.js and proper-lockfile are MIT;

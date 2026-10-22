@@ -544,3 +544,25 @@ VALIDATION
 Production budgets are targets, not guaranteed completion times or creative quality.
 Current test evidence, live-run outcomes and limitations are maintained in
 docs/production-upgrade-progress.md.
+
+EXPERIMENTAL COMIC THEATRE (separate local JSON-driven engine)
+  cd experimental/comic-theatre
+  npm ci
+  npm run setup:browser
+  python3 tools/setup_voice.py
+  npm start
+  node bin/theatre.mjs render examples/parasite.json --preview
+  node bin/theatre.mjs validate my-script.json
+  node bin/theatre.mjs render my-script.json
+
+The GUI edits comic selection, dialogue, emotions, clothing (blue/rust/olive;
+add -beady for black eyes, e.g. blue-beady),
+shots and the Book Two end card. JSON characters maps reader/friend to clothing;
+endCard accepts enabled/title/text/url/seconds. Shot options: auto, speaker,
+two-shot, over-shoulder, book, source. Auto shots are seeded and saved; source
+shows the unchanged page flat, while book reveals the actual open 3D book.
+The end card follows all measured dialogue/reactions and uses a blue underlined
+Times-compatible URL. Rendering is deterministic code, with local voices or
+recordings, not a paid animator agent. Optional AI writing is explicitly configured.
+This experiment writes local MP4s; it does not upload to Google Drive. See its
+TUTORIAL.md for complete input examples, setup, source IDs and recovery commands.

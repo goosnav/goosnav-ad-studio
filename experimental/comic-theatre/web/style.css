@@ -32,6 +32,10 @@ fieldset:disabled input, fieldset:disabled select, fieldset:disabled textarea { 
 .optional { font-size: .75rem; font-weight: 400; }
 .hint { font-size: .8rem; line-height: 1.55; margin: 9px 0 16px; }
 .field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+.end-card-fields { border-top: 1px solid #dcdfd2; padding-top: 20px; margin-top: 22px; }
+.end-card-fields > textarea { margin-bottom: 14px; }
+.check-label { display: flex; align-items: center; gap: 9px; margin: 12px 0 16px; }
+.check-label input { width: 18px; height: 18px; flex: 0 0 18px; margin: 0; accent-color: #294f3a; }
 .edition { border-top: 1px solid #e1e2d6; padding-top: 20px; margin: 20px 0 14px; font-size: .85rem; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 14px; }
 .comic { border: 1px solid #d5d9cc; border-radius: 10px; padding: 12px; min-width: 0; background: #faf9f2; }

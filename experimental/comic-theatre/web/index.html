@@ -44,9 +44,27 @@
         </div>
         <fieldset id="author-fields" disabled>
           <label for="title">Film title</label><input id="title" type="text" maxlength="500" autocomplete="off">
+          <div class="subheading"><h3>Clothing colors</h3></div>
+          <div class="field-pair">
+            <div><label for="reader-clothing">Reader clothing</label><select id="reader-clothing"></select></div>
+            <div><label for="friend-clothing">Friend clothing</label><select id="friend-clothing"></select></div>
+          </div>
+          <p class="hint">Choose clothes and either white or beady eyes. The friend appears in two-person templates.</p>
+          <div class="end-card-fields">
+            <h3>End card</h3>
+            <label class="check-label" for="end-card-enabled"><input id="end-card-enabled" type="checkbox">Show end card</label>
+            <label for="product">Product</label><select id="product"><option value="book2">Goosnav Book Two</option></select>
+            <div class="field-pair">
+              <div><label for="end-card-title">End-card title</label><input id="end-card-title" type="text" autocomplete="off"></div>
+              <div><label for="end-card-seconds">End-card seconds</label><input id="end-card-seconds" type="number" step="any" inputmode="decimal"></div>
+            </div>
+            <label for="end-card-text">End-card text</label><textarea id="end-card-text" rows="2"></textarea>
+            <label for="end-card-url">End-card URL</label><input id="end-card-url" type="text" autocomplete="off" spellcheck="false">
+            <p class="hint">Plain text shown after the reading. Turning the card off keeps your wording for later.</p>
+          </div>
           <div class="subheading"><h3>Dialogue</h3><button id="add-line" type="button">Add dialogue</button></div>
           <div id="dialogue"></div>
-          <p class="hint">Each selected page needs dialogue. A line without a page reference continues the current page. Use JSON for book actions, recorded audio paths, pauses, shots, and advanced <code>face</code> / <code>reaction</code> objects. Those fields survive form edits.</p>
+          <p class="hint">Each selected page needs dialogue. A line without a page reference continues the current page. Auto chooses a shot; Source shows the exact page artwork. Use JSON for book actions, recorded audio paths, pauses, and advanced <code>face</code> / <code>reaction</code> objects. Those fields survive form edits.</p>
         </fieldset>
         <div class="json-heading"><h3><label for="script-json">Public script JSON</label></h3><span id="json-state" class="muted">In sync</span></div>
         <p id="json-help" class="hint">Form edits update JSON immediately. While JSON has unapplied edits, form controls pause. Apply or revert to continue; job updates never touch your script. Validate records server defaults and a sourceLock. Imported and pasted locks are preserved. To intentionally select new sources, use the page/template controls or explicitly remove sourceLock in JSON, then validate.</p>
