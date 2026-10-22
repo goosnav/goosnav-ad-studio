@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Comic Theatre · Local studio</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div><p class="eyebrow">A small local studio</p><h1>Comic Theatre</h1></div>
+    <span class="local-badge">Local render · your pages, your words</span>
+  </header>
+  <main>
+    <section class="intro" aria-label="How it works">
+      <p class="lede">Pick a page. Give it a voice.</p>
+      <p>Choose real comic pages, write a reading, then generate a film. Manual authoring needs no writing agent. AI drafting is optional and runs only when you request it.</p>
+    </section>
+    <div class="workspace">
+      <section class="panel sources" aria-labelledby="sources-heading">
+        <div class="section-heading"><span class="step">01</span><h2 id="sources-heading">Choose your pages</h2></div>
+        <fieldset id="source-fields" disabled>
+          <label for="template">Template</label><select id="template"></select>
+          <p id="template-help" class="hint"></p>
+          <div class="field-pair">
+            <div><label for="scene">Scene</label><select id="scene"></select></div>
+            <div><label for="seed">Seed <span class="optional">optional</span></label><input id="seed" type="number" step="1" placeholder="Automatic"></div>
+          </div>
+          <button id="random" type="button" data-post>Random sample</button>
+          <p class="hint">Samples reviewed pages and creates an editable skeleton. Replaces the current selection and dialogue.</p>
+          <p id="edition" class="edition"></p>
+          <div id="gallery" class="gallery"><p class="muted">Loading the local catalog…</p></div>
+        </fieldset>
+      </section>
+      <section class="panel editor" aria-labelledby="editor-heading">
+        <div class="section-heading"><span class="step">02</span><h2 id="editor-heading">Write the reading</h2></div>
+        <div class="selection-box">
+          <h3>Selected pages</h3><div id="selected-pages" aria-live="polite">No pages selected.</div>
+          <p id="selection-help" class="hint"></p>
+          <p class="hint">Source locking: the server records the exact page IDs and hashes. Drafting must keep this selection. No silent swaps; only your explicit selection or JSON edits change pages.</p>
+          <div id="source-lock" class="source-lock">Validate to record a source lock.</div>
+        </div>
+        <fieldset id="author-fields" disabled>
+          <label for="title">Film title</label><input id="title" type="text" maxlength="500" autocomplete="off">
+          <div class="subheading"><h3>Dialogue</h3><button id="add-line" type="button">Add dialogue</button></div>
+          <div id="dialogue"></div>
+          <p class="hint">Each selected page needs dialogue. A line without a page reference continues the current page. Use JSON for book actions, recorded audio paths, pauses, shots, and advanced <code>face</code> / <code>reaction</code> objects. Those fields survive form edits.</p>
+        </fieldset>
+        <div class="json-heading"><h3><label for="script-json">Public script JSON</label></h3><span id="json-state" class="muted">In sync</span></div>
+        <p id="json-help" class="hint">Form edits update JSON immediately. While JSON has unapplied edits, form controls pause. Apply or revert to continue; job updates never touch your script. Validate records server defaults and a sourceLock. Imported and pasted locks are preserved. To intentionally select new sources, use the page/template controls or explicitly remove sourceLock in JSON, then validate.</p>
+        <textarea id="script-json" class="code-editor" spellcheck="false" aria-describedby="json-help" rows="15" disabled></textarea>
+        <div class="toolbar">
+          <button id="apply-json" type="button">Apply JSON</button>
+          <button id="revert-json" type="button">Revert JSON</button>
+          <button id="download-json" type="button">Download JSON</button>
+          <label class="file-label" for="upload-json">Upload JSON<input id="upload-json" type="file" accept=".json,application/json"></label>
+        </div>
+        <p class="hint">Upload replaces the editor after checking the file and preserves its source lock. Validate checks that saved sources still match; a stale lock is rejected. Download saves the current applied script. Save a copy before requesting a new draft.</p>
+        <div class="production">
+          <div><label for="voice">Voice</label><select id="voice"><option value="kokoro">Local Kokoro (default)</option><option value="recorded">Recorded audio paths in JSON</option></select></div>
+          <p class="hint">Generate uses local voices and rendering, with no writing agent or paid calls. Recorded mode requires an audio path on every spoken line. Local Kokoro must be installed on the server.</p>
+          <div class="toolbar">
+            <button id="validate" type="button" data-post>Validate</button>
+            <button id="draft" type="button" data-post>AI Draft</button>
+            <button id="generate" class="primary" type="button" data-post>Generate video</button>
+          </div>
+          <p class="hint">AI Draft explicitly requests the optional configured writer and replaces dialogue for the selected pages. If no writer is configured, you can keep writing and rendering manually.</p>
+        </div>
+        <p id="editor-status" class="status" role="status" aria-live="polite">Connecting to the local theatre…</p>
+        <button id="retry" type="button" hidden>Retry connection</button>
+      </section>
+    </div>
+    <section class="panel jobs-panel" aria-labelledby="jobs-heading">
+      <div class="subheading"><div class="section-heading"><span class="step">03</span><h2 id="jobs-heading">Screening room</h2></div><button id="refresh-jobs" type="button">Refresh jobs</button></div>
+      <p class="hint">Render jobs update automatically. You can keep editing while a submitted script renders.</p>
+      <p id="jobs-status" class="status" role="status" aria-live="polite"></p>
+      <div id="jobs" class="jobs"><p class="muted">No jobs loaded yet.</p></div>
+    </section>
+  </main>
+  <footer>Original source art stays unchanged. Review the selected pages and your script before generating.</footer>
+  <noscript>This local editor needs JavaScript enabled to load the catalog and send scripts to the theatre server.</noscript>
+</body>
+</html>

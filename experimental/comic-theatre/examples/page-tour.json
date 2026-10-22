@@ -1,0 +1,14 @@
+{
+  "template": "page-tour",
+  "title": "Two Kinds of Achievement",
+  "comics": ["book2-020", "book2-095"],
+  "seed": 42,
+  "lines": [
+    {"speaker": "reader", "comic": "book2-020", "text": "This man intends to define an era.", "shot": "source"},
+    {"speaker": "friend", "text": "After the cookies.", "emotion": "dry"},
+    {"speaker": "reader", "comic": "book2-095", "text": "This one has finished transforming his house.", "shot": "source"},
+    {"speaker": "friend", "text": "From white to white.", "emotion": "skeptical"},
+    {"speaker": "reader", "text": "Eggshell to ivory. He's been very clear about that.", "emotion": "dry"},
+    {"speaker": "friend", "text": "Leave the book here. I'm not finished with these people.", "gesture": "nod"}
+  ]
+}

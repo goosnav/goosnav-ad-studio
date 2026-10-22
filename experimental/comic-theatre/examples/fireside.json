@@ -1,0 +1,12 @@
+{
+  "template": "fireside-reader",
+  "title": "An Ambitious Evening",
+  "comics": ["book2-020"],
+  "seed": 42,
+  "lines": [
+    {"speaker": "reader", "text": "I will be one of the great men of history! My life will define an era!!", "shot": "source"},
+    {"speaker": "reader", "text": "Then his mother offers him cookies.", "emotion": "thoughtful", "gesture": "page_glance"},
+    {"speaker": "reader", "text": "I understand him completely.", "emotion": "dry", "pause": 1},
+    {"speaker": "reader", "text": "I'd keep this book by the desk. As a warning.", "gesture": "nod"}
+  ]
+}

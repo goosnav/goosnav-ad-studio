@@ -1,0 +1,16 @@
+node_modules/
+.venv/
+.cache/
+output/
+.local/
+*.local.json
+__pycache__/
+
+# Portable reviewed snapshots must override the parent studio's media ignores.
+!/assets/actor.glb
+!/assets/book.glb
+!/assets/library.glb
+!/assets/book-front.jpg
+!/assets/comics/book2-020.jpg
+!/assets/comics/book2-036.jpg
+!/assets/comics/book2-095.jpg

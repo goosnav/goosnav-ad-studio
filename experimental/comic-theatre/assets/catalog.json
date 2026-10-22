@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "edition": {
+    "id": "book2-supplied-pdf-v2",
+    "title": "Goosnav Book Two — supplied PDF interior",
+    "pdfSha256": "0b9edc67fc3ba74f8ec257d1c2cc86b35c5e7b1fa894f0395b622cc3125bb3a5",
+    "evidence": "Exact JPEGs from the active 3D library's book2_openable_v2/pages.json at 0b1bccff8e78a5ef2591adfe1170dd1255ea9216. Each selected image personally inspected 2026-10-21. Verification means source-file/page identity, not independent proof of a live storefront offer. No price, availability or edition-title claims are generated."
+  },
+  "assets": {
+    "actor": {"path":"assets/actor.glb","sha256":"b246a917066b5001bc9a6867431d99e2a77426e299cf19c5ce07f5bde0be146b"},
+    "book": {"path":"assets/book.glb","sha256":"f18cbb1f2931de424dd5043bc3b3d7a010b4633bf3ba4f686a40e799085ec807"},
+    "environment": {"path":"assets/library.glb","sha256":"0081fb35ca70668b88f36bca340cc92d0a6730b31c35f529974e016d97695784"},
+    "cover": {"path":"assets/book-front.jpg","sha256":"9b1c03c91cc2fb2504adc87ffdbecd99e58e86e41fbdd0531b03fef932ebd83b"}
+  },
+  "comics": [
+    {"id":"book2-020","title":"Great men of history","path":"assets/comics/book2-020.jpg","sha256":"e5148320fc451303e9ea6f4c2bf225d86701db09ff7c351f80e4caa33661c472","pdfPage":24,"printedPage":20,"verified":true,
+     "transcript":["I will be one of the great men of history! My life will define an era!!","Son do you want some cookies?","I'll have it all figured out by the time I'm 35"],
+     "observations":"Three panels: grand ambition, a parent offering cookies while he plays a computer game, then a deferred deadline. Commentary is not an additional published panel."},
+    {"id":"book2-036","title":"The brain parasite","path":"assets/comics/book2-036.jpg","sha256":"dd6aac6b9e90ed82d99c40cfb119bc353eee4fee14f064efb173c54bc42280c5","pdfPage":40,"printedPage":36,"verified":true,
+     "transcript":["Are you eating dirt & grubs off the ground?","You know that's dangerous right?","My brain parasite says you're toxic"],
+     "observations":"A character eats from the ground; another warns him. The reply attributes the dismissal to his brain parasite. Do not invent a fourth panel or medical advice."},
+    {"id":"book2-095","title":"White to white","path":"assets/comics/book2-095.jpg","sha256":"894a6001bd944001e73a79c5090f803a418822f0903221360a214970fddcbda5","pdfPage":99,"printedPage":95,"verified":true,
+     "transcript":["Beautiful! I love a job well done","You painted all the walls from white to white?","No, it used to be egg-shell. Now it's ivory","You have too much free time on your hands"],
+     "observations":"A painter praises the completed work. The other character questions repainting white walls; the painter distinguishes eggshell from ivory."}
+  ],
+  "templates": [
+    {"id":"book-duet","label":"One comic · two readers","minComics":1,"maxComics":1,"speakers":["reader","friend"],"scenes":["library","fireside"]},
+    {"id":"fireside-reader","label":"One comic · solo commentary","minComics":1,"maxComics":1,"speakers":["reader"],"scenes":["fireside"]},
+    {"id":"page-tour","label":"Two or three comics · conversation","minComics":2,"maxComics":3,"speakers":["reader","friend"],"scenes":["library","fireside"]}
+  ],
+  "scenes": [{"id":"library","label":"Library table"},{"id":"fireside","label":"Fireside reading room"}]
+}
