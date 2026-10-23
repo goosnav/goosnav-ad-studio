@@ -1,0 +1,115 @@
+{
+  "title": "Brain Surgery",
+  "slug": "brain_surgery",
+  "fps": 24,
+  "duration": 15.875,
+  "book": {
+    "model": "props/hq/book2_goosnav_dilemma_openable_v2.blend",
+    "collection": "Book Two — openable v2",
+    "open_through": 30,
+    "turn_leaf": 31,
+    "insert_page": "interior page 62 (printed comic 60): BARGAIN BIN BRAIN SURGERY & BUTCHER BOT; SLEEP BOT with a JAR FOR THE BRAIN"
+  },
+  "end_card": {
+    "start": 12.875,
+    "seconds": 3.0,
+    "title": "Get in line for Book Two"
+  },
+  "lines": [
+    {
+      "id": "r1",
+      "speaker": "READER",
+      "text": "Bargain bin brain surgery.",
+      "take": "voice:r1:0.92",
+      "start": 3.3
+    },
+    {
+      "id": "p1",
+      "speaker": "PAL",
+      "text": "How bargain?",
+      "take": "voice:p1:0.95",
+      "start": 5.557
+    },
+    {
+      "id": "r2",
+      "speaker": "READER",
+      "text": "Butcher bot. And a jar for the brain.",
+      "take": "voice:r2:0.92",
+      "start": 6.722
+    },
+    {
+      "id": "p2",
+      "speaker": "PAL",
+      "text": "Can I go first?",
+      "take": "voice:p2:0.95",
+      "start": 9.22
+    },
+    {
+      "id": "r3",
+      "speaker": "READER",
+      "text": "Get in line.",
+      "take": "voice:r3:0.92",
+      "start": 10.879
+    }
+  ],
+  "events": [
+    {
+      "name": "page_turn",
+      "at": 1.75,
+      "leaf": 31
+    },
+    {
+      "name": "slam",
+      "at": 10.579
+    }
+  ],
+  "shots": [
+    {
+      "camera": "CAM_wide",
+      "start": 0.0,
+      "end": 1.6
+    },
+    {
+      "camera": "CAM_insert_L",
+      "start": 1.6,
+      "end": 3.2,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 3.2,
+      "end": 5.357
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 5.357,
+      "end": 6.522
+    },
+    {
+      "camera": "CAM_insert_L",
+      "start": 6.522,
+      "end": 7.931,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 7.931,
+      "end": 9.02
+    },
+    {
+      "camera": "CAM_pal_lean",
+      "start": 9.02,
+      "end": 10.279
+    },
+    {
+      "camera": "CAM_two",
+      "start": 10.279,
+      "end": 12.004
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 12.004,
+      "end": 12.875
+    }
+  ]
+}

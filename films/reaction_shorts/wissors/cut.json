@@ -1,0 +1,115 @@
+{
+  "title": "Wissors",
+  "slug": "wissors",
+  "fps": 24,
+  "duration": 14.458333333333334,
+  "book": {
+    "model": "props/hq/book2_goosnav_dilemma_openable_v2.blend",
+    "collection": "Book Two — openable v2",
+    "open_through": 32,
+    "turn_leaf": 33,
+    "insert_page": "interior page 67 (printed comic 65): WISSORS (scissors made of worms); THE LITTLEST LIBRARIAN"
+  },
+  "end_card": {
+    "start": 11.458333333333334,
+    "seconds": 3.0,
+    "title": "Get your own copy"
+  },
+  "lines": [
+    {
+      "id": "r1",
+      "speaker": "READER",
+      "text": "Wissors.",
+      "take": "voice:r1:0.92",
+      "start": 3.3
+    },
+    {
+      "id": "p1",
+      "speaker": "PAL",
+      "text": "Scissors?",
+      "take": "voice:p1:0.95",
+      "start": 4.429
+    },
+    {
+      "id": "r2",
+      "speaker": "READER",
+      "text": "Wissors. They're made of worms.",
+      "take": "voice:r2:0.92",
+      "start": 5.498
+    },
+    {
+      "id": "p2",
+      "speaker": "PAL",
+      "text": "Can I borrow them?",
+      "take": "voice:p2:0.95",
+      "start": 7.734
+    },
+    {
+      "id": "r3",
+      "speaker": "READER",
+      "text": "Get your own.",
+      "take": "voice:r3:0.92",
+      "start": 9.41
+    }
+  ],
+  "events": [
+    {
+      "name": "page_turn",
+      "at": 1.75,
+      "leaf": 33
+    },
+    {
+      "name": "slam",
+      "at": 9.11
+    }
+  ],
+  "shots": [
+    {
+      "camera": "CAM_wide",
+      "start": 0.0,
+      "end": 1.6
+    },
+    {
+      "camera": "CAM_insert_R",
+      "start": 1.6,
+      "end": 3.2,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 3.2,
+      "end": 4.229
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 4.229,
+      "end": 5.298
+    },
+    {
+      "camera": "CAM_insert_R",
+      "start": 5.298,
+      "end": 6.563,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 6.563,
+      "end": 7.534
+    },
+    {
+      "camera": "CAM_pal_lean",
+      "start": 7.534,
+      "end": 8.81
+    },
+    {
+      "camera": "CAM_two",
+      "start": 8.81,
+      "end": 10.572
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 10.572,
+      "end": 11.458333333333334
+    }
+  ]
+}

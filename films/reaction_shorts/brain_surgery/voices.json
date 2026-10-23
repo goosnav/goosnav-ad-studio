@@ -1,0 +1,51 @@
+{
+ "provider": "kokoro",
+ "effort": "low",
+ "device": "cpu",
+ "seed": 7,
+ "voice_profiles": {
+  "READER": {
+   "voice": "am_onyx"
+  },
+  "PAL": {
+   "voice": "am_puck"
+  }
+ },
+ "lines": [
+  {
+   "id": "r1",
+   "speaker": "READER",
+   "text": "Bargain bin brain surgery.",
+   "delivery": "deadpan, reading",
+   "speed": 0.92
+  },
+  {
+   "id": "p1",
+   "speaker": "PAL",
+   "text": "How bargain?",
+   "delivery": "curious",
+   "speed": 0.95
+  },
+  {
+   "id": "r2",
+   "speaker": "READER",
+   "text": "Butcher bot. And a jar for the brain.",
+   "delivery": "deadpan",
+   "speed": 0.92
+  },
+  {
+   "id": "p2",
+   "speaker": "PAL",
+   "text": "Can I go first?",
+   "delivery": "eager",
+   "speed": 0.95
+  },
+  {
+   "id": "r3",
+   "speaker": "READER",
+   "text": "Get in line.",
+   "delivery": "dry, final",
+   "speed": 0.92
+  }
+ ]
+}

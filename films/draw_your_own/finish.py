@@ -54,7 +54,7 @@ def main():
     out = Path(sys.argv[3]).expanduser() if len(sys.argv) > 3 else None
     if out:
         out.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(final, out / 'draw_your_own.mp4')
+        shutil.copy2(final, out / f"{cut.get('slug', 'draw_your_own')}.mp4")
         shutil.copy2(final_dir / 'end_card.png', out / 'end_card.png')
     print(json.dumps({k: v for k, v in result.items() if k != 'files'}, indent=1, default=str))
 
