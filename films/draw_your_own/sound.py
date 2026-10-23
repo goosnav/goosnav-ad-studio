@@ -108,11 +108,14 @@ def slam():
     return out / np.abs(out).max()
 
 
-def shush(seconds=0.95):
+def shush(seconds=0.95, tiny=False):
+    if tiny:                       # a very small person: shorter, higher, close
+        seconds = 0.45
     n = int(seconds * RATE)
     t = np.arange(n) / RATE
-    env = np.minimum(1, t / .05) * np.clip((seconds - t) / .45, 0, 1) ** 1.5
-    hiss = band(rng.standard_normal(n), 1800, 7500) + .4 * band(rng.standard_normal(n), 3500, 5200)
+    env = np.minimum(1, t / .05) * np.clip((seconds - t) / (.2 if tiny else .45), 0, 1) ** 1.5
+    lo, hi = (4200, 11000) if tiny else (1800, 7500)
+    hiss = band(rng.standard_normal(n), lo, hi) + .4 * band(rng.standard_normal(n), lo * 1.3, hi * .9)
     return hiss * env / np.abs(hiss * env).max()
 
 
@@ -172,12 +175,12 @@ def main():
             place(effects_l, sound, event['at'], db(-20)); place(effects_r, sound, event['at'], db(-21))
             timeline['events'].append({'name': f'page turn (leaf {event["leaf"]})', 'sample': int(event['at'] * RATE)})
         elif event['name'] == 'slam':
-            dry = np.zeros(n); place(dry, slam(), event['at'])
+            dry = np.zeros(n); place(dry, slam(), event['at'], db(event.get('gain_db', 0)))
             boom = dry * db(-7) + fftconvolve(dry, big_hall)[:n] * db(-1)
             effects_l += boom; effects_r += boom * .96
             timeline['events'].append({'name': 'book slammed shut, hall echo', 'sample': int(event['at'] * RATE)})
         elif event['name'] == 'shush':
-            dry = np.zeros(n); place(dry, shush(), event['at'])
+            dry = np.zeros(n); place(dry, shush(tiny=event.get('tiny', False)), event['at'], db(event.get('gain_db', 0)))
             wet = fftconvolve(dry, big_hall)[:n]
             effects_l += dry * db(-34) + wet * db(-26)
             effects_r += dry * db(-27) + wet * db(-22)

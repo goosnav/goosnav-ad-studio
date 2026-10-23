@@ -1,0 +1,122 @@
+{
+  "title": "Littlest Librarian",
+  "slug": "littlest_librarian",
+  "fps": 24,
+  "duration": 15.791666666666666,
+  "book": {
+    "model": "props/hq/book2_goosnav_dilemma_openable_v2.blend",
+    "collection": "Book Two — openable v2",
+    "open_through": 32,
+    "turn_leaf": 33,
+    "insert_page": "interior page 67 (printed comic 65): WISSORS; THE LITTLEST LIBRARIAN beside books taller than her"
+  },
+  "end_card": {
+    "start": 12.791666666666666,
+    "seconds": 3.0,
+    "title": "Read Book Two quietly"
+  },
+  "lines": [
+    {
+      "id": "r1",
+      "speaker": "READER",
+      "text": "The littlest librarian.",
+      "take": "voice:r1:0.92",
+      "start": 3.3
+    },
+    {
+      "id": "p1",
+      "speaker": "PAL",
+      "text": "Where?",
+      "take": "voice:p1:0.95",
+      "start": 5.332
+    },
+    {
+      "id": "r2",
+      "speaker": "READER",
+      "text": "She's smaller than the books.",
+      "take": "voice:r2:0.92",
+      "start": 6.233
+    },
+    {
+      "id": "p2",
+      "speaker": "PAL",
+      "text": "Is she here?",
+      "take": "voice:p2:0.95",
+      "start": 8.344
+    },
+    {
+      "id": "r3",
+      "speaker": "READER",
+      "text": "Probably.",
+      "take": "voice:r3:0.92",
+      "start": 10.915
+    }
+  ],
+  "events": [
+    {
+      "name": "page_turn",
+      "at": 1.75,
+      "leaf": 33
+    },
+    {
+      "name": "shush",
+      "at": 9.565,
+      "tiny": true,
+      "gain_db": 4
+    },
+    {
+      "name": "slam",
+      "at": 10.615,
+      "gain_db": -16
+    }
+  ],
+  "shots": [
+    {
+      "camera": "CAM_wide",
+      "start": 0.0,
+      "end": 1.6
+    },
+    {
+      "camera": "CAM_insert_R",
+      "start": 1.6,
+      "end": 3.2,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 3.2,
+      "end": 5.132
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 5.132,
+      "end": 6.033
+    },
+    {
+      "camera": "CAM_insert_R",
+      "start": 6.033,
+      "end": 7.229,
+      "hide_reader_body": true
+    },
+    {
+      "camera": "CAM_reader",
+      "start": 7.229,
+      "end": 8.144
+    },
+    {
+      "camera": "CAM_pal_lean",
+      "start": 8.144,
+      "end": 9.215
+    },
+    {
+      "camera": "CAM_two",
+      "start": 9.215,
+      "end": 11.901
+    },
+    {
+      "camera": "CAM_pal_ecu",
+      "start": 11.901,
+      "end": 12.791666666666666
+    }
+  ]
+}
